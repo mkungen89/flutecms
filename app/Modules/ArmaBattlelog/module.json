@@ -1,0 +1,14 @@
+{
+    "name": "Arma Battlelog",
+    "description": "Battlefield 3 Battlelog-style statistics tracking system for Arma Reforger. Track kills, deaths, weapons, vehicles, achievements, and generate detailed battle reports.",
+    "version": "1.0.0",
+    "authors": ["Flute CMS"],
+    "url": "https://github.com/Flute-CMS/ArmaBattlelog",
+    "providers": [
+        "Flute\\Modules\\ArmaBattlelog\\ServiceProvider"
+    ],
+    "dependencies": {
+        "php": ">=8.2",
+        "flute": ">=1.0.0"
+    }
+}
