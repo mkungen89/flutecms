@@ -54,7 +54,7 @@
                 <i class="ph ph-stop-circle me-2"></i>
                 {{ __('arma-reforger.admin.servers.stop') }}
             </button>
-            <button type="button" class="btn btn-outline-primary">
+            <button type="button" class="btn btn-outline-primary" data-turbo-method="post" data-turbo-frame="_top">
                 <i class="ph ph-arrows-clockwise me-2"></i>
                 {{ __('arma-reforger.admin.servers.restart') }}
             </button>

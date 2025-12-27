@@ -55,7 +55,7 @@ class ReforgerMod extends DatabaseEntity
      */
     public function getFormattedFileSize(): string
     {
-        if (!$this->fileSize) {
+        if ($this->fileSize === null) {
             return 'Unknown';
         }
 
