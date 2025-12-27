@@ -27,6 +27,7 @@ class ApiController extends BaseController
 
     /**
      * Validate API key from request
+     * Security: Always require API key in production
      */
     protected function validateApiKey(FluteRequest $request): bool
     {
@@ -40,14 +41,27 @@ class ApiController extends BaseController
             $apiKey = substr($apiKey, 7);
         }
 
-        // For demo mode, accept any key or no key
-        // In production, validate against stored API keys
         $configKey = config('battlelog.api_key');
-        if ($configKey && $apiKey !== $configKey) {
+
+        // If no API key is configured, reject all requests for security
+        if (empty($configKey)) {
+            return false;
+        }
+
+        // Use timing-safe comparison to prevent timing attacks
+        if (empty($apiKey) || !hash_equals($configKey, $apiKey)) {
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * Check if demo mode is enabled
+     */
+    protected function isDemoModeEnabled(): bool
+    {
+        return (bool) config('battlelog.enable_demo_endpoints', false);
     }
 
     /**
@@ -399,13 +413,22 @@ class ApiController extends BaseController
 
     /**
      * Generate demo session (for testing)
+     * Security: Requires API key authentication AND demo mode to be enabled
      */
     public function generateDemoSession(FluteRequest $request): JsonResponse
     {
-        $numPlayers = $request->get('num_players', 20);
-        $numSessions = $request->get('num_sessions', 1);
+        if (!$this->validateApiKey($request)) {
+            return $this->json(['error' => 'Invalid API key'], 401);
+        }
 
-        $result = $this->demoDataService->generateFullDemo((int) $numPlayers, (int) $numSessions);
+        if (!$this->isDemoModeEnabled()) {
+            return $this->json(['error' => 'Demo mode is disabled'], 403);
+        }
+
+        $numPlayers = min((int) $request->get('num_players', 20), 100); // Limit to 100 players
+        $numSessions = min((int) $request->get('num_sessions', 1), 10); // Limit to 10 sessions
+
+        $result = $this->demoDataService->generateFullDemo($numPlayers, $numSessions);
 
         return $this->json([
             'success' => true,
@@ -415,12 +438,21 @@ class ApiController extends BaseController
 
     /**
      * Generate demo player (for testing)
+     * Security: Requires API key authentication AND demo mode to be enabled
      */
     public function generateDemoPlayer(FluteRequest $request): JsonResponse
     {
-        $count = $request->get('count', 1);
+        if (!$this->validateApiKey($request)) {
+            return $this->json(['error' => 'Invalid API key'], 401);
+        }
 
-        $players = $this->demoDataService->generateDemoPlayers((int) $count);
+        if (!$this->isDemoModeEnabled()) {
+            return $this->json(['error' => 'Demo mode is disabled'], 403);
+        }
+
+        $count = min((int) $request->get('count', 1), 50); // Limit to 50 players
+
+        $players = $this->demoDataService->generateDemoPlayers($count);
 
         return $this->json([
             'success' => true,

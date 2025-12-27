@@ -32,7 +32,7 @@ class AchievementsScreen extends Screen
                 TD::make('id', 'ID'),
                 TD::make('code', 'Code'),
                 TD::make('name', 'Name'),
-                TD::make('', 'Category')
+                TD::make('category', 'Category')
                     ->render(fn(Achievement $a) => $a->getCategoryName()),
                 TD::make('rarity', 'Rarity'),
                 TD::make('requirement_type', 'Requirement'),

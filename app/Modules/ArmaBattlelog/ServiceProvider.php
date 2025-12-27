@@ -26,10 +26,10 @@ class ServiceProvider extends ModuleServiceProvider
 
     public function register(\DI\Container $container): void
     {
-        $this->loadRoutesFrom('routes.php');
-        $this->loadViewsFrom('Resources/views');
-        $this->loadTranslationsFrom('Resources/lang');
-        $this->registerScss('Resources/assets/scss/battlelog.scss');
+        $this->loadRoutesFrom(__DIR__ . '/routes.php');
+        $this->loadViewsFrom(__DIR__ . '/Resources/views');
+        $this->loadTranslationsFrom(__DIR__ . '/Resources/lang');
+        $this->registerScss(__DIR__ . '/Resources/assets/scss/battlelog.scss');
 
         // Register navbar item for Battlelog
         $this->addNavbarItem(

@@ -130,6 +130,7 @@ class BattlelogService
 
     /**
      * Record a player disconnecting from a session
+     * Security: Only allow specific safe fields to be updated (whitelist approach)
      */
     public function playerDisconnect(int $sessionId, string $platformId, array $stats = []): void
     {
@@ -146,11 +147,24 @@ class BattlelogService
         if ($playerSession) {
             $playerSession->left_at = new \DateTimeImmutable();
 
-            // Update session stats from provided data
-            foreach ($stats as $key => $value) {
-                if (property_exists($playerSession, $key)) {
-                    $playerSession->$key = $value;
+            // Security: Whitelist of allowed fields to prevent mass assignment attacks
+            // Do NOT allow: is_winner, is_mvp, score (these are calculated server-side)
+            $allowedFields = [
+                'kills', 'deaths', 'assists', 'headshots',
+                'objectives_captured', 'objectives_defended',
+                'revives', 'heals', 'vehicle_kills',
+                'longest_kill', 'best_killstreak',
+            ];
+
+            foreach ($allowedFields as $field) {
+                if (isset($stats[$field]) && is_numeric($stats[$field])) {
+                    $playerSession->$field = (int) $stats[$field];
                 }
+            }
+
+            // Handle float field separately
+            if (isset($stats['longest_kill']) && is_numeric($stats['longest_kill'])) {
+                $playerSession->longest_kill = (float) $stats['longest_kill'];
             }
 
             $playerSession->save();

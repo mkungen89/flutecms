@@ -67,6 +67,7 @@ class Installer extends AbstractModuleInstaller
                 foreach ($data as $key => $value) {
                     $weapon->$key = $value;
                 }
+                $weapon->created_at = new \DateTimeImmutable();
                 $weapon->save();
             }
         }
@@ -98,6 +99,7 @@ class Installer extends AbstractModuleInstaller
                 foreach ($data as $key => $value) {
                     $vehicle->$key = $value;
                 }
+                $vehicle->created_at = new \DateTimeImmutable();
                 $vehicle->save();
             }
         }
@@ -119,6 +121,7 @@ class Installer extends AbstractModuleInstaller
                 foreach ($data as $key => $value) {
                     $map->$key = $value;
                 }
+                $map->created_at = new \DateTimeImmutable();
                 $map->save();
             }
         }
@@ -173,6 +176,7 @@ class Installer extends AbstractModuleInstaller
                 foreach ($data as $key => $value) {
                     $achievement->$key = $value;
                 }
+                $achievement->created_at = new \DateTimeImmutable();
                 $achievement->save();
             }
         }

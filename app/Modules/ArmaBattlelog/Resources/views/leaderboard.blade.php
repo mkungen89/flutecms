@@ -74,7 +74,7 @@
     </div>
 
     <!-- Pagination -->
-    @if(count($leaderboard) >= 50)
+    @if($page > 1 || count($leaderboard) === 50)
         <div class="pagination">
             @if($page > 1)
                 <a href="{{ url('battlelog/leaderboard/' . $currentCategory . '?period=' . $currentPeriod . '&page=' . ($page - 1)) }}" class="btn btn-outline">
@@ -82,9 +82,11 @@
                 </a>
             @endif
             <span class="page-info">Page {{ $page }}</span>
-            <a href="{{ url('battlelog/leaderboard/' . $currentCategory . '?period=' . $currentPeriod . '&page=' . ($page + 1)) }}" class="btn btn-outline">
-                Next <i class="ph ph-arrow-right"></i>
-            </a>
+            @if(count($leaderboard) === 50)
+                <a href="{{ url('battlelog/leaderboard/' . $currentCategory . '?period=' . $currentPeriod . '&page=' . ($page + 1)) }}" class="btn btn-outline">
+                    Next <i class="ph ph-arrow-right"></i>
+                </a>
+            @endif
         </div>
     @endif
 </div>
