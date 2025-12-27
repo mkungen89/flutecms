@@ -2,6 +2,7 @@
 
 namespace Flute\Modules\ArmaReforgerServerManager\Http\Controllers;
 
+use Exception;
 use Flute\Core\Support\BaseController;
 use Flute\Modules\ArmaReforgerServerManager\Database\Entities\ReforgerServer;
 use Flute\Modules\ArmaReforgerServerManager\Services\ReforgerServerService;
@@ -30,11 +31,46 @@ class ApiController extends BaseController
             // to avoid N+1 performance problem
             $isRunning = $server->isRunning();
 
-            // Update status if inconsistent
+            // Update status if inconsistent (auto-correction for stale state)
             if ($server->status === 'running' && !$isRunning) {
+                $previousStatus = $server->status;
+                $previousPid = $server->pid;
+
                 $server->status = 'stopped';
                 $server->pid = null;
-                $server->save();
+
+                try {
+                    $server->save();
+
+                    // Audit log: Record the automatic status correction
+                    logs('modules')->info('Arma Reforger server status auto-corrected', [
+                        'action' => 'server_status_auto_correction',
+                        'server_id' => $server->id,
+                        'server_name' => $server->name,
+                        'previous_status' => $previousStatus,
+                        'new_status' => 'stopped',
+                        'previous_pid' => $previousPid,
+                        'reason' => 'Process no longer running',
+                        'triggered_by' => 'api_list_servers',
+                        'user_id' => user()->id ?? null,
+                        'ip_address' => request()->getClientIp(),
+                        'timestamp' => date('Y-m-d H:i:s'),
+                    ]);
+                } catch (Exception $e) {
+                    // Log the error but continue processing other servers
+                    // to ensure graceful degradation
+                    logs('modules')->error('Failed to persist server status correction', [
+                        'server_id' => $server->id,
+                        'server_name' => $server->name,
+                        'error' => $e->getMessage(),
+                        'previous_status' => $previousStatus,
+                        'attempted_status' => 'stopped',
+                    ]);
+
+                    // Revert in-memory state to avoid inconsistency in response
+                    $server->status = $previousStatus;
+                    $server->pid = $previousPid;
+                }
             }
 
             $result[] = [
