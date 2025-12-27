@@ -1,0 +1,889 @@
+// Arma Battlelog Styles
+
+// Variables
+$primary-color: #4a90d9;
+$us-color: #3b82f6;
+$ussr-color: #ef4444;
+$success-color: #22c55e;
+$warning-color: #f59e0b;
+$dark-bg: #1a1a2e;
+$card-bg: #16213e;
+$border-color: rgba(255, 255, 255, 0.1);
+
+.battlelog-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+// Hero Section
+.battlelog-hero {
+    background: linear-gradient(135deg, $dark-bg 0%, darken($card-bg, 5%) 100%);
+    border-radius: 1rem;
+    padding: 3rem;
+    margin-bottom: 2rem;
+    border: 1px solid $border-color;
+
+    .hero-content {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    .hero-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+
+        i {
+            color: $primary-color;
+        }
+    }
+
+    .hero-subtitle {
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 1.1rem;
+    }
+}
+
+// Global Stats
+.global-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+
+    .stat-card {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        transition: transform 0.2s;
+
+        &:hover {
+            transform: translateY(-2px);
+        }
+
+        .stat-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, $primary-color, darken($primary-color, 15%));
+            border-radius: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            i {
+                font-size: 1.5rem;
+                color: white;
+            }
+        }
+
+        .stat-info {
+            display: flex;
+            flex-direction: column;
+
+            .stat-value {
+                font-size: 1.5rem;
+                font-weight: 700;
+            }
+
+            .stat-label {
+                color: rgba(255, 255, 255, 0.5);
+                font-size: 0.85rem;
+            }
+        }
+    }
+}
+
+// Content Grid
+.battlelog-content {
+    .content-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 1.5rem;
+    }
+}
+
+// Content Cards
+.content-card {
+    background: $card-bg;
+    border-radius: 1rem;
+    border: 1px solid $border-color;
+    overflow: hidden;
+
+    .card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid $border-color;
+
+        h2, h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0;
+
+            i {
+                color: $primary-color;
+            }
+        }
+
+        a {
+            color: $primary-color;
+            font-size: 0.85rem;
+            text-decoration: none;
+
+            &:hover {
+                text-decoration: underline;
+            }
+        }
+    }
+
+    .card-body {
+        padding: 1rem;
+    }
+}
+
+// Player List
+.player-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    .player-item {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.75rem;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 0.5rem;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.2s;
+
+        &:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .player-rank {
+            font-weight: 700;
+            font-size: 0.9rem;
+            width: 30px;
+
+            &.rank-1 { color: #ffd700; }
+            &.rank-2 { color: #c0c0c0; }
+            &.rank-3 { color: #cd7f32; }
+        }
+
+        .player-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+
+            img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
+        }
+
+        .player-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+
+            .player-name {
+                font-weight: 600;
+            }
+
+            .player-rank-name {
+                font-size: 0.8rem;
+                color: rgba(255, 255, 255, 0.5);
+            }
+        }
+
+        .player-stats {
+            display: flex;
+            gap: 1rem;
+
+            .stat {
+                display: flex;
+                align-items: center;
+                gap: 0.25rem;
+                font-size: 0.85rem;
+                color: rgba(255, 255, 255, 0.7);
+            }
+        }
+    }
+}
+
+// Session List
+.session-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    .session-item {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.75rem;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 0.5rem;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.2s;
+
+        &:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .session-map {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex: 1;
+        }
+
+        .session-score {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+
+            .score {
+                font-weight: 600;
+                padding: 0.25rem 0.5rem;
+                border-radius: 0.25rem;
+
+                &.us { background: rgba($us-color, 0.2); color: $us-color; }
+                &.ussr { background: rgba($ussr-color, 0.2); color: $ussr-color; }
+                &.winner { font-weight: 700; }
+            }
+
+            .vs {
+                color: rgba(255, 255, 255, 0.3);
+                font-size: 0.75rem;
+            }
+        }
+
+        .session-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+    }
+}
+
+// Player Header
+.player-header {
+    background: linear-gradient(135deg, $dark-bg 0%, darken($card-bg, 5%) 100%);
+    border-radius: 1rem;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid $border-color;
+
+    .player-profile {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+
+        .player-avatar-large {
+            width: 100px;
+            height: 100px;
+            border-radius: 1rem;
+            background: rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+
+            img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
+
+            i {
+                font-size: 3rem;
+                color: rgba(255, 255, 255, 0.3);
+            }
+        }
+
+        .player-details {
+            .player-name {
+                font-size: 2rem;
+                font-weight: 700;
+                margin-bottom: 0.5rem;
+            }
+
+            .player-rank-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.5rem;
+                background: linear-gradient(135deg, $primary-color, darken($primary-color, 15%));
+                padding: 0.25rem 0.75rem;
+                border-radius: 1rem;
+                font-size: 0.85rem;
+                margin-bottom: 0.5rem;
+            }
+
+            .player-meta {
+                display: flex;
+                gap: 1.5rem;
+                font-size: 0.9rem;
+                color: rgba(255, 255, 255, 0.6);
+
+                span {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.25rem;
+                }
+            }
+        }
+    }
+
+    .player-quick-stats {
+        display: flex;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+
+        .quick-stat {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1rem 1.5rem;
+            border-radius: 0.75rem;
+            text-align: center;
+
+            &.highlight {
+                background: linear-gradient(135deg, $primary-color, darken($primary-color, 15%));
+            }
+
+            .value {
+                display: block;
+                font-size: 1.5rem;
+                font-weight: 700;
+            }
+
+            .label {
+                font-size: 0.8rem;
+                color: rgba(255, 255, 255, 0.6);
+            }
+        }
+    }
+}
+
+// Player Tabs
+.player-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid $border-color;
+    padding-bottom: 0.5rem;
+
+    .tab {
+        padding: 0.75rem 1.25rem;
+        border-radius: 0.5rem;
+        text-decoration: none;
+        color: rgba(255, 255, 255, 0.6);
+        transition: all 0.2s;
+
+        &:hover {
+            color: white;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        &.active {
+            background: $primary-color;
+            color: white;
+        }
+    }
+}
+
+// Stat Cards
+.content-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.content-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.stat-card-detailed {
+    background: $card-bg;
+    border-radius: 1rem;
+    padding: 1.5rem;
+    border: 1px solid $border-color;
+
+    h3 {
+        font-size: 1rem;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+
+        i {
+            color: $primary-color;
+        }
+    }
+
+    .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+
+            .label {
+                font-size: 0.8rem;
+                color: rgba(255, 255, 255, 0.5);
+                margin-bottom: 0.25rem;
+            }
+
+            .value {
+                font-size: 1.25rem;
+                font-weight: 600;
+
+                &.win { color: $success-color; }
+                &.loss { color: $ussr-color; }
+            }
+        }
+    }
+}
+
+// Leaderboard
+.leaderboard-filters {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+
+    .filter-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+
+        .filter-btn {
+            padding: 0.5rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 0.5rem;
+            text-decoration: none;
+            color: rgba(255, 255, 255, 0.7);
+            transition: all 0.2s;
+
+            &:hover {
+                background: rgba(255, 255, 255, 0.1);
+                color: white;
+            }
+
+            &.active {
+                background: $primary-color;
+                color: white;
+            }
+        }
+    }
+}
+
+.leaderboard-table {
+    background: $card-bg;
+    border-radius: 1rem;
+    border: 1px solid $border-color;
+    overflow: hidden;
+
+    .table-header {
+        display: flex;
+        padding: 1rem 1.5rem;
+        background: rgba(0, 0, 0, 0.2);
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.6);
+    }
+
+    .table-row {
+        display: flex;
+        padding: 1rem 1.5rem;
+        text-decoration: none;
+        color: inherit;
+        border-bottom: 1px solid $border-color;
+        transition: background 0.2s;
+
+        &:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        &:last-child {
+            border-bottom: none;
+        }
+
+        &.top-1 { background: rgba(255, 215, 0, 0.1); }
+        &.top-2 { background: rgba(192, 192, 192, 0.05); }
+        &.top-3 { background: rgba(205, 127, 50, 0.05); }
+    }
+
+    .col {
+        &.rank {
+            width: 80px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+
+            .rank-number {
+                font-weight: 600;
+            }
+
+            .rank-change {
+                font-size: 0.75rem;
+
+                &.up { color: $success-color; }
+                &.down { color: $ussr-color; }
+                &.new { color: $warning-color; }
+            }
+        }
+
+        &.player {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+
+            .player-avatar {
+                width: 36px;
+                height: 36px;
+                border-radius: 50%;
+                background: rgba(255, 255, 255, 0.1);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                overflow: hidden;
+
+                img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                }
+            }
+        }
+
+        &.score {
+            width: 120px;
+            text-align: right;
+            font-weight: 600;
+        }
+    }
+}
+
+// Battle Report
+.battle-report-header {
+    background: $card-bg;
+    border-radius: 1rem;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid $border-color;
+
+    .report-title {
+        margin-bottom: 1rem;
+
+        h1 {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .report-date {
+            color: rgba(255, 255, 255, 0.5);
+        }
+    }
+
+    .battle-info {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.5rem;
+
+        > div {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+    }
+}
+
+.battle-scoreboard {
+    display: flex;
+    align-items: stretch;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+
+    .team {
+        flex: 1;
+        background: $card-bg;
+        border-radius: 1rem;
+        padding: 2rem;
+        text-align: center;
+        border: 2px solid transparent;
+
+        &.us {
+            border-color: rgba($us-color, 0.3);
+            background: linear-gradient(135deg, $card-bg, rgba($us-color, 0.1));
+        }
+
+        &.ussr {
+            border-color: rgba($ussr-color, 0.3);
+            background: linear-gradient(135deg, $card-bg, rgba($ussr-color, 0.1));
+        }
+
+        &.winner {
+            border-color: $success-color;
+
+            .winner-badge {
+                display: inline-flex;
+            }
+        }
+
+        .team-header {
+            margin-bottom: 1rem;
+
+            .team-name {
+                font-size: 1.25rem;
+                font-weight: 600;
+            }
+
+            .winner-badge {
+                display: none;
+                align-items: center;
+                gap: 0.25rem;
+                color: $success-color;
+                font-size: 0.85rem;
+                margin-top: 0.5rem;
+            }
+        }
+
+        .team-score {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .team-kills {
+            color: rgba(255, 255, 255, 0.6);
+        }
+    }
+
+    .vs-divider {
+        display: flex;
+        align-items: center;
+
+        span {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.3);
+        }
+    }
+}
+
+.mvp-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 215, 0, 0.05));
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 1rem;
+    margin-bottom: 1.5rem;
+
+    .mvp-badge {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #ffd700;
+        font-weight: 600;
+    }
+
+    .mvp-player {
+        display: flex;
+        flex-direction: column;
+        text-decoration: none;
+        color: inherit;
+
+        .mvp-name {
+            font-weight: 600;
+        }
+
+        .mvp-stats {
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.6);
+        }
+    }
+}
+
+.teams-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+
+    .team-table {
+        background: $card-bg;
+        border-radius: 1rem;
+        border: 1px solid $border-color;
+        overflow: hidden;
+
+        h3 {
+            padding: 1rem 1.25rem;
+            margin: 0;
+            border-bottom: 1px solid $border-color;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        &.us h3 { color: $us-color; }
+        &.ussr h3 { color: $ussr-color; }
+
+        .player-table {
+            .table-header {
+                display: flex;
+                padding: 0.75rem 1rem;
+                background: rgba(0, 0, 0, 0.2);
+                font-size: 0.8rem;
+                color: rgba(255, 255, 255, 0.5);
+            }
+
+            .table-row {
+                display: flex;
+                padding: 0.75rem 1rem;
+                text-decoration: none;
+                color: inherit;
+                border-bottom: 1px solid $border-color;
+                transition: background 0.2s;
+
+                &:hover {
+                    background: rgba(255, 255, 255, 0.03);
+                }
+
+                &.mvp {
+                    background: rgba(255, 215, 0, 0.05);
+                }
+            }
+
+            .col {
+                &.player {
+                    flex: 1;
+                    display: flex;
+                    align-items: center;
+                    gap: 0.5rem;
+
+                    .mvp-icon {
+                        color: #ffd700;
+                    }
+                }
+
+                &.kills, &.deaths, &.kd, &.score, &.spm {
+                    width: 60px;
+                    text-align: center;
+                }
+            }
+        }
+    }
+}
+
+// Quick Links
+.battlelog-links {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+
+    .link-card {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1.5rem;
+        background: $card-bg;
+        border-radius: 1rem;
+        border: 1px solid $border-color;
+        text-decoration: none;
+        color: inherit;
+        transition: all 0.2s;
+
+        &:hover {
+            transform: translateY(-2px);
+            border-color: $primary-color;
+        }
+
+        i {
+            font-size: 2rem;
+            color: $primary-color;
+        }
+    }
+}
+
+// Empty States
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: rgba(255, 255, 255, 0.5);
+
+    i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+}
+
+// Responsive
+@media (max-width: 768px) {
+    .battlelog-container {
+        padding: 1rem;
+    }
+
+    .player-header .player-profile {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .player-header .player-meta {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .player-quick-stats {
+        justify-content: center;
+    }
+
+    .battle-scoreboard {
+        flex-direction: column;
+
+        .vs-divider {
+            justify-content: center;
+        }
+    }
+
+    .teams-container {
+        grid-template-columns: 1fr;
+    }
+}
