@@ -290,18 +290,32 @@ class ReforgerServerService
     {
         $logFile = $workingDir . DIRECTORY_SEPARATOR . 'console.log';
 
+        // Escape paths to prevent command injection
+        $escapedWorkingDir = escapeshellarg($workingDir);
+        $escapedLogFile = escapeshellarg($logFile);
+
         if (PHP_OS_FAMILY === 'Windows') {
-            // Windows: Use start /B
-            $command = "start /B /D \"{$workingDir}\" {$command} > \"{$logFile}\" 2>&1";
-            pclose(popen($command, 'r'));
+            // Windows: Use start /B with properly escaped paths
+            $windowsCommand = sprintf(
+                'start /B /D %s %s > %s 2>&1',
+                $escapedWorkingDir,
+                $command,
+                $escapedLogFile
+            );
+            pclose(popen($windowsCommand, 'r'));
 
             // Get PID - this is tricky on Windows
             // For now, we'll rely on process name
             return null;
         } else {
-            // Linux: Use nohup and background
-            $command = "cd \"{$workingDir}\" && nohup {$command} > \"{$logFile}\" 2>&1 & echo $!";
-            $output = shell_exec($command);
+            // Linux: Use nohup and background with properly escaped paths
+            $linuxCommand = sprintf(
+                'cd %s && nohup %s > %s 2>&1 & echo $!',
+                $escapedWorkingDir,
+                $command,
+                $escapedLogFile
+            );
+            $output = shell_exec($linuxCommand);
 
             return $output ? (int) trim($output) : null;
         }
@@ -312,14 +326,21 @@ class ReforgerServerService
      */
     protected function killProcess(int $pid): bool
     {
+        // Validate PID is a positive integer to prevent injection
+        if ($pid <= 0) {
+            return false;
+        }
+
+        $escapedPid = (int) $pid;
+
         if (PHP_OS_FAMILY === 'Windows') {
-            exec("taskkill /F /PID {$pid} 2>&1", $output, $returnCode);
+            exec(sprintf('taskkill /F /PID %d 2>&1', $escapedPid), $output, $returnCode);
         } else {
-            exec("kill -15 {$pid} 2>&1", $output, $returnCode);
+            exec(sprintf('kill -15 %d 2>&1', $escapedPid), $output, $returnCode);
 
             // If graceful shutdown doesn't work, force kill
             if ($returnCode !== 0) {
-                exec("kill -9 {$pid} 2>&1", $output, $returnCode);
+                exec(sprintf('kill -9 %d 2>&1', $escapedPid), $output, $returnCode);
             }
         }
 

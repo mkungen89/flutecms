@@ -109,6 +109,6 @@ class Installer extends AbstractModuleInstaller
 
         $content = "<?php\n\n/**\n * Arma Reforger Server Manager Configuration\n */\n\nreturn " . var_export($defaultConfig, true) . ";\n";
 
-        file_put_contents($configPath, $content);
+        file_put_contents($configPath, $content, LOCK_EX);
     }
 }
