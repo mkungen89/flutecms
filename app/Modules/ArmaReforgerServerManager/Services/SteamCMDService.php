@@ -183,9 +183,9 @@ class SteamCMDService
     protected function buildServerInstallCommand(string $installPath, bool $validate = false): string
     {
         $command = sprintf(
-            '%s +force_install_dir "%s" +login anonymous +app_update %d%s +quit',
+            '%s +force_install_dir %s +login anonymous +app_update %d%s +quit',
             escapeshellcmd($this->steamcmdPath),
-            $installPath,
+            escapeshellarg($installPath),
             self::SERVER_APP_ID,
             $validate ? ' validate' : ''
         );
@@ -205,11 +205,11 @@ class SteamCMDService
         // SteamCMD workshop_download_item command is for Steam Workshop
         // This is a placeholder - actual implementation would use Bohemia Workshop API
         $command = sprintf(
-            '%s +force_install_dir "%s" +login anonymous +workshop_download_item %d %s +quit',
+            '%s +force_install_dir %s +login anonymous +workshop_download_item %d %s +quit',
             escapeshellcmd($this->steamcmdPath),
-            $downloadPath,
+            escapeshellarg($downloadPath),
             self::SERVER_APP_ID,
-            $workshopId
+            escapeshellarg($workshopId)
         );
 
         return $command;

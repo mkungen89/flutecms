@@ -26,15 +26,25 @@ class ApiController extends BaseController
 
         $result = [];
         foreach ($servers as $server) {
-            $status = $this->serverService->getServerStatus($server);
+            // Use cached/direct entity data instead of calling service for each server
+            // to avoid N+1 performance problem
+            $isRunning = $server->isRunning();
+
+            // Update status if inconsistent
+            if ($server->status === 'running' && !$isRunning) {
+                $server->status = 'stopped';
+                $server->pid = null;
+                $server->save();
+            }
+
             $result[] = [
                 'id' => $server->id,
                 'name' => $server->serverName,
-                'address' => $status['connection']['address'],
-                'port' => $status['connection']['port'],
+                'address' => $server->publicAddress ?: $server->bindAddress,
+                'port' => $server->publicPort ?: $server->bindPort,
                 'maxPlayers' => $server->maxPlayers,
                 'status' => $server->status,
-                'running' => $status['running'],
+                'running' => $isRunning,
             ];
         }
 
