@@ -1,0 +1,98 @@
+// Admin panel specific styles for Arma Reforger Server Manager
+
+.reforger-admin {
+    .server-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1rem;
+    }
+
+    .status-badge {
+        font-size: 0.75rem;
+        padding: 0.25em 0.6em;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+}
+
+// Server status colors
+.server-status {
+    &-running {
+        color: var(--bs-success);
+    }
+
+    &-stopped {
+        color: var(--bs-secondary);
+    }
+
+    &-error {
+        color: var(--bs-danger);
+    }
+}
+
+// Installation progress animation
+.installation-active {
+    .spinner-border {
+        width: 1rem;
+        height: 1rem;
+        border-width: 0.15em;
+    }
+}
+
+// Mod list styling
+.mod-list-item {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--bs-border-color);
+
+    &:last-child {
+        border-bottom: none;
+    }
+
+    .mod-thumbnail {
+        width: 48px;
+        height: 48px;
+        object-fit: cover;
+        border-radius: var(--bs-border-radius-sm);
+        margin-right: 1rem;
+    }
+
+    .mod-details {
+        flex: 1;
+    }
+
+    .mod-actions {
+        margin-left: auto;
+    }
+}
+
+// Sortable mods
+.sortable-mods {
+    .sortable-item {
+        cursor: grab;
+        background: var(--bs-body-bg);
+        border: 1px solid var(--bs-border-color);
+        border-radius: var(--bs-border-radius);
+        margin-bottom: 0.5rem;
+        padding: 0.75rem;
+
+        &:active {
+            cursor: grabbing;
+        }
+
+        &.sortable-ghost {
+            opacity: 0.5;
+            background: var(--bs-primary-bg-subtle);
+        }
+    }
+
+    .drag-handle {
+        color: var(--bs-secondary);
+        margin-right: 0.75rem;
+    }
+}

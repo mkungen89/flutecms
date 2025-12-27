@@ -1,0 +1,132 @@
+// Arma Reforger Server Manager Styles
+
+.reforger-server-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+    &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+}
+
+.server-status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+
+    &.running {
+        background-color: var(--bs-success);
+        animation: pulse 2s infinite;
+    }
+
+    &.stopped {
+        background-color: var(--bs-secondary);
+    }
+
+    &.starting,
+    &.installing {
+        background-color: var(--bs-info);
+        animation: pulse 1s infinite;
+    }
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(var(--bs-success-rgb), 0.7);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(var(--bs-success-rgb), 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(var(--bs-success-rgb), 0);
+    }
+}
+
+.mod-card {
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    overflow: hidden;
+
+    .mod-image {
+        width: 100%;
+        height: 120px;
+        object-fit: cover;
+        background-color: var(--bs-gray-200);
+    }
+
+    .mod-info {
+        padding: 1rem;
+    }
+}
+
+.console-output {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.85rem;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    padding: 1rem;
+    border-radius: var(--bs-border-radius);
+    max-height: 400px;
+    overflow-y: auto;
+
+    .log-line {
+        margin-bottom: 0.25rem;
+
+        &.error {
+            color: #f48771;
+        }
+
+        &.warning {
+            color: #cca700;
+        }
+
+        &.info {
+            color: #75beff;
+        }
+
+        &.success {
+            color: #89d185;
+        }
+    }
+}
+
+.installation-progress {
+    .progress {
+        height: 20px;
+        border-radius: var(--bs-border-radius);
+    }
+
+    .progress-bar {
+        transition: width 0.3s ease;
+    }
+}
+
+.server-connection-info {
+    background-color: var(--bs-gray-100);
+    border-radius: var(--bs-border-radius);
+    padding: 0.75rem 1rem;
+    font-family: 'Courier New', Courier, monospace;
+
+    .copy-btn {
+        opacity: 0;
+        transition: opacity 0.2s ease;
+    }
+
+    &:hover .copy-btn {
+        opacity: 1;
+    }
+}
+
+// Dark mode support
+@media (prefers-color-scheme: dark) {
+    .server-connection-info {
+        background-color: var(--bs-gray-800);
+    }
+
+    .console-output {
+        background-color: #0d1117;
+    }
+}

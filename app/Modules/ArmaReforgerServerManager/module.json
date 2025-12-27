@@ -1,0 +1,15 @@
+{
+    "name": "Arma Reforger Server Manager",
+    "description": "Complete server management solution for Arma Reforger dedicated servers. Includes server file download, configuration management, and mod support.",
+    "version": "1.0.0",
+    "authors": ["Flute CMS"],
+    "url": "https://github.com/Flute-CMS/ArmaReforgerServerManager",
+    "providers": [
+        "Flute\\Modules\\ArmaReforgerServerManager\\ServiceProvider"
+    ],
+    "dependencies": {
+        "php": ">=8.2",
+        "flute": ">=1.0.0",
+        "extensions": ["curl", "json", "zip"]
+    }
+}
