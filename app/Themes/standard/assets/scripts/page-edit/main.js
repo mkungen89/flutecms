@@ -829,6 +829,7 @@ class PageEditor {
                     xhr: { getResponseHeader: () => null, status: 200, response: html },
                     requestConfig: { url: '' }
                 };
+                htmx.trigger(sidebarContent, 'htmx:load', { elt: sidebarContent });
                 htmx.trigger(sidebarContent, 'htmx:afterSwap', fakeDetail);
                 htmx.trigger(sidebarContent, 'htmx:afterSettle', fakeDetail);
             } catch (postErr) {

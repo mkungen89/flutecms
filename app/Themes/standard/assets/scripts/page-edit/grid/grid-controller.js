@@ -224,7 +224,7 @@ class DragDropController {
         el.dataset.widgetSettings = '{}';
         el.classList.add('widget-item');
 
-        if (isSystem) {
+        if (name === 'Content') {
             el.setAttribute('data-system-widget', 'true');
         }
 
