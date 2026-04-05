@@ -7,7 +7,6 @@ use Flute\Core\Database\Entities\SocialNetwork;
 use Flute\Core\Database\Entities\UserSocialNetwork;
 use Flute\Core\Exceptions\SocialNotFoundException;
 use Flute\Core\Exceptions\UserNotFoundException;
-use Flute\Core\Services\DiscordService;
 use Flute\Core\Support\BaseController;
 use Flute\Core\Support\FluteRequest;
 use Symfony\Component\HttpFoundation\Response;
@@ -21,53 +20,7 @@ class ProfileSocialBindController extends BaseController
     public function bindSocial(FluteRequest $fluteRequest, string $provider): Response
     {
         try {
-            $auth = social()->authenticate(ucfirst($provider), true);
-            $token = $auth['adapter']->getAccessToken();
-
-            $userProfile = $auth['profile'];
-
-            $duplicateCheck = UserSocialNetwork::findOne(['value' => $userProfile->identifier]);
-
-            if ($duplicateCheck) {
-                if ($duplicateCheck->user->isTemporary) {
-                    transaction($duplicateCheck, 'delete')->run();
-                } else {
-                    return $this->socialError(__('profile.errors.social_binded'));
-                }
-            }
-
-            $userSocialNetwork = new UserSocialNetwork();
-            $userSocialNetwork->value = $userProfile->identifier;
-            $userSocialNetwork->url = $userProfile->profileURL;
-            $userSocialNetwork->name = $userProfile->displayName;
-
-            $userSocialNetwork->user = user()->getCurrentUser();
-            $userSocialNetwork->socialNetwork = SocialNetwork::findOne(['key' => ucfirst($provider)]);
-
-            $additionalData = $token ? json_decode(json_encode($token), true) : [];
-
-            if (!empty($userProfile->photoURL)) {
-                $additionalData['photoUrl'] = $userProfile->photoURL;
-            }
-
-            if (!empty($additionalData)) {
-                $userSocialNetwork->additional = json_encode($additionalData);
-            }
-
-            if ($userSocialNetwork->socialNetwork?->key === 'Discord' && !empty($userSocialNetwork->value)) {
-                $userSocialNetwork->url = 'https://discordapp.com/users/' . $userSocialNetwork->value;
-            }
-
-            transaction($userSocialNetwork)->run();
-
-            if ($userSocialNetwork->socialNetwork?->key === 'Discord') {
-                $user = user()->get(user()->id, true);
-
-                app()->get(DiscordService::class)->linkRoles($user, $user->roles);
-            }
-
-            $auth['adapter']->disconnect();
-            $auth['adapter']->getStorage()->clear();
+            social()->bindSocialNetwork(user()->getCurrentUser(), ucfirst($provider));
 
             return $this->socialSuccess();
         } catch (UserNotFoundException $e) {
@@ -175,7 +128,7 @@ class ProfileSocialBindController extends BaseController
      */
     protected function socialError(string $error): Response
     {
-        $redirectUrl = redirect('profile/edit?tab=social')->getTargetUrl();
+        $redirectUrl = redirect('/profile/settings?tab=social')->getTargetUrl();
         $errorJs = json_encode($error, JSON_UNESCAPED_UNICODE);
         $redirectUrlJs = json_encode($redirectUrl, JSON_UNESCAPED_SLASHES);
         $origin = json_encode(request()->getSchemeAndHttpHost());
@@ -198,7 +151,7 @@ class ProfileSocialBindController extends BaseController
      */
     protected function socialSuccess(): Response
     {
-        $redirectUrl = redirect('profile/edit?tab=social')->getTargetUrl();
+        $redirectUrl = redirect('/profile/settings?tab=social')->getTargetUrl();
         $redirectUrlJs = json_encode($redirectUrl, JSON_UNESCAPED_SLASHES);
         $origin = json_encode(request()->getSchemeAndHttpHost());
 

@@ -366,8 +366,10 @@ class ColorController extends BaseController
             $uploader = app(FileUploader::class);
             $path = $uploader->uploadImage($file, 10);
 
+            $oldPath = config("app.{$type}");
             config()->set("app.{$type}", $path);
             config()->save();
+            $uploader->removeUploadedFile($oldPath);
 
             $this->toast(__('page-edit.upload_success'), 'success');
 

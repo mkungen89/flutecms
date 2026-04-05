@@ -160,9 +160,9 @@ class ModuleManager
     {
         $this->clearCache();
 
-        $this->loadModulesJson();
-        $this->loadModulesCollections();
-        $this->loadModulesFromDatabase();
+        $this->forceReloadModulesJson();
+        $this->forceReloadModulesCollections();
+        $this->forceReloadModulesFromDatabase();
         $this->setInstalledModules();
         $this->setNotInstalledModules();
         $this->setDisabledModules();
@@ -267,6 +267,53 @@ class ModuleManager
         }
 
         $this->modulesJson = ModuleFinder::getAllJson($this->modulesPath);
+    }
+
+    protected function forceReloadModulesCollections(): void
+    {
+        $collection = collect();
+
+        foreach ($this->modulesJson as $moduleName => $modulePath) {
+            if (!is_file($modulePath)) {
+                logs('modules')->warning("Skipping module {$moduleName}: module.json missing at {$modulePath}");
+
+                continue;
+            }
+
+            try {
+                $moduleData = ModuleFinder::getModuleJson($modulePath);
+            } catch (Throwable $e) {
+                logs('modules')->warning("Skipping module {$moduleName}: " . $e->getMessage(), [
+                    'exception' => $e,
+                ]);
+
+                continue;
+            }
+
+            $moduleInformation = new ModuleInformation($moduleData, $moduleName);
+            $this->createModuleInCollection($moduleName, $moduleInformation);
+            $collection->put($moduleName, $moduleInformation);
+        }
+
+        $this->modules = $collection;
+
+        cache()->set('flute.modules.collection', $this->modules, self::CACHE_TIME);
+    }
+
+    protected function forceReloadModulesFromDatabase(): void
+    {
+        $modules = Module::findAll();
+
+        $this->modulesDatabase = array_map(static fn($m) => [
+            'key' => $m->key,
+            'createdAt' => $m->createdAt,
+            'status' => $m->status,
+            'installedVersion' => $m->installedVersion,
+        ], $modules);
+
+        cache()->set('flute.modules.alldb', $this->modulesDatabase, self::CACHE_TIME);
+
+        $this->setCurrentStatusModules();
     }
 
     /**

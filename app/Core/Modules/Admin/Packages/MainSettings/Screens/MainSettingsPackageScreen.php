@@ -6,6 +6,7 @@ use Flute\Admin\Packages\MainSettings\Layouts\DatabaseSettingsLayout;
 use Flute\Admin\Packages\MainSettings\Services\MainSettingsPackageService;
 use Flute\Admin\Platform\Actions\Button;
 use Flute\Admin\Platform\Fields\ButtonGroup;
+use Flute\Admin\Platform\Fields\DatePicker;
 use Flute\Admin\Platform\Fields\Input;
 use Flute\Admin\Platform\Fields\RadioCards;
 use Flute\Admin\Platform\Fields\RichText;
@@ -1236,6 +1237,10 @@ class MainSettingsPackageScreen extends Screen
         if (function_exists('opcache_invalidate')) {
             opcache_invalidate(path('config/' . $configName . '.php'), true);
         }
+
+        if (function_exists('opcache_reset')) {
+            @opcache_reset();
+        }
     }
 
     /**
@@ -1263,7 +1268,9 @@ class MainSettingsPackageScreen extends Screen
                     throw new RuntimeException(__('admin-main-settings.messages.upload_failed', ['field' => $field]));
                 }
 
+                $oldFile = config("app.{$field}");
                 config()->set("app.{$field}", $newFile);
+                $uploader->removeUploadedFile($oldFile);
 
                 return null;
             } catch (Throwable $e) {
@@ -1371,18 +1378,14 @@ class MainSettingsPackageScreen extends Screen
                     throw new RuntimeException(__('admin-main-settings.messages.upload_failed', ['field' => $field]));
                 }
 
+                $oldFile = config($configKey);
                 config()->set($configKey, $newFile);
+                $uploader->removeUploadedFile($oldFile);
 
                 return null;
             } catch (Throwable $e) {
                 return $e->getMessage();
             }
-        }
-
-        if ($field === 'default_avatar') {
-            config()->set($configKey, 'assets/img/no_avatar.webp');
-        } elseif ($field === 'default_banner') {
-            config()->set($configKey, 'assets/img/no_banner.webp');
         }
 
         return null;
@@ -1544,10 +1547,34 @@ class MainSettingsPackageScreen extends Screen
                 ->label(__('admin-main-settings.labels.site_status'))
                 ->popover(__('admin-main-settings.popovers.maintenance_mode')),
             LayoutFactory::field(
+                Input::make('maintenance_title')
+                    ->placeholder(__('admin-main-settings.placeholders.maintenance_title'))
+                    ->value(config('app.maintenance_title')),
+            )
+                ->label(__('admin-main-settings.labels.maintenance_title'))
+                ->small(__('admin-main-settings.small.maintenance_title')),
+            LayoutFactory::field(
                 TextArea::make('maintenance_message')
                     ->placeholder(__('admin-main-settings.placeholders.maintenance_message'))
                     ->value(config('app.maintenance_message')),
             )->label(__('admin-main-settings.labels.maintenance_message')),
+            LayoutFactory::field(Toggle::make('maintenance_show_timer')->value((bool) config(
+                'app.maintenance_show_timer',
+                false,
+            )))
+                ->label(__('admin-main-settings.labels.maintenance_show_timer'))
+                ->popover(__('admin-main-settings.popovers.maintenance_show_timer')),
+            LayoutFactory::field(
+                DatePicker::make('maintenance_end_time')
+                    ->enableTime()
+                    ->dateFormat('Y-m-d H:i')
+                    ->altFormat('d.m.Y H:i')
+                    ->minDate('today')
+                    ->placeholder(__('admin-main-settings.placeholders.maintenance_end_time'))
+                    ->value(config('app.maintenance_end_time')),
+            )
+                ->label(__('admin-main-settings.labels.maintenance_end_time'))
+                ->small(__('admin-main-settings.small.maintenance_end_time')),
         ])->title(__('admin-main-settings.blocks.tech_work_settings'))->addClass('mb-2');
     }
 

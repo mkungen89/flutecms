@@ -13,6 +13,10 @@
     if ($multiple && !is_array($value) && !empty($value)) {
         $value = [$value];
     }
+
+    if (is_array($value)) {
+        $value = array_map('strval', $value);
+    }
 @endphp
 
 <div class="field field--select" data-field>

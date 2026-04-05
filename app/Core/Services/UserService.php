@@ -551,7 +551,7 @@ class UserService
         $currentUserHighestPriority = $this->getHighestPriority();
         $userToEditHighestPriority = $this->getHighestPriority($userToEdit);
 
-        return $currentUserHighestPriority > $userToEditHighestPriority
+        return $currentUserHighestPriority >= $userToEditHighestPriority
         || $this->can(UserPermission::ADMIN_BOSS->value);
     }
 

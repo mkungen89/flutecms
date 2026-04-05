@@ -5,10 +5,11 @@ namespace Flute\Core\Router\Middlewares;
 use Closure;
 use Flute\Core\Support\BaseMiddleware;
 use Flute\Core\Support\FluteRequest;
+use Symfony\Component\HttpFoundation\Response;
 
 class MaintenanceMiddleware extends BaseMiddleware
 {
-    public function handle(FluteRequest $request, Closure $next, ...$args): \Symfony\Component\HttpFoundation\Response
+    public function handle(FluteRequest $request, Closure $next, ...$args): Response
     {
         if (!is_installed()) {
             return $next($request);
@@ -25,8 +26,29 @@ class MaintenanceMiddleware extends BaseMiddleware
         }
 
         if (config('app.maintenance_mode')) {
-            return $this->error()->custom(
-                config('app.maintenance_message') ? __(config('app.maintenance_message')) : __('def.maintenance_mode'),
+            if ($request->expectsJson() || $request->isAjax()) {
+                return json([
+                    'error' => config('app.maintenance_message')
+                        ? __(config('app.maintenance_message'))
+                        : __('def.maintenance_mode'),
+                ], 503);
+            }
+
+            $title = config('app.maintenance_title') ? __(config('app.maintenance_title')) : __('def.maintenance_mode');
+
+            $message = config('app.maintenance_message') ? __(config('app.maintenance_message')) : '';
+
+            $showTimer = (bool) config('app.maintenance_show_timer', false);
+            $endTime = config('app.maintenance_end_time', '');
+
+            return response()->view(
+                'flute::pages.maintenance',
+                [
+                    'title' => $title,
+                    'message' => $message,
+                    'showTimer' => $showTimer,
+                    'endTime' => $endTime,
+                ],
                 503,
             );
         }

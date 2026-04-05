@@ -13,6 +13,9 @@ return [
         'maintenance_mode' => 'Maintenance Mode',
         'site_status' => 'Site Status',
         'maintenance_message' => 'Maintenance Mode Message',
+        'maintenance_title' => 'Maintenance Page Title',
+        'maintenance_show_timer' => 'Show Countdown Timer',
+        'maintenance_end_time' => 'Estimated End Time',
         'is_performance' => 'Performance Mode',
         'cron_mode' => 'CRON Mode',
         'auto_update' => 'Auto Updates (requires CRON)',
@@ -169,6 +172,8 @@ return [
         'steam_cache_duration' => 'Enter cache duration in seconds',
         'footer_description' => 'Enter footer description',
         'maintenance_message' => 'Enter maintenance mode message',
+        'maintenance_title' => 'Enter page title',
+        'maintenance_end_time' => 'Select date and time',
         'currency_view' => 'Enter currency display format',
         'oferta_url' => 'Enter terms of service URL',
         'smtp_host' => 'SMTP host',
@@ -310,6 +315,7 @@ return [
         'steam_api' => 'This key is required to fetch information from Steam. You can get it <a target="_blank" href="https://steamcommunity.com/dev/apikey">here</a>.',
         'steam_cache_duration' => 'Steam data caching time in seconds. Helps reduce API requests and improve performance.',
         'maintenance_mode' => 'The site will be unavailable to users without appropriate permissions.',
+        'maintenance_show_timer' => 'Display a countdown timer on the maintenance page showing when the site will be back.',
         'is_performance' => 'The site will work faster by caching long-running queries.',
         'cron_mode' => 'This feature uses CRON instead of regular requests. Learn more <a target="_blank" href="https://docs.flute-cms.com">here</a>.',
         'auto_update' => 'When CRON is enabled, it will automatically check and install available updates (CMS, modules, themes) daily.',
@@ -372,6 +378,11 @@ return [
         'notifications_popup_enabled' => 'Show popup notifications when new notifications are received.',
         'notifications_sound_enabled' => 'Play a sound when new notifications are received. Users can disable this individually.',
         'site_mode_preset' => 'Quick selection of predefined feature sets.',
+    ],
+
+    'small' => [
+        'maintenance_title' => 'If empty, the default title will be used.',
+        'maintenance_end_time' => 'Works only when the countdown timer is enabled.',
     ],
 
     'examples' => [

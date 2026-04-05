@@ -273,7 +273,33 @@ class AboutSystemHelper
             && filter_var(ini_get('opcache.validate_timestamps'), FILTER_VALIDATE_BOOLEAN)
             && !config('app.development_mode')
         ) {
-            $warnings['opcache_validate'] = 'opcache.validate_timestamps is enabled in production. Disable it and clear cache on deploy for better performance';
+            $warnings['opcache_validate'] = 'opcache.validate_timestamps is enabled in production. Disable it for better performance. Flute automatically resets OPcache when saving settings';
+        }
+
+        if (extension_loaded('Zend OPcache') || extension_loaded('opcache')) {
+            $opcacheMemory = (int) ini_get('opcache.memory_consumption');
+            if ($opcacheMemory > 0 && $opcacheMemory < 128) {
+                $warnings['opcache_memory'] =
+                    'opcache.memory_consumption is '
+                    . $opcacheMemory
+                    . 'MB. Set at least 128MB to avoid cache restarts under load';
+            }
+
+            $maxFiles = (int) ini_get('opcache.max_accelerated_files');
+            if ($maxFiles > 0 && $maxFiles < 10000) {
+                $warnings['opcache_files'] =
+                    'opcache.max_accelerated_files is '
+                    . $maxFiles
+                    . '. Set at least 10000 for frameworks with many PHP files';
+            }
+
+            $internedStrings = (int) ini_get('opcache.interned_strings_buffer');
+            if ($internedStrings > 0 && $internedStrings < 16) {
+                $warnings['opcache_interned'] =
+                    'opcache.interned_strings_buffer is '
+                    . $internedStrings
+                    . 'MB. Set 16MB for better string deduplication with ORM and templates';
+            }
         }
 
         if (!config('app.is_performance') && !config('app.development_mode')) {
@@ -286,6 +312,22 @@ class AboutSystemHelper
                 'realpath_cache_size is too low ('
                 . ini_get('realpath_cache_size')
                 . '). Set it to at least 4096K for better file resolution performance';
+        }
+
+        $realpathCacheTtl = (int) ini_get('realpath_cache_ttl');
+        if ($realpathCacheTtl > 0 && $realpathCacheTtl < 300) {
+            $warnings['realpath_cache_ttl'] =
+                'realpath_cache_ttl is '
+                . $realpathCacheTtl
+                . 's. Set at least 300s in production to reduce filesystem stat() calls';
+        }
+
+        if (filter_var(ini_get('expose_php'), FILTER_VALIDATE_BOOLEAN)) {
+            $warnings['expose_php'] = 'expose_php is enabled. Disable it to hide PHP version in HTTP headers (X-Powered-By)';
+        }
+
+        if (!config('app.development_mode') && filter_var(ini_get('display_errors'), FILTER_VALIDATE_BOOLEAN)) {
+            $warnings['display_errors'] = 'display_errors is enabled in production. Disable it to prevent leaking sensitive information to users';
         }
 
         return $warnings;

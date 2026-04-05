@@ -77,6 +77,7 @@ class FooterListScreen extends Screen
                                     ]),
                             ),
                         ])
+                            ->maxLevels(2)
                             ->onSortEnd('updateFooterItemPositions')
                             ->commands([
                                 Button::make(__('def.create'))
