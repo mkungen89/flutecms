@@ -243,10 +243,10 @@ class EditPaymentGatewayScreen extends Screen
         $data = request()->input();
         $files = request()->files;
 
-        $data['currencies'] = array_values(array_filter(
+        $data['currencies'] = array_values(array_unique(array_filter(
             array_map('intval', (array) ( $data['currencies'] ?? [] )),
             static fn($id) => $id > 0,
-        ));
+        )));
 
         if (isset($data['driverKey']) && is_array($data['driverKey'])) {
             $data['driverKey'] = $data['driverKey'][0] ?? null;
@@ -271,7 +271,9 @@ class EditPaymentGatewayScreen extends Screen
                 if ($imageFile instanceof UploadedFile) {
                     $newImage = $this->processImageUpload($imageFile);
                     if ($newImage) {
+                        $oldImage = $this->gateway->image;
                         $this->gateway->image = $newImage;
+                        app(FileUploader::class)->removeUploadedFile($oldImage);
                     } else {
                         $this->flashMessage(__('admin-payment.messages.image_upload_error'), 'error');
 
@@ -477,23 +479,19 @@ class EditPaymentGatewayScreen extends Screen
 
     private function processImageUpload(UploadedFile $file): ?string
     {
-        if ($file->isValid()) {
-            try {
-                /** @var FileUploader $uploader */
-                $uploader = app(FileUploader::class);
-                $newFile = $uploader->uploadImage($file, 10);
-
-                if ($newFile === null) {
-                    throw new RuntimeException(__('admin-payment.messages.image_upload_error'));
-                }
-
-                return $newFile;
-            } catch (Throwable $e) {
-                return null;
-            }
+        if (!$file->isValid()) {
+            return null;
         }
 
-        return null;
+        /** @var FileUploader $uploader */
+        $uploader = app(FileUploader::class);
+        $newFile = $uploader->uploadImage($file, 10);
+
+        if ($newFile === null) {
+            throw new RuntimeException(__('admin-payment.messages.image_upload_error'));
+        }
+
+        return $newFile;
     }
 
     private function getValidationRules(array $data): array

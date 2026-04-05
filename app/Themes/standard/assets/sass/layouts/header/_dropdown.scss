@@ -298,6 +298,7 @@
 
 // Overflow menu portal (lives in body for backdrop-filter)
 .navbar-dropdown__overflow-menu {
+    position: fixed;
     min-width: 180px;
     max-width: 260px;
     max-height: 60vh;

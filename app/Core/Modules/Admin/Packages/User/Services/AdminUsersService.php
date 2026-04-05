@@ -288,7 +288,9 @@ class AdminUsersService
         try {
             $uploaded = $uploader->uploadImage($file, 10);
             if ($uploaded) {
+                $oldFile = $user->{$field};
                 $user->{$field} = $uploaded;
+                $uploader->removeUploadedFile($oldFile);
 
                 return true;
             }

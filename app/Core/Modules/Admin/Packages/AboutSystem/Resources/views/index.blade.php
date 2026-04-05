@@ -168,7 +168,7 @@
 
     {{-- Optimization recommendations --}}
     @php
-        $optimizationWarnings = array_filter($phpWarnings, fn($k) => in_array($k, ['opcache', 'opcache_validate', 'jit', 'performance_mode', 'realpath_cache'], true), ARRAY_FILTER_USE_KEY);
+        $optimizationWarnings = array_filter($phpWarnings, fn($k) => in_array($k, ['opcache', 'opcache_validate', 'opcache_memory', 'opcache_files', 'opcache_interned', 'jit', 'performance_mode', 'realpath_cache', 'realpath_cache_ttl', 'expose_php', 'display_errors'], true), ARRAY_FILTER_USE_KEY);
     @endphp
     @if (!empty($optimizationWarnings))
         <div class="row gx-3 gy-3 mt-0">

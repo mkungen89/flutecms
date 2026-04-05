@@ -162,10 +162,10 @@ class ApiKeyScreen extends Screen
             $data['permissions'] = [];
         }
 
-        $data['permissions'] = array_values(array_filter(
+        $data['permissions'] = array_values(array_unique(array_filter(
             $data['permissions'],
             static fn($v) => $v !== '' && $v !== null,
-        ));
+        )));
 
         $validation = $this->validate(
             [
@@ -259,10 +259,10 @@ class ApiKeyScreen extends Screen
             $data['permissions'] = [];
         }
 
-        $data['permissions'] = array_values(array_filter(
+        $data['permissions'] = array_values(array_unique(array_filter(
             $data['permissions'],
             static fn($v) => $v !== '' && $v !== null,
-        ));
+        )));
 
         $apiKey = ApiKey::findByPK($id);
         if (!$apiKey) {

@@ -360,6 +360,13 @@ class SocialService implements SocialServiceInterface
             throw $e;
         }
 
+        if ($socialNetwork->key === 'Telegram') {
+            $extra = $userSocialNetwork->getAdditional() ?? [];
+            $extra['user_id'] = $user->id;
+            $userSocialNetwork->setAdditional($extra);
+            $userSocialNetwork->save();
+        }
+
         events()->dispatch(new UserRegisteredEvent($user), UserRegisteredEvent::NAME);
 
         if ($socialNetwork->key === 'Discord') {
@@ -449,6 +456,9 @@ class SocialService implements SocialServiceInterface
             if (!empty($profile->data) && is_array($profile->data)) {
                 $additionalData = array_merge($additionalData, $profile->data);
             }
+            if ($social['entity']->key === 'Telegram') {
+                $additionalData['user_id'] = $user->id;
+            }
             if (!empty($additionalData)) {
                 $userSocialNetwork->additional = json_encode($additionalData);
             }
@@ -480,6 +490,9 @@ class SocialService implements SocialServiceInterface
             }
             if (!empty($profile->data) && is_array($profile->data)) {
                 $additionalData = array_merge($additionalData, $profile->data);
+            }
+            if ($social['entity']->key === 'Telegram') {
+                $additionalData['user_id'] = $user->id;
             }
             if (!empty($additionalData)) {
                 $userSocialNetwork->additional = json_encode($additionalData);
