@@ -3,7 +3,15 @@ function initializeA11yDialog(parentElement = document) {
 
     modals.forEach((modalElement) => {
         if (modalElement.dialogInstance) {
-            return;
+            if (modalElement.classList.contains('is-open')) {
+                return;
+            }
+            try {
+                if (typeof modalElement.dialogInstance.destroy === 'function') {
+                    modalElement.dialogInstance.destroy();
+                }
+            } catch (_) {}
+            modalElement.dialogInstance = null;
         }
 
         const arrivedOpen = modalElement.classList.contains('is-open');
@@ -676,6 +684,22 @@ function cleanupModal(modalElement) {
         modalElement.dialogInstance = null;
     }
 }
+
+document.body.addEventListener('htmx:beforeSwap', function (evt) {
+    const target = evt.detail && evt.detail.target;
+    if (!target) return;
+
+    const modals = [];
+    if (target.matches && target.matches('.modal, .right_sidebar')) modals.push(target);
+    if (target.querySelectorAll) {
+        modals.push(...target.querySelectorAll('.modal, .right_sidebar'));
+    }
+    modals.forEach(function (modalElement) {
+        if (!modalElement.dialogInstance) return;
+        if (modalElement.classList.contains('is-open')) return;
+        cleanupModal(modalElement);
+    });
+});
 
 document.body.addEventListener('htmx:beforeCleanupElement', function (evt) {
     const el = evt.target;

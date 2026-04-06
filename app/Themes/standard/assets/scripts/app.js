@@ -3444,6 +3444,15 @@ class NavbarPriorityPlus {
     }
 
     checkOverflow() {
+        const navStyle = document.documentElement.getAttribute('data-nav-style') || '';
+        if (navStyle.startsWith('pill')) {
+            const navbarEl = this.navbar.closest('.navbar');
+            if (navbarEl) {
+                const navbarWidth = navbarEl.getBoundingClientRect().width;
+                const maxWidth = window.innerWidth - 48;
+                return navbarWidth > maxWidth;
+            }
+        }
         const itemsRight = this.itemsContainer.getBoundingClientRect().right;
         const actionsLeft = this.actionsEl.getBoundingClientRect().left;
         return (actionsLeft - itemsRight) < 24;
