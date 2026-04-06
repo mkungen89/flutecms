@@ -765,7 +765,7 @@ class UserService
                 logs()->debug('auth.token.initialize_success', ['ms' => $dt, 'user_id' => (int) $tokenInfo->user->id]);
             }
         } catch (Throwable $e) {
-            logs()->error($e);
+            logs()->warning($e->getMessage());
             $this->sessionExpired();
         }
     }
