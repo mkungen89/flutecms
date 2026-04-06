@@ -27,6 +27,18 @@
             min-height: 42px;
         }
     }
+
+    @media (max-width: 768px) {
+        .modal__container {
+            max-width: none;
+            min-width: unset;
+        }
+
+        .modal__footer {
+            padding: var(--space-sm) var(--space-md)
+                calc(var(--space-md) + env(safe-area-inset-bottom, 0px));
+        }
+    }
 }
 
 #confirmation-dialog-content {

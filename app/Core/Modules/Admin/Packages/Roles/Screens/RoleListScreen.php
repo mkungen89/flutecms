@@ -156,6 +156,11 @@ class RoleListScreen extends Screen
             $data['permissions'] = [];
         }
 
+        $data['permissions'] = array_values(array_unique(array_filter(
+            $data['permissions'],
+            static fn($v) => $v !== '' && $v !== null,
+        )));
+
         // if (empty($data['permissions'])) {
         //     $this->flashMessage(__('admin-roles.messages.no_permissions'), 'error');
         //     return;
@@ -286,6 +291,11 @@ class RoleListScreen extends Screen
             $data['permissions'] = [];
         }
 
+        $data['permissions'] = array_values(array_unique(array_filter(
+            $data['permissions'],
+            static fn($v) => $v !== '' && $v !== null,
+        )));
+
         $validation = $this->validate([
             'name' => ['required', 'string', 'max-str-len:255', 'unique:roles,name,' . $role->id],
             'icon' => ['nullable', 'string', 'max-str-len:255'],
@@ -368,7 +378,7 @@ class RoleListScreen extends Screen
             return true;
         }
 
-        return $role->priority < user()->getHighestPriority();
+        return $role->priority <= user()->getHighestPriority();
     }
 
     private function reorderRoles(array $roles)

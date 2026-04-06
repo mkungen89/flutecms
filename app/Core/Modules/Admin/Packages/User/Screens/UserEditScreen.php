@@ -468,6 +468,7 @@ class UserEditScreen extends Screen
 
         try {
             $this->usersService->addSocialNetwork($this->user, $data);
+            orm()->getHeap()->clean();
             $this->flashMessage(__('admin-users.messages.social_added'), 'success');
             $this->closeModal();
             $this->initUser();
@@ -539,6 +540,7 @@ class UserEditScreen extends Screen
 
         try {
             $this->usersService->updateSocialNetwork($networkId, $data);
+            orm()->getHeap()->clean();
             $this->flashMessage(__('admin-users.messages.social_updated'), 'success');
             $this->closeModal();
             $this->initUser();
@@ -556,6 +558,7 @@ class UserEditScreen extends Screen
 
         try {
             $this->usersService->toggleSocialNetworkVisibility($networkId);
+            orm()->getHeap()->clean();
             $this->flashMessage(__('admin-users.messages.social_visibility_changed'), 'success');
             $this->initUser();
         } catch (Throwable $e) {
@@ -572,6 +575,7 @@ class UserEditScreen extends Screen
 
         try {
             $this->usersService->deleteSocialNetwork($networkId);
+            orm()->getHeap()->clean();
             $this->flashMessage(__('admin-users.messages.social_deleted'), 'success');
             $this->initUser();
         } catch (Throwable $e) {

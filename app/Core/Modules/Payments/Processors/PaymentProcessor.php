@@ -449,9 +449,25 @@ class PaymentProcessor
             // Some gateways use POST-redirect (form submission) instead of simple 302.
             // Detect this and let Omnipay handle it natively when needed.
             if ($response->getRedirectMethod() !== 'GET') {
-                $response->redirect();
+                $url = htmlspecialchars($response->getRedirectUrl(), ENT_QUOTES, 'UTF-8');
+                $fields = '';
+                foreach ($response->getRedirectData() ?? [] as $k => $v) {
+                    $fields .= sprintf(
+                        '<input type="hidden" name="%s" value="%s">',
+                        htmlspecialchars((string) $k, ENT_QUOTES, 'UTF-8'),
+                        htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'),
+                    );
+                }
 
-                return null;
+                $html =
+                    '<!DOCTYPE html><html><body onload="document.forms[0].submit()">'
+                    . '<form method="POST" action="'
+                    . $url
+                    . '">'
+                    . $fields
+                    . '</form></body></html>';
+
+                return response()->make($html);
             }
 
             $redirectUrl = $response->getRedirectUrl();
@@ -472,7 +488,7 @@ class PaymentProcessor
      */
     protected function generateTransactionId(): string
     {
-        return bin2hex(random_bytes(16));
+        return (string) random_int(100_000_000_000, 999_999_999_999);
     }
 
     /**
@@ -517,9 +533,9 @@ class PaymentProcessor
      * @param array $input   Input data from the request.
      *
      * @throws PaymentException
-     * @return mixed Response from the gateway.
+     * @return ResponseInterface Response from the gateway.
      */
-    protected function completePayment($gateway, $input)
+    protected function completePayment($gateway, $input): ResponseInterface
     {
         if (method_exists($gateway, 'acceptNotification')) {
             return $gateway->acceptNotification()->send();
@@ -568,11 +584,11 @@ class PaymentProcessor
     /**
      * Processes a successful payment.
      *
-     * @param mixed $response Response from the gateway.
+     * @param ResponseInterface $response Response from the gateway.
      *
      * @throws PaymentException
      */
-    protected function processSuccessfulPayment($response): void
+    protected function processSuccessfulPayment(ResponseInterface $response): void
     {
         $transactionId = trim((string) $response->getTransactionId());
 
@@ -596,6 +612,11 @@ class PaymentProcessor
             }
         }
 
+        if ($paidAmount === null) {
+            $responseData = method_exists($response, 'getData') ? (array) $response->getData() : [];
+            $paidAmount = $this->resolveAmountFromGatewayData($responseData);
+        }
+
         $this->setInvoiceAsPaid($transactionId, $paidAmount);
     }
 
@@ -611,6 +632,40 @@ class PaymentProcessor
         $this->dispatcher->dispatch(new PaymentFailedEvent($response), PaymentFailedEvent::NAME);
 
         throw new PaymentException($response->getMessage());
+    }
+
+    /**
+     * Fallback: extract paid amount from gateway response data (already validated
+     * by the gateway, e.g. signature-checked) when getAmount() is not implemented.
+     */
+    private function resolveAmountFromGatewayData(array $data): ?float
+    {
+        $keys = [
+            'sum',
+            'amount',
+            'payment_amount',
+            'paymentAmount',
+            'Amount',
+            'Sum',
+            'AMOUNT',
+            'SUM',
+            'total',
+            'Total',
+        ];
+
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $data) || !is_scalar($data[$key])) {
+                continue;
+            }
+
+            $normalized = str_replace(',', '.', trim((string) $data[$key]));
+
+            if (is_numeric($normalized)) {
+                return (float) $normalized;
+            }
+        }
+
+        return null;
     }
 
     /**

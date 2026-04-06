@@ -221,6 +221,33 @@ class FileUploader
     }
 
     /**
+     * Remove an old uploaded file if it exists in the uploads directory.
+     * Prevents path traversal by verifying the file is within the uploads dir.
+     */
+    public function removeUploadedFile(?string $relativePath): void
+    {
+        if ($relativePath === null || $relativePath === '') {
+            return;
+        }
+
+        if (str_starts_with($relativePath, 'assets/img/')) {
+            return;
+        }
+
+        $fullPath = BASE_PATH . '/public/' . $relativePath;
+        $uploadsDir = realpath($this->getTargetDirectory());
+
+        if ($uploadsDir === false) {
+            return;
+        }
+
+        $realPath = realpath($fullPath);
+        if ($realPath !== false && str_starts_with($realPath, $uploadsDir) && is_file($realPath)) {
+            $this->filesystem->remove($realPath);
+        }
+    }
+
+    /**
      * Returns the target directory for file uploads.
      *
      * @return string
@@ -270,27 +297,29 @@ class FileUploader
             return;
         }
 
-        switch ($mimeType) {
-            case 'image/jpeg':
-                imagejpeg($image, $path, 90);
+        try {
+            switch ($mimeType) {
+                case 'image/jpeg':
+                    imagejpeg($image, $path, 90);
 
-                break;
-            case 'image/png':
-                imagesavealpha($image, true);
-                imagepng($image, $path, 9);
+                    break;
+                case 'image/png':
+                    imagesavealpha($image, true);
+                    imagepng($image, $path, 9);
 
-                break;
-            case 'image/gif':
-                imagegif($image, $path);
+                    break;
+                case 'image/gif':
+                    imagegif($image, $path);
 
-                break;
-            case 'image/webp':
-                imagewebp($image, $path, 90);
+                    break;
+                case 'image/webp':
+                    imagewebp($image, $path, 90);
 
-                break;
+                    break;
+            }
+        } finally {
+            imagedestroy($image);
         }
-
-        imagedestroy($image);
     }
 
     /**

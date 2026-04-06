@@ -14,13 +14,12 @@
                 <div class="col-md-12">
                     <div class="navbar__content">
                         <div class="navbar__left">
-                            @if ($_isSidebarMode)
-                                {{-- Mobile toggle for sidebar --}}
-                                <button type="button" class="navbar__mobile-toggle" id="mobile-sidebar-toggle"
-                                    aria-label="{{ __('def.menu') }}">
-                                    <x-icon path="ph.regular.list" />
-                                </button>
+                            <button type="button" class="navbar__mobile-toggle" id="mobile-sidebar-toggle"
+                                aria-label="{{ __('def.menu') }}">
+                                <x-icon path="ph.regular.list" />
+                            </button>
 
+                            @if ($_isSidebarMode)
                                 {{-- Breadcrumb in navbar for sidebar mode --}}
                                 <nav class="breadcrumb breadcrumb--navbar" id="navbar-breadcrumb" aria-label="Breadcrumb navigation"
                                     hx-swap-oob="true" hx-boost="true" hx-target="#main"
@@ -76,11 +75,13 @@
                                     <x-header.socials />
                                 @endif
 
-                                @stack('navbar-logo')
+                                <div class="navbar__widgets" data-navbar-widget>
+                                    @stack('navbar-logo')
 
-                                @if (isset($sections['navbar-logo']))
-                                    {!! $sections['navbar-logo'] !!}
-                                @endif
+                                    @if (isset($sections['navbar-logo']))
+                                        {!! $sections['navbar-logo'] !!}
+                                    @endif
+                                </div>
                                 <div class="navbar__separator"></div>
                             @endif
 
@@ -186,11 +187,13 @@
                             <ul class="navbar__actions" aria-label="User actions">
                                 <x-header.language-selector />
                                 @if (!config('app.maintenance_mode') || (config('app.maintenance_mode') && user()->can('admin.pages')))
-                                    @stack('navbar-actions')
+                                    <li class="navbar__action-widgets" data-navbar-widget>
+                                        @stack('navbar-actions')
 
-                                    @if (isset($sections['navbar-actions']))
-                                        {!! $sections['navbar-actions'] !!}
-                                    @endif
+                                        @if (isset($sections['navbar-actions']))
+                                            {!! $sections['navbar-actions'] !!}
+                                        @endif
+                                    </li>
                                 @endif
                                 <div class="navbar__separator"></div>
                                 <x-header.theme-switcher />

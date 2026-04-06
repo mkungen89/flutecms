@@ -45,6 +45,9 @@ class MainSettingsPackageService
                 'footer_additional' => 'app.footer_additional',
                 'maintenance_mode' => 'app.maintenance_mode',
                 'maintenance_message' => 'app.maintenance_message',
+                'maintenance_title' => 'app.maintenance_title',
+                'maintenance_show_timer' => 'app.maintenance_show_timer',
+                'maintenance_end_time' => 'app.maintenance_end_time',
                 'flute_key' => 'app.flute_key',
                 'keywords' => 'app.keywords',
                 'description' => 'app.description',
@@ -188,6 +191,9 @@ class MainSettingsPackageService
                 'footer_additional',
                 'maintenance_mode',
                 'maintenance_message',
+                'maintenance_title',
+                'maintenance_show_timer',
+                'maintenance_end_time',
                 'flute_key',
                 'keywords',
                 'description',
@@ -287,6 +293,9 @@ class MainSettingsPackageService
                 'footer_additional' => 'nullable|string',
                 'maintenance_mode' => 'boolean',
                 'maintenance_message' => 'nullable|string',
+                'maintenance_title' => 'nullable|string',
+                'maintenance_show_timer' => 'boolean',
+                'maintenance_end_time' => 'nullable|string',
                 'flute_key' => 'nullable|string',
                 'keywords' => 'nullable|string',
                 'robots' => 'required|string',
@@ -491,6 +500,17 @@ class MainSettingsPackageService
 
         $filteredData = collect($data)->only($tabSettings[$currentTab])->toArray();
         $rules = $this->getValidationRules()[$currentTab] ?? [];
+
+        foreach ($filteredData as $key => $value) {
+            if (!is_array($value)) {
+                continue;
+            }
+            $ruleSet = $rules[$key] ?? '';
+            $ruleArray = is_array($ruleSet) ? $ruleSet : explode('|', $ruleSet);
+            if (!in_array('array', $ruleArray, true) && !in_array('array-implode', $ruleArray, true)) {
+                $filteredData[$key] = $value[0] ?? null;
+            }
+        }
 
         if ($currentTab === ( $this->tabSlugs['mail'] ?? '' )) {
             $smtpEnabled = filter_var($filteredData['smtp'] ?? false, FILTER_VALIDATE_BOOLEAN);

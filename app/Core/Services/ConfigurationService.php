@@ -73,8 +73,12 @@ class ConfigurationService
 
         if (function_exists('opcache_invalidate')) {
             foreach ($writtenFiles as $file) {
-                opcache_invalidate($file, /* force */ true);
+                opcache_invalidate($file, true);
             }
+        }
+
+        if (function_exists('opcache_reset')) {
+            @opcache_reset();
         }
 
         $this->invalidateCompiledCache();

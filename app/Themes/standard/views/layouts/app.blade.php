@@ -466,7 +466,12 @@
                 },
                 tiptap: {
                     match: '[data-editor="richtext"], .richtext-editor-wrapper',
-                    srcs: ["@asset('assets/js/libs/tiptap-editor.js')"]
+                    srcs: ["@asset('assets/js/libs/tiptap-editor.js')"],
+                    init: function() {
+                        if (window.fluteRichTextEditor) {
+                            window.fluteRichTextEditor.initialize();
+                        }
+                    }
                 }
             };
 

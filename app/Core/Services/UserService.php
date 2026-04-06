@@ -551,7 +551,7 @@ class UserService
         $currentUserHighestPriority = $this->getHighestPriority();
         $userToEditHighestPriority = $this->getHighestPriority($userToEdit);
 
-        return $currentUserHighestPriority > $userToEditHighestPriority
+        return $currentUserHighestPriority >= $userToEditHighestPriority
         || $this->can(UserPermission::ADMIN_BOSS->value);
     }
 
@@ -765,7 +765,7 @@ class UserService
                 logs()->debug('auth.token.initialize_success', ['ms' => $dt, 'user_id' => (int) $tokenInfo->user->id]);
             }
         } catch (Throwable $e) {
-            logs()->error($e);
+            logs()->warning($e->getMessage());
             $this->sessionExpired();
         }
     }

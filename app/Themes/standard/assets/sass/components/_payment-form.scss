@@ -835,6 +835,13 @@
     .lk-submit {
         flex: 1;
     }
+
+    &--confirm {
+        .btn {
+            flex: 1;
+            min-height: 2.5rem;
+        }
+    }
 }
 
 .lk-page--steps {
