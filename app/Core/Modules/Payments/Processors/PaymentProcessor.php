@@ -449,9 +449,25 @@ class PaymentProcessor
             // Some gateways use POST-redirect (form submission) instead of simple 302.
             // Detect this and let Omnipay handle it natively when needed.
             if ($response->getRedirectMethod() !== 'GET') {
-                $response->redirect();
+                $url = htmlspecialchars($response->getRedirectUrl(), ENT_QUOTES, 'UTF-8');
+                $fields = '';
+                foreach ($response->getRedirectData() ?? [] as $k => $v) {
+                    $fields .= sprintf(
+                        '<input type="hidden" name="%s" value="%s">',
+                        htmlspecialchars((string) $k, ENT_QUOTES, 'UTF-8'),
+                        htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'),
+                    );
+                }
 
-                return null;
+                $html =
+                    '<!DOCTYPE html><html><body onload="document.forms[0].submit()">'
+                    . '<form method="POST" action="'
+                    . $url
+                    . '">'
+                    . $fields
+                    . '</form></body></html>';
+
+                return response()->make($html);
             }
 
             $redirectUrl = $response->getRedirectUrl();

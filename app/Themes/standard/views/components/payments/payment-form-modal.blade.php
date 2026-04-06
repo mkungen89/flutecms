@@ -224,16 +224,15 @@
                                 </div>
                             @endif
 
-                            <div class="lk-step-actions">
-                                <button type="button" class="btn btn-outline-primary btn-small" data-steps-prev>
+                            <div class="lk-step-actions lk-step-actions--confirm">
+                                <button type="button" class="btn btn-outline-primary" data-steps-prev>
                                     <x-icon path="ph.regular.arrow-left" /> {{ __('lk.step_back') }}
                                 </button>
-                                <x-button type="primary" :submit="true" :disabled="true" id="lk-submit"
-                                    class="lk-submit" yoyo:ignore>
+                                <button type="submit" class="btn btn-primary lk-submit" disabled id="lk-submit" yoyo:ignore>
                                     <span data-lk-btn-text>{{ __('lk.top_up_button') }}</span>
                                     <x-icon path="ph.regular.arrow-right" />
                                     <span class="lk-submit__loader" style="display:none"></span>
-                                </x-button>
+                                </button>
                             </div>
 
                             <p class="lk-disclaimer">{{ __('lk.gateway_disclaimer') }}</p>

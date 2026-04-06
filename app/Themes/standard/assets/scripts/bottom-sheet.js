@@ -338,10 +338,14 @@ function calculateModalHeight($modal) {
             $content[0].scrollHeight,
         );
 
+        const $footer = $modal.find('.modal__footer');
+        const footerHeight = $footer.length ? $footer.outerHeight(true) : 0;
+
         const contentHeightPx =
             contentHeight +
             $header.outerHeight(true) +
-            $dragHandle.outerHeight(true);
+            $dragHandle.outerHeight(true) +
+            footerHeight;
 
         const windowHeightPx = $(window).height();
         let contentHeightVh = (contentHeightPx / windowHeightPx) * 100;

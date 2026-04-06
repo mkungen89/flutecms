@@ -256,8 +256,8 @@ class CrashReportService
             'trace' => self::buildTrace($e),
             'php_version' => PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION,
             'cms_version' => self::getCmsVersion(),
-            'modules' => self::getModulesList(),
-            'themes' => self::getThemesList(),
+            'modules' => self::getModulesList() ?: new \stdClass(),
+            'themes' => self::getThemesList() ?: new \stdClass(),
             'url_path' => self::safeUrlPath(),
             'method' => $_SERVER['REQUEST_METHOD'] ?? 'CLI',
             'fingerprint' => $fingerprint,
@@ -512,7 +512,7 @@ class CrashReportService
             'php_version_full' => PHP_VERSION,
             'memory_usage' => memory_get_usage(true),
             'memory_peak' => memory_get_peak_usage(true),
-            'memory_limit' => self::parseMemoryLimit(),
+            'memory_limit' => (string) ini_get('memory_limit'),
             'timezone' => date_default_timezone_get(),
         ];
 
