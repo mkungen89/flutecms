@@ -3,7 +3,6 @@
 namespace Flute\Core\Services;
 
 use Flute\Core\Modules\Translation\Events\LangChangedEvent;
-use Flute\Core\Modules\Translation\Services\TranslationService;
 use Flute\Core\Support\FluteRequest;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\HttpFoundation\Session\Flash\FlashBagInterface;
@@ -251,7 +250,7 @@ class SessionService implements SessionInterface
         if (cookie()->has('current_lang') && in_array($currentCookieLang, (array) $availableLanguages)) {
             $lang = $currentCookieLang;
         } elseif (!$currentSessionLang) {
-            $lang = app(TranslationService::class)->getPreferredLanguage();
+            $lang = substr(request()->getPreferredLanguage((array) $availableLanguages), 0, 2);
         } else {
             $lang = in_array($currentSessionLang, (array) $availableLanguages) ? $currentSessionLang : $defaultLanguage;
         }

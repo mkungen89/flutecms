@@ -3445,14 +3445,31 @@ class NavbarPriorityPlus {
 
     checkOverflow() {
         const navStyle = document.documentElement.getAttribute('data-nav-style') || '';
-        if (navStyle.startsWith('pill')) {
+        const isFitPill = navStyle === 'pill' || navStyle === 'pill-transparent';
+
+        if (isFitPill) {
             const navbarEl = this.navbar.closest('.navbar');
             if (navbarEl) {
-                const navbarWidth = navbarEl.getBoundingClientRect().width;
-                const maxWidth = window.innerWidth - 48;
-                return navbarWidth > maxWidth;
+                const contentEl = navbarEl.querySelector('.navbar__content');
+                if (contentEl) {
+                    let totalWidth = 0;
+                    for (const child of contentEl.children) {
+                        if (child.offsetParent !== null) {
+                            totalWidth += child.getBoundingClientRect().width;
+                        }
+                    }
+                    const style = getComputedStyle(contentEl);
+                    const gap = parseFloat(style.gap) || parseFloat(style.columnGap) || 0;
+                    const visibleChildren = Array.from(contentEl.children).filter(c => c.offsetParent !== null).length;
+                    totalWidth += gap * Math.max(0, visibleChildren - 1);
+
+                    const padding = parseFloat(getComputedStyle(navbarEl).paddingLeft) + parseFloat(getComputedStyle(navbarEl).paddingRight);
+                    const maxAvailable = window.innerWidth - 48;
+                    return (totalWidth + padding) > maxAvailable;
+                }
             }
         }
+
         const itemsRight = this.itemsContainer.getBoundingClientRect().right;
         const actionsLeft = this.actionsEl.getBoundingClientRect().left;
         return (actionsLeft - itemsRight) < 24;
