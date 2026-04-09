@@ -402,26 +402,33 @@ class SocialService implements SocialServiceInterface
         $profile = $authData['profile'];
         $token = $authData['adapter']->getAccessToken();
 
-        $existingSocial = UserSocialNetwork::query()
+        $existingSocials = UserSocialNetwork::query()
             ->where([
                 'value' => $profile->identifier,
                 'socialNetwork.id' => $social['entity']->id,
             ])
-            ->load(['user'])
-            ->fetchOne();
+            ->fetchAll();
 
-        if ($existingSocial && $existingSocial->user->id !== $user->id) {
-            if ($existingSocial->user->isTemporary()) {
-                $tempUserId = $existingSocial->user->id;
+        foreach ($existingSocials as $existingSocial) {
+            $existingUser = null;
+            try {
+                $existingUser = $existingSocial->user;
+            } catch (Throwable $e) {
+                // Orphaned record — user was deleted
+            }
 
+            if ($existingUser && $existingUser->id === $user->id) {
+                continue;
+            }
+
+            if (!$existingUser || $existingUser->isTemporary()) {
                 try {
                     transaction($existingSocial, 'delete')->run();
-                    $tempUser = User::findByPK($tempUserId);
-                    if ($tempUser) {
-                        transaction($tempUser, 'delete')->run();
+                    if ($existingUser) {
+                        transaction($existingUser, 'delete')->run();
                     }
                 } catch (Throwable $e) {
-                    logs()->error('Error deleting temporary user during bind: ' . $e->getMessage());
+                    logs()->error('Error deleting orphaned social binding: ' . $e->getMessage());
 
                     throw new Exception('Failed to reassign social account. Please try again.');
                 }
