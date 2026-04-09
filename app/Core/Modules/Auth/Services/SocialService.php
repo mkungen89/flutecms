@@ -403,7 +403,10 @@ class SocialService implements SocialServiceInterface
         $token = $authData['adapter']->getAccessToken();
 
         $existingSocial = UserSocialNetwork::query()
-            ->where(['value' => $profile->identifier])
+            ->where([
+                'value' => $profile->identifier,
+                'socialNetwork.id' => $social['entity']->id,
+            ])
             ->load(['user'])
             ->fetchOne();
 
