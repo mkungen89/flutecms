@@ -391,6 +391,8 @@ class SocialService implements SocialServiceInterface
         $authData = $this->authenticate($normalized, true);
         $social = $this->retrieveSocialNetwork($normalized);
 
+        $socialNetworkEntity = SocialNetwork::findByPK($social['entity']->id);
+
         $userSocialNetwork = UserSocialNetwork::query()
             ->where([
                 'user.id' => $user->id,
@@ -486,7 +488,7 @@ class SocialService implements SocialServiceInterface
             $userSocialNetwork->url = $profile->profileURL;
             $userSocialNetwork->name = $profile->displayName;
             $userSocialNetwork->user = $user;
-            $userSocialNetwork->socialNetwork = $social['entity'];
+            $userSocialNetwork->socialNetwork = $socialNetworkEntity;
             $userSocialNetwork->linkedAt = new DateTimeImmutable();
 
             // Normalize Discord profile URL (historical compatibility + consistent behavior)
