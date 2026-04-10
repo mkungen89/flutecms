@@ -120,6 +120,8 @@ abstract class AbstractUpdater
 
         copy($source, $tmpFile);
 
+        $this->normalizeLineEndings($tmpFile);
+
         // Determine permissions to apply
         if (is_file($destination)) {
             $perms = fileperms($destination) & 0o755;
@@ -152,6 +154,48 @@ abstract class AbstractUpdater
         if (function_exists('opcache_reset')) {
             opcache_reset();
         }
+    }
+
+    protected function normalizeLineEndings(string $path): void
+    {
+        $textExtensions = [
+            'php',
+            'js',
+            'css',
+            'scss',
+            'json',
+            'xml',
+            'yaml',
+            'yml',
+            'md',
+            'txt',
+            'html',
+            'blade.php',
+            'twig',
+            'env',
+            'htaccess',
+            'ini',
+            'cfg',
+            'conf',
+            'sh',
+            'bat',
+        ];
+
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $basename = basename($path);
+
+        $isText = in_array($ext, $textExtensions, true) || str_ends_with($basename, '.blade.php');
+
+        if (!$isText) {
+            return;
+        }
+
+        $content = file_get_contents($path);
+        if ($content === false || strpos($content, "\r\n") === false) {
+            return;
+        }
+
+        file_put_contents($path, str_replace("\r\n", "\n", $content), LOCK_EX);
     }
 
     /**
