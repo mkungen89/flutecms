@@ -11,6 +11,7 @@ return [
         'footer_description' => 'Footer Tavsifi',
         'maintenance_mode' => 'Texnik Ishlar Rejimi',
         'maintenance_message' => 'Texnik Ishlar Xabari',
+        'maintenance_allowed_roles' => 'Roles Allowed During Maintenance',
         'is_performance' => 'Tez Ishlash Rejimi',
         'cron_mode' => 'CRON Rejimi',
         'cron_command' => 'CRON Buyruq',
@@ -111,6 +112,7 @@ return [
         'steam_api' => 'STEAM API kalitini kiriting',
         'footer_description' => 'Footer tavsifini kiriting',
         'maintenance_message' => 'Texnik ishlar xabarini kiriting',
+        'maintenance_allowed_roles' => 'Select roles',
         'currency_view' => 'Valyuta formatini kiriting',
         'oferta_url' => 'Taklif URL ni kiriting',
         'smtp_host' => 'SMTP host',
@@ -230,6 +232,7 @@ return [
     'popovers' => [
         'steam_api' => 'Bu kalit Steam dan maʻlumot olish uchun kerak. <a target="_blank" href="https://steamcommunity.com/dev/apikey">Bu yerdan</a> oling.',
         'maintenance_mode' => 'Tegishli ruxsatlarga ega boʻlmagan foydalanuvchilar saytga kira olmaydi.',
+        'maintenance_allowed_roles' => 'Users with selected roles will be able to access the site during maintenance.',
         'is_performance' => 'Uzoq vaqt talab qiladigan soʻrovlarni keshlash orqali sayt tezroq ishlaydi.',
         'cron_mode' => 'Bu oddiy soʻrovlar oʻrniga CRON ishlatadi. <a target="_blank" href="https://docs.flute-cms.com">Bu yerda</a> koʻring.',
         'convert_to_webp' => 'Barcha sayt rasmlari hajmni kamaytirish uchun WebP formatiga aylantiriladi.',

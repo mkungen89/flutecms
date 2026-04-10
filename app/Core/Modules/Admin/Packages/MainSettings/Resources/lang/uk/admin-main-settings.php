@@ -13,6 +13,7 @@ return [
         'maintenance_mode' => 'Режим обслуговування',
         'site_status' => 'Статус сайту',
         'maintenance_message' => 'Повідомлення режиму обслуговування',
+        'maintenance_allowed_roles' => 'Ролі з доступом під час тех. робіт',
         'is_performance' => 'Режим продуктивності',
         'cron_mode' => 'CRON режим',
         'auto_update' => 'Автоматичні оновлення (потрібен CRON)',
@@ -95,6 +96,7 @@ return [
         'steam_api' => 'Введіть Steam API ключ',
         'footer_description' => 'Введіть опис підвалу',
         'maintenance_message' => 'Введіть повідомлення режиму обслуговування',
+        'maintenance_allowed_roles' => 'Оберіть ролі',
         'flute_key' => 'Введіть Flute ключ з marketplace',
         'keywords' => 'Введіть ключові слова',
         'description' => 'Введіть опис',
@@ -150,6 +152,7 @@ return [
     ],
 
     'popovers' => [
+        'maintenance_allowed_roles' => 'Користувачі з обраними ролями зможуть заходити на сайт під час технічних робіт.',
         'lk_only_modal' => 'Replaces user dashboard with a modal.',
         'lk_step_mode' => 'Splits the payment form into sequential steps: amount → payment method → confirmation.',
         'yandex_client_key' => 'Get your client key from <a target="_blank" href="https://console.yandex.cloud/folders?section=service-smartcaptcha">Yandex Cloud Console</a>.',

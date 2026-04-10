@@ -1575,6 +1575,15 @@ class MainSettingsPackageScreen extends Screen
             )
                 ->label(__('admin-main-settings.labels.maintenance_end_time'))
                 ->small(__('admin-main-settings.small.maintenance_end_time')),
+            LayoutFactory::field(
+                Select::make('maintenance_allowed_roles')
+                    ->fromDatabase('roles', 'name', 'id', ['name', 'id', 'priority'])
+                    ->multiple(true)
+                    ->value(config('app.maintenance_allowed_roles', []))
+                    ->placeholder(__('admin-main-settings.placeholders.maintenance_allowed_roles')),
+            )
+                ->label(__('admin-main-settings.labels.maintenance_allowed_roles'))
+                ->popover(__('admin-main-settings.popovers.maintenance_allowed_roles')),
         ])->title(__('admin-main-settings.blocks.tech_work_settings'))->addClass('mb-2');
     }
 
