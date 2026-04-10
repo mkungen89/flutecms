@@ -11,6 +11,7 @@ return [
         'footer_description' => 'Footer Description',
         'maintenance_mode' => 'Maintenance Mode',
         'maintenance_message' => 'Maintenance Message',
+        'maintenance_allowed_roles' => 'Roles Allowed During Maintenance',
         'is_performance' => 'Performance Mode',
         'cron_mode' => 'CRON Mode',
         'csrf_enabled' => 'CSRF Token',
@@ -100,6 +101,7 @@ return [
         'steam_api' => 'Enter STEAM API key',
         'footer_description' => 'Enter footer description',
         'maintenance_message' => 'Enter maintenance message',
+        'maintenance_allowed_roles' => 'Select roles',
         'currency_view' => 'Enter currency format',
         'oferta_url' => 'Enter offer URL',
         'smtp_host' => 'SMTP host',
@@ -209,6 +211,7 @@ return [
     'popovers' => [
         'steam_api' => 'This key is required to fetch data from Steam. Get it <a target="_blank" href="https://steamcommunity.com/dev/apikey">here</a>.',
         'maintenance_mode' => 'Users without proper permissions will not be able to access the site.',
+        'maintenance_allowed_roles' => 'Users with selected roles will be able to access the site during maintenance.',
         'is_performance' => 'The site will run faster by caching long-running queries.',
         'cron_mode' => 'This uses CRON instead of normal requests. See <a target="_blank" href="https://docs.flute-cms.com">here</a>.',
         'convert_to_webp' => 'All site images will be converted to WebP to reduce size.',

@@ -25,6 +25,17 @@ class MaintenanceMiddleware extends BaseMiddleware
             return $next($request);
         }
 
+        $allowedRoles = config('app.maintenance_allowed_roles', []);
+        if (!empty($allowedRoles) && user()->isLoggedIn()) {
+            foreach ($allowedRoles as $roleId) {
+                foreach (user()->getCurrentUser()->roles as $role) {
+                    if ((int) $role->id === (int) $roleId) {
+                        return $next($request);
+                    }
+                }
+            }
+        }
+
         if (config('app.maintenance_mode')) {
             if ($request->expectsJson() || $request->isAjax()) {
                 return json([

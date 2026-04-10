@@ -13,6 +13,7 @@ return [
         'maintenance_mode' => 'Režim údržby',
         'site_status' => 'Stav webu',
         'maintenance_message' => 'Zpráva režimu údržby',
+        'maintenance_allowed_roles' => 'Roles Allowed During Maintenance',
         'is_performance' => 'Režim výkonu',
         'cron_mode' => 'CRON režim',
         'auto_update' => 'Automatické aktualizace (vyžaduje CRON)',
@@ -95,6 +96,7 @@ return [
         'steam_api' => 'Zadejte Steam API klíč',
         'footer_description' => 'Zadejte popis zápatí',
         'maintenance_message' => 'Zadejte zprávu režimu údržby',
+        'maintenance_allowed_roles' => 'Select roles',
         'flute_key' => 'Zadejte Flute klíč z marketplace',
         'keywords' => 'Zadejte klíčová slova',
         'description' => 'Zadejte popis',
@@ -150,6 +152,7 @@ return [
     ],
 
     'popovers' => [
+        'maintenance_allowed_roles' => 'Users with selected roles will be able to access the site during maintenance.',
         'lk_only_modal' => 'Replaces user dashboard with a modal.',
         'lk_step_mode' => 'Splits the payment form into sequential steps: amount → payment method → confirmation.',
         'yandex_client_key' => 'Get your client key from <a target="_blank" href="https://console.yandex.cloud/folders?section=service-smartcaptcha">Yandex Cloud Console</a>.',
