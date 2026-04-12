@@ -17,6 +17,8 @@ class FluteEventDispatcher extends EventDispatcher
 
     private static array $closureIdCache = [];
 
+    private array $registeredInDispatcher = [];
+
     public function __construct()
     {
         parent::__construct();
@@ -40,19 +42,20 @@ class FluteEventDispatcher extends EventDispatcher
             $this->deferredListeners[$eventName] = [];
         }
 
-        if (isset($this->deferredListeners[$eventName][$listenerId])) {
-            return;
+        if (!isset($this->deferredListeners[$eventName][$listenerId])) {
+            $this->deferredListeners[$eventName][$listenerId] = [
+                'listener' => $listener,
+                'priority' => $priority,
+                'id' => $listenerId,
+            ];
+            $this->isDirty = true;
         }
 
-        $this->deferredListeners[$eventName][$listenerId] = [
-            'listener' => $listener,
-            'priority' => $priority,
-            'id' => $listenerId,
-        ];
-        $this->isDirty = true;
+        $dispatcherKey = $eventName . '::' . $listenerId;
 
-        if (is_callable($listener)) {
+        if (!isset($this->registeredInDispatcher[$dispatcherKey]) && is_callable($listener)) {
             $this->addListener($eventName, $listener, $priority);
+            $this->registeredInDispatcher[$dispatcherKey] = true;
         }
     }
 
@@ -69,6 +72,9 @@ class FluteEventDispatcher extends EventDispatcher
 
             $this->isDirty = true;
         }
+
+        $dispatcherKey = $eventName . '::' . $listenerId;
+        unset($this->registeredInDispatcher[$dispatcherKey]);
 
         $this->removeListener($eventName, $listener);
     }
@@ -98,8 +104,12 @@ class FluteEventDispatcher extends EventDispatcher
                     $listener = $listener->getClosure();
                 }
 
+                $listenerId = $listenerData['id'] ?? $this->getListenerId($listener);
+                $dispatcherKey = $eventName . '::' . $listenerId;
+
                 if (is_callable($listener)) {
                     $this->addListener($eventName, $listener, $listenerData['priority']);
+                    $this->registeredInDispatcher[$dispatcherKey] = true;
                 }
 
                 if (isset($listenerData['id']) && is_object($listener)) {
