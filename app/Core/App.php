@@ -397,7 +397,7 @@ final class App
 
         $res->send();
 
-        if (function_exists('fastcgi_finish_request')) {
+        if (function_exists('fastcgi_finish_request') && !is_debug()) {
             @fastcgi_finish_request();
         }
 

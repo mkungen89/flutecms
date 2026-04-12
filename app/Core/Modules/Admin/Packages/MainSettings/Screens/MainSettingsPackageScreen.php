@@ -2597,7 +2597,7 @@ class MainSettingsPackageScreen extends Screen
                         ->type('file')
                         ->filePond()
                         ->accept('image/png, image/jpeg, image/gif, image/webp')
-                        ->defaultFile(asset(config('app.bg_image'))),
+                        ->defaultFile(config('app.bg_image') ? asset(config('app.bg_image')) : null),
                 )
                     ->label(__('admin-main-settings.labels.bg_image'))
                     ->small(__('admin-main-settings.examples.bg_image')),
@@ -2606,7 +2606,7 @@ class MainSettingsPackageScreen extends Screen
                         ->type('file')
                         ->filePond()
                         ->accept('image/png, image/jpeg, image/gif, image/webp')
-                        ->defaultFile(asset(config('app.bg_image_light', ''))),
+                        ->defaultFile(config('app.bg_image_light') ? asset(config('app.bg_image_light')) : null),
                 )
                     ->label(__('admin-main-settings.labels.bg_image_light'))
                     ->small(__('admin-main-settings.examples.bg_image_light')),
@@ -2617,14 +2617,18 @@ class MainSettingsPackageScreen extends Screen
                         ->type('file')
                         ->filePond()
                         ->accept('image/x-icon, image/vnd.microsoft.icon, .ico')
-                        ->defaultFile(asset('favicon.ico')),
+                        ->defaultFile(file_exists(public_path('favicon.ico')) ? asset('favicon.ico') : null),
                 )->label(__('admin-main-settings.labels.favicon')),
                 LayoutFactory::field(
                     Input::make('social_image')
                         ->type('file')
                         ->filePond()
                         ->accept('image/png')
-                        ->defaultFile(asset('assets/img/social-image.png')),
+                        ->defaultFile(
+                            file_exists(public_path('assets/img/social-image.png'))
+                                ? asset('assets/img/social-image.png')
+                                : null,
+                        ),
                 )->label(__('admin-main-settings.labels.social_image')),
             ]),
             LayoutFactory::rows([
