@@ -21,26 +21,23 @@ if (!function_exists('flute_register_fatal_handler')) {
             return true;
         }
 
-        if (empty($config['debug'])) {
-            return false;
-        }
-
+        $debug = !empty($config['debug']);
         $debugIps = $config['debug_ips'] ?? [];
 
-        if (empty($debugIps) || !is_array($debugIps)) {
-            return true;
+        if (!empty($debugIps) && is_array($debugIps)) {
+            $clientIp = $_SERVER['HTTP_CF_CONNECTING_IP']
+                ?? $_SERVER['HTTP_X_FORWARDED_FOR']
+                ?? $_SERVER['REMOTE_ADDR']
+                ?? '';
+
+            if (str_contains($clientIp, ',')) {
+                $clientIp = trim(explode(',', $clientIp)[0]);
+            }
+
+            return in_array($clientIp, $debugIps, true);
         }
 
-        $clientIp = $_SERVER['HTTP_CF_CONNECTING_IP']
-            ?? $_SERVER['HTTP_X_FORWARDED_FOR']
-            ?? $_SERVER['REMOTE_ADDR']
-            ?? '';
-
-        if (str_contains($clientIp, ',')) {
-            $clientIp = trim(explode(',', $clientIp)[0]);
-        }
-
-        return in_array($clientIp, $debugIps, true);
+        return $debug;
     }
 
     function flute_crash_report(array $payload): void

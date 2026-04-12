@@ -27,6 +27,7 @@ use PDO;
 use RuntimeException;
 use stdClass;
 use Symfony\Component\Filesystem\Exception\IOException;
+use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Throwable;
 
@@ -375,36 +376,26 @@ class MainSettingsPackageScreen extends Screen
             // Remove both cache and stale directories entirely.
             // Unlike SWR rotation, admin expects to see fresh data immediately,
             // so we wipe stale too — no stale fallback after explicit clear.
-            if (is_dir($cacheStaleDir)) {
-                $filesystem->remove($cacheStaleDir);
-            }
-            if (is_dir($cacheDir)) {
-                $filesystem->remove($cacheDir);
-            }
+            $this->forceRemoveDir($filesystem, $cacheStaleDir);
+            $this->forceRemoveDir($filesystem, $cacheDir);
             @mkdir($cacheDir, 0o755, true);
             @mkdir($cacheStaleDir, 0o755, true);
 
             // Same for CSS/JS asset caches
-            if (is_dir($cssCacheStaleDir)) {
-                $filesystem->remove($cssCacheStaleDir);
-            }
-            if (is_dir($cssCacheDir)) {
-                $filesystem->remove($cssCacheDir);
-            }
+            $this->forceRemoveDir($filesystem, $cssCacheStaleDir);
+            $this->forceRemoveDir($filesystem, $cssCacheDir);
             @mkdir($cssCacheDir, 0o755, true);
 
-            if (is_dir($jsCacheStaleDir)) {
-                $filesystem->remove($jsCacheStaleDir);
-            }
-            if (is_dir($jsCacheDir)) {
-                $filesystem->remove($jsCacheDir);
-            }
+            $this->forceRemoveDir($filesystem, $jsCacheStaleDir);
+            $this->forceRemoveDir($filesystem, $jsCacheDir);
             @mkdir($jsCacheDir, 0o755, true);
 
             foreach ($cachePaths as $path) {
                 $files = glob($path);
                 if ($files) {
-                    $filesystem->remove($files);
+                    foreach ($files as $file) {
+                        $this->forceRemoveDir($filesystem, $file);
+                    }
                 }
             }
 
@@ -1240,6 +1231,47 @@ class MainSettingsPackageScreen extends Screen
 
         if (function_exists('opcache_reset')) {
             @opcache_reset();
+        }
+    }
+
+    protected function forceRemoveDir(Filesystem $filesystem, string $path): void
+    {
+        if (!file_exists($path)) {
+            return;
+        }
+
+        try {
+            $filesystem->remove($path);
+        } catch (IOException) {
+            $this->chmodRecursive($path);
+            $filesystem->remove($path);
+        }
+    }
+
+    protected function chmodRecursive(string $path): void
+    {
+        if (is_file($path) || is_link($path)) {
+            @chmod($path, 0o666);
+
+            return;
+        }
+
+        if (!is_dir($path)) {
+            return;
+        }
+
+        @chmod($path, 0o777);
+
+        $items = @scandir($path);
+        if ($items === false) {
+            return;
+        }
+
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') {
+                continue;
+            }
+            $this->chmodRecursive($path . '/' . $item);
         }
     }
 
