@@ -163,10 +163,10 @@ if (!function_exists('is_debug')) {
         }
 
         $debug = (bool) app('debug');
-        $user_ip = request()->ip();
+        $debugIps = config('app.debug_ips');
 
-        if (in_array($user_ip, config('app.debug_ips'))) {
-            return true;
+        if (!empty($debugIps) && is_array($debugIps)) {
+            return in_array(request()->ip(), $debugIps);
         }
 
         return $debug;
