@@ -377,11 +377,9 @@ class AuthenticationService
             throw new UserNotFoundException();
         }
 
-        $passwordResetTokenValue = $this->generateRandomToken();
-
         $passwordResetToken = new PasswordResetToken();
         $passwordResetToken->user = $user;
-        $passwordResetToken->token = hash('sha256', $passwordResetTokenValue);
+        $passwordResetToken->token = $this->generateRandomToken();
         $passwordResetToken->expiry = $expiresAt->toDateTimeImmutable();
 
         try {
@@ -409,7 +407,7 @@ class AuthenticationService
     {
         // Eager load user and related data to prevent N+1 queries
         $passwordResetToken = PasswordResetToken::query()
-            ->where(['token' => hash('sha256', $token)])
+            ->where(['token' => $token])
             ->load(['user', 'user.roles'])
             ->fetchOne();
 

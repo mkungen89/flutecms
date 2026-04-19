@@ -925,3 +925,16 @@
 		transform: rotate(360deg);
 	}
 }
+
+// TipTap modals (link, table, youtube, etc.) must stack above widget/screen modals
+[id^='tiptap-modal-'] {
+	z-index: 1100;
+
+	.modal__overlay {
+		z-index: 1100;
+	}
+
+	.modal__container {
+		z-index: 1101;
+	}
+}

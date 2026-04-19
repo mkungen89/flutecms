@@ -401,6 +401,13 @@ class MainSettingsPackageScreen extends Screen
 
             $this->clearOpcache();
 
+            // Sweep ".!XXXXX" orphans left by previous interrupted clears so they
+            // don't accumulate forever. Only touch dirs older than 1h to avoid
+            // racing a parallel admin clear in another tab.
+            \Flute\Core\Cache\OrphanSweeper::sweep(storage_path('app'), 3600);
+            \Flute\Core\Cache\OrphanSweeper::sweep(public_path('assets/css'), 3600);
+            \Flute\Core\Cache\OrphanSweeper::sweep(public_path('assets/js'), 3600);
+
             $this->flashMessage(__('admin-main-settings.messages.cache_cleared_successfully'));
         } catch (IOException $e) {
             logs()->warning($e);
