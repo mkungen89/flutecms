@@ -220,6 +220,14 @@ function onModalShow(modalElement) {
 
     lockBodyScroll();
 
+    const contentEl = modalElement.querySelector('.modal__content');
+    if (contentEl && !contentEl.dataset.lazySnapshot) {
+        const lazyTrigger = contentEl.querySelector('[hx-get][hx-trigger]');
+        if (lazyTrigger) {
+            contentEl.dataset.lazySnapshot = contentEl.innerHTML;
+        }
+    }
+
     const $autofocusElement = $modalElement.find('[autofocus]');
     if ($autofocusElement.length) {
         $autofocusElement[0].focus();
@@ -280,6 +288,16 @@ function onModalHide(modalElement) {
             $(trigger).data('returnFocus', false);
             break;
         }
+    }
+
+    const contentEl = modalElement.querySelector('.modal__content');
+    if (contentEl && contentEl.dataset.lazySnapshot) {
+        contentEl.querySelectorAll('[data-tom-select]').forEach(function (sel) {
+            if (window.ThemeSelect) window.ThemeSelect.destroySelect(sel);
+        });
+        // Restore saved skeleton with hx-get trigger (same-origin, server-rendered)
+        contentEl.innerHTML = contentEl.dataset.lazySnapshot; // eslint-disable-line no-unsanitized/property
+        htmx.process(contentEl);
     }
 
     if (isMobileDevice()) {

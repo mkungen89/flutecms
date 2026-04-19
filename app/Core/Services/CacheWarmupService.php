@@ -24,6 +24,18 @@ final class CacheWarmupService
         $scheduler->call(function (): void {
             $this->warmupIfNeeded();
         })->everyMinute();
+
+        // Periodic cleanup of ".!XXXXX" orphans left by interrupted
+        // Symfony Filesystem::remove() calls (FPM kills mid-clear).
+        $scheduler->call(function (): void {
+            try {
+                \Flute\Core\Cache\OrphanSweeper::sweep(storage_path('app'), 3600);
+                \Flute\Core\Cache\OrphanSweeper::sweep(public_path('assets/css'), 3600);
+                \Flute\Core\Cache\OrphanSweeper::sweep(public_path('assets/js'), 3600);
+            } catch (Throwable $e) {
+                logs('cron')->warning($e);
+            }
+        })->everyMinute(15);
     }
 
     public function markNeeded(): void

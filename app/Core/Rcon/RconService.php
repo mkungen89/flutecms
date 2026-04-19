@@ -9,11 +9,24 @@ use RuntimeException;
 
 class RconService
 {
+    /**
+     * Circuit-breaker thresholds. After {@see CB_FAILURES_OPEN} consecutive failures
+     * the server is treated as unreachable for {@see CB_OPEN_TTL} seconds — calls
+     * to execute()/test() throw immediately, isAvailable() returns false. Prevents
+     * dead servers from blocking FPM workers on TCP timeouts every request.
+     */
+    private const CB_FAILURES_OPEN = 3;
+
+    private const CB_OPEN_TTL = 300;
+
     /** @var array<string, RconDriverInterface> */
     private array $drivers = [];
 
     /** @var array<string, class-string<RconDriverInterface>> */
     private array $driverMap = [];
+
+    /** @var array<string, array{fails:int,opened_at:int}> */
+    private static array $breaker = [];
 
     /**
      * Mods that use Source RCON (TCP binary protocol).
@@ -61,8 +74,22 @@ class RconService
         }
 
         $port = $this->getRconPort($server);
+        $key = $this->breakerKey($server, $port);
 
-        return $driver->execute($server->ip, $port, $server->rcon, $command, $timeout);
+        if ($this->isBreakerOpen($key)) {
+            throw new RuntimeException("RCON circuit open for {$server->ip}:{$port} (server marked unreachable)");
+        }
+
+        try {
+            $result = $driver->execute($server->ip, $port, $server->rcon, $command, $timeout);
+            $this->recordSuccess($key);
+
+            return $result;
+        } catch (\Throwable $e) {
+            $this->recordFailure($key);
+
+            throw $e;
+        }
     }
 
     /**
@@ -70,7 +97,11 @@ class RconService
      */
     public function isAvailable(Server $server): bool
     {
-        return !empty($server->rcon) && $this->resolveDriver($server->mod) !== null;
+        if (empty($server->rcon) || $this->resolveDriver($server->mod) === null) {
+            return false;
+        }
+
+        return !$this->isBreakerOpen($this->breakerKey($server, $this->getRconPort($server)));
     }
 
     /**
@@ -89,8 +120,83 @@ class RconService
         }
 
         $port = $this->getRconPort($server);
+        $key = $this->breakerKey($server, $port);
+        $ok = $driver->test($server->ip, $port, $server->rcon, $timeout);
+        $ok ? $this->recordSuccess($key) : $this->recordFailure($key);
 
-        return $driver->test($server->ip, $port, $server->rcon, $timeout);
+        return $ok;
+    }
+
+    /**
+     * Manually reset the circuit breaker for a server (e.g. after admin
+     * fixes the server config and wants to retry immediately).
+     */
+    public function resetBreaker(Server $server): void
+    {
+        unset(self::$breaker[$this->breakerKey($server, $this->getRconPort($server))]);
+    }
+
+    private function breakerKey(Server $server, int $port): string
+    {
+        return $server->ip . ':' . $port;
+    }
+
+    private function isBreakerOpen(string $key): bool
+    {
+        $this->loadBreakerFromApcu($key);
+        $state = self::$breaker[$key] ?? null;
+        if ($state === null) {
+            return false;
+        }
+        if ($state['fails'] < self::CB_FAILURES_OPEN) {
+            return false;
+        }
+        if (( time() - $state['opened_at'] ) >= self::CB_OPEN_TTL) {
+            // Half-open: allow one probe through.
+            self::$breaker[$key]['fails'] = self::CB_FAILURES_OPEN - 1;
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private function recordFailure(string $key): void
+    {
+        $this->loadBreakerFromApcu($key);
+        $state = self::$breaker[$key] ?? ['fails' => 0, 'opened_at' => 0];
+        $state['fails']++;
+        if ($state['fails'] >= self::CB_FAILURES_OPEN) {
+            $state['opened_at'] = time();
+        }
+        self::$breaker[$key] = $state;
+        if (function_exists('apcu_store')) {
+            @apcu_store($this->apcuKey($key), $state, self::CB_OPEN_TTL);
+        }
+    }
+
+    private function recordSuccess(string $key): void
+    {
+        unset(self::$breaker[$key]);
+        if (function_exists('apcu_delete')) {
+            @apcu_delete($this->apcuKey($key));
+        }
+    }
+
+    private function apcuKey(string $key): string
+    {
+        return 'flute.rcon.cb.' . $key;
+    }
+
+    private function loadBreakerFromApcu(string $key): void
+    {
+        if (isset(self::$breaker[$key]) || !function_exists('apcu_fetch')) {
+            return;
+        }
+        $cached = @apcu_fetch($this->apcuKey($key), $ok);
+        if ($ok && is_array($cached) && isset($cached['fails'], $cached['opened_at'])) {
+            self::$breaker[$key] = $cached;
+        }
     }
 
     /**

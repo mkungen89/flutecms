@@ -90,6 +90,12 @@ class CacheClearCommand extends Command
                 }
             }
 
+            // Sweep orphan ".!XXXXX" temp dirs left by interrupted Filesystem::remove().
+            // Threshold 60s avoids racing a concurrent in-flight rename from another process.
+            \Flute\Core\Cache\OrphanSweeper::sweep(storage_path('app'), 60);
+            \Flute\Core\Cache\OrphanSweeper::sweep(public_path('assets/css'), 60);
+            \Flute\Core\Cache\OrphanSweeper::sweep(public_path('assets/js'), 60);
+
             $io->success('Flute cache has been deleted successfully.');
 
             return Command::SUCCESS;

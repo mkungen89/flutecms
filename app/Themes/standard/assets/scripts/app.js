@@ -2706,6 +2706,8 @@ class ConfirmationManager {
                 });
 
                 xhr.onload = () => {
+                    const liveComponent = document.querySelector(targetSelector) || yoyoComponent;
+
                     if (xhr.status >= 200 && xhr.status < 300) {
                         const newCsrfToken = xhr.getResponseHeader("X-CSRF-Token");
                         if (newCsrfToken) {
@@ -2716,7 +2718,7 @@ class ConfirmationManager {
                         }
 
                         htmx.trigger(document.body, "htmx:afterRequest", {
-                            target: yoyoComponent,
+                            target: liveComponent,
                             xhr: xhr,
                         });
 
@@ -2747,7 +2749,7 @@ class ConfirmationManager {
 
                         const emitHeader = xhr.getResponseHeader("yoyo-emit");
                         if (emitHeader) {
-                            Yoyo.processEmitEvents(yoyoComponent, emitHeader);
+                            Yoyo.processEmitEvents(liveComponent, emitHeader);
                         }
 
                         const browserEventsHeader =
@@ -2758,16 +2760,16 @@ class ConfirmationManager {
 
                         if (xhr.responseText.trim() !== "") {
                             const temp = document.createElement("div");
-                            temp.innerHTML = xhr.responseText;
-
-                            const responseEl = temp.firstElementChild;
+                            temp.textContent = "";
+                            const parsed = new DOMParser().parseFromString(xhr.responseText, "text/html");
+                            const responseEl = parsed.body.firstElementChild;
 
                             if (responseEl) {
                                 const activeElement =
                                     document.activeElement;
                                 const shouldRestoreFocus =
                                     activeElement &&
-                                    yoyoComponent.contains(activeElement);
+                                    liveComponent.contains(activeElement);
                                 let restoreState = null;
 
                                 if (
@@ -2807,18 +2809,34 @@ class ConfirmationManager {
                                     }
                                 }
 
-                                yoyoComponent.outerHTML = responseEl.outerHTML;
-                                htmx.process(
-                                    document.querySelector(targetSelector)
-                                );
+                                liveComponent.outerHTML = responseEl.outerHTML;
+                                const processedEl = document.querySelector(targetSelector);
+                                htmx.process(processedEl);
+                                htmx.trigger(processedEl || document.body, "htmx:afterSettle", {
+                                    target: processedEl,
+                                    elt: processedEl,
+                                });
                             }
                         } else {
-                            YoyoEngine.trigger(yoyoComponent, action);
+                            YoyoEngine.trigger(liveComponent, action);
                             htmx.trigger(document.body, "htmx:afterSwap", {
-                                target: yoyoComponent,
+                                target: liveComponent,
                             });
                         }
+                    } else {
+                        htmx.trigger(document.body, "htmx:responseError", {
+                            target: liveComponent,
+                            xhr: xhr,
+                        });
                     }
+                };
+
+                xhr.onerror = () => {
+                    const liveComponent = document.querySelector(targetSelector) || yoyoComponent;
+                    htmx.trigger(document.body, "htmx:sendError", {
+                        target: liveComponent,
+                        xhr: xhr,
+                    });
                 };
 
                 xhr.send(formData);
