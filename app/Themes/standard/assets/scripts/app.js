@@ -58,9 +58,74 @@ class FluteApp {
 
     initEvents() {
         this.setupHtmxEvents();
+        this.setupProfileMainSwapGuard();
 
         $(document).ready(() => {
             this.forms.initInputHandlers();
+        });
+    }
+
+    setupProfileMainSwapGuard() {
+        const isProfileHref = (href) => {
+            if (!href || href.startsWith('#') || href.startsWith('javascript:')) {
+                return false;
+            }
+
+            try {
+                const url = new URL(href, window.location.origin);
+                return url.origin === window.location.origin && url.pathname.startsWith('/profile/');
+            } catch (_) {
+                return false;
+            }
+        };
+
+        const ensureMainSelect = (link) => {
+            if (!link || link.tagName?.toLowerCase() !== 'a') {
+                return;
+            }
+
+            const href = link.getAttribute('href') || '';
+            if (!isProfileHref(href)) {
+                return;
+            }
+
+            const ownTarget = link.getAttribute('hx-target');
+            const inheritedTarget = link.closest('[hx-target]')?.getAttribute('hx-target') || null;
+            const effectiveTarget = ownTarget || inheritedTarget;
+
+            const ownBoost = link.getAttribute('hx-boost');
+            const inheritedBoost = link.closest('[hx-boost]')?.getAttribute('hx-boost') || null;
+            const boostValue = ownBoost || inheritedBoost;
+            const isBoosted = boostValue === '' || boostValue === 'true';
+
+            if (effectiveTarget === '#main' && isBoosted && !link.getAttribute('hx-select')) {
+                link.setAttribute('hx-select', '#main');
+            }
+        };
+
+        const scan = (root = document) => {
+            if (!root) {
+                return;
+            }
+
+            if (root.matches?.('a[href]')) {
+                ensureMainSelect(root);
+            }
+
+            root.querySelectorAll?.('a[href]').forEach(ensureMainSelect);
+        };
+
+        scan(document);
+
+        document.addEventListener('click', (event) => {
+            const link = event.target.closest('a[href]');
+            if (link) {
+                ensureMainSelect(link);
+            }
+        }, true);
+
+        document.body?.addEventListener('htmx:load', (event) => {
+            scan(event.detail?.elt || event.target);
         });
     }
 

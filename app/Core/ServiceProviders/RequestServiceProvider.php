@@ -30,6 +30,17 @@ class RequestServiceProvider extends AbstractServiceProvider
         'X_FORWARDED_PORT',
     ];
 
+    /**
+     * Safer auto-mode default:
+     * trust client IP / scheme / port from a private local hop,
+     * but do not trust forwarded host unless explicitly configured.
+     */
+    private const AUTO_TRUSTED_HEADERS = [
+        'X_FORWARDED_FOR',
+        'X_FORWARDED_PROTO',
+        'X_FORWARDED_PORT',
+    ];
+
     private const HEADER_FORWARDED = 0b000001;
     private const HEADER_X_FORWARDED_FOR = 0b000010;
     private const HEADER_X_FORWARDED_HOST = 0b000100;
@@ -63,7 +74,10 @@ class RequestServiceProvider extends AbstractServiceProvider
         }
 
         $trustedProxyEntries = $this->readConfigStringList('app.trusted_proxies', ['AUTO']);
-        $trustedHeaderEntries = $this->readConfigStringList('app.trusted_headers', self::DEFAULT_TRUSTED_HEADERS);
+        $trustedHeaderEntries = $this->resolveTrustedHeaderEntries($trustedProxyEntries, $this->readConfigStringList(
+            'app.trusted_headers',
+            self::DEFAULT_TRUSTED_HEADERS,
+        ));
 
         $trustedProxies = $this->resolveTrustedProxyList($trustedProxyEntries);
         $trustedHeaders = $this->resolveTrustedHeaderSet($trustedHeaderEntries);
@@ -92,6 +106,34 @@ class RequestServiceProvider extends AbstractServiceProvider
             FluteRequest::setTrustedHosts($trustedHosts);
             Request::setTrustedHosts($trustedHosts);
         }
+    }
+
+    /**
+     * @param list<string> $proxyEntries
+     * @param list<string> $headerEntries
+     *
+     * @return list<string>
+     */
+    private function resolveTrustedHeaderEntries(array $proxyEntries, array $headerEntries): array
+    {
+        $proxyEntriesUpper = array_map('strtoupper', $proxyEntries);
+        $headerEntriesUpper = array_map('strtoupper', $headerEntries);
+
+        $autoModeEnabled = in_array('AUTO', $proxyEntriesUpper, true);
+        if (!$autoModeEnabled) {
+            return $headerEntries;
+        }
+
+        $defaultHeadersUpper = array_map('strtoupper', self::DEFAULT_TRUSTED_HEADERS);
+        sort($headerEntriesUpper);
+        sort($defaultHeadersUpper);
+
+        // Preserve explicit custom configs. Only harden the stock default set.
+        if ($headerEntriesUpper !== $defaultHeadersUpper) {
+            return $headerEntries;
+        }
+
+        return self::AUTO_TRUSTED_HEADERS;
     }
 
     /**

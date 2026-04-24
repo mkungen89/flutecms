@@ -2,6 +2,8 @@
     $hasCurrentUpdates = !empty($update) || !empty($modules) || !empty($themes);
     $hasOtherUpdates = !empty($other_update) || !empty($other_modules) || !empty($other_themes);
     $totalCurrent = ($update ? 1 : 0) + count($modules) + count($themes);
+    $active_channel = $active_channel ?? 'stable';
+    $other_channel = $other_channel ?? ($active_channel === 'stable' ? 'early' : 'stable');
     $channelLabel = [
         'stable' => __('admin-update.channel_stable'),
         'early' => __('admin-update.channel_early'),
