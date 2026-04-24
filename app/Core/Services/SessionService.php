@@ -245,7 +245,12 @@ class SessionService implements SessionInterface
         $availableLanguages = app('lang.available');
         $defaultLanguage = app('lang.locale');
         $currentCookieLang = cookie()->get('current_lang');
-        $currentSessionLang = $this->session->get('lang');
+        $currentSessionLang = null;
+
+        if ($this->session->isStarted() || session_status() === PHP_SESSION_ACTIVE) {
+            $lang = $this->session->get('lang');
+            $currentSessionLang = is_string($lang) && $lang !== '' ? $lang : null;
+        }
 
         if (cookie()->has('current_lang') && in_array($currentCookieLang, (array) $availableLanguages)) {
             $lang = $currentCookieLang;

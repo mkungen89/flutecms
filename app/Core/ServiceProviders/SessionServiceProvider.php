@@ -34,8 +34,6 @@ class SessionServiceProvider extends AbstractServiceProvider
     public function boot(\DI\Container $container): void
     {
         if (!is_cli()) {
-            $container->get(SessionService::class)->start();
-
             $request = $container->get(FluteRequest::class);
             $session = $container->get(SessionInterface::class);
             if (!$request->hasSession()) {

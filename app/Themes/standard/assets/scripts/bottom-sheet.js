@@ -131,10 +131,20 @@ function openModal(modalId) {
 
             if ($modal[0].dialogInstance) {
                 $modal[0].dialogInstance.show();
+                document.body.dispatchEvent(
+                    new CustomEvent('modalOpened', {
+                        detail: { modalId, modalElement: $modal[0] },
+                    }),
+                );
             }
         } else {
             if ($modal[0].dialogInstance) {
                 $modal[0].dialogInstance.show();
+                document.body.dispatchEvent(
+                    new CustomEvent('modalOpened', {
+                        detail: { modalId, modalElement: $modal[0] },
+                    }),
+                );
             }
         }
     } else {

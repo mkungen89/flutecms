@@ -183,6 +183,14 @@ class DatabaseConnection
         }
 
         if ($this->schemaNeedsUpdate) {
+            if (!$this->shouldSynchronouslyCompileSchema()) {
+                $this->queueDeferredSchemaRefresh();
+
+                $checked = true;
+
+                return;
+            }
+
             $this->recompileOrmSchema(false);
         }
 
@@ -700,6 +708,18 @@ class DatabaseConnection
         );
         $this->dbal->setLogger($timingLogger);
 
+        if (!$this->shouldSynchronouslyCompileSchema() && is_file(self::SCHEMA_FILE)) {
+            $this->ensureInstalledModuleEntityDirs();
+
+            if (!$this->isSchemaCacheValid()) {
+                $this->queueDeferredSchemaRefresh();
+            }
+
+            $this->loadCachedSchemaIntoOrm();
+
+            return;
+        }
+
         $this->recompileOrmSchema(true);
     }
 
@@ -852,7 +872,7 @@ class DatabaseConnection
 
         if (!empty($meta['sync_failed'])) {
             $writtenAt = (int) ( $meta['written_at'] ?? 0 );
-            $retryInterval = is_debug() ? 120 : 300;
+            $retryInterval = $this->isDebugMode() ? 120 : 300;
             if (( time() - $writtenAt ) >= $retryInterval) {
                 return false;
             }
@@ -873,7 +893,7 @@ class DatabaseConnection
             if (
                 is_array($cached)
                 && ( $cached['fingerprint'] ?? '' ) === $expectedFingerprint
-                && ( time() - ( $cached['time'] ?? 0 ) ) < ( is_debug() ? 30 : 300 )
+                && ( time() - ( $cached['time'] ?? 0 ) ) < ( $this->isDebugMode() ? 30 : 300 )
             ) {
                 return true;
             }
@@ -978,21 +998,6 @@ class DatabaseConnection
 
         $moduleKeys = $this->getInstalledModuleKeys();
 
-        $modulesRoot = path('app/Modules');
-        if (is_dir($modulesRoot)) {
-            $scanned = @scandir($modulesRoot);
-            if (is_array($scanned)) {
-                foreach ($scanned as $dir) {
-                    if ($dir === '.' || $dir === '..' || $dir === '.disabled') {
-                        continue;
-                    }
-                    if (!in_array($dir, $moduleKeys, true)) {
-                        $moduleKeys[] = $dir;
-                    }
-                }
-            }
-        }
-
         foreach ($moduleKeys as $moduleKey) {
             $candidates = [
                 path("app/Modules/{$moduleKey}/database/Entities"),
@@ -1043,12 +1048,9 @@ class DatabaseConnection
                 $this->dbal = $this->databaseManager->getDbal();
             }
 
-            $rows = $this->dbal
-                ->database()
-                ->select()
-                ->from('modules')
-                ->columns('key', 'status')
-                ->fetchAll();
+            $database = $this->dbal->database();
+            $select = $database->select()->from('modules')->columns('key', 'status');
+            $rows = $select->fetchAll();
             foreach ($rows as $row) {
                 $key = $row['key'] ?? null;
                 $status = $row['status'] ?? null;
@@ -1126,9 +1128,11 @@ class DatabaseConnection
     private function countEntityFiles(array $dirs): int
     {
         $count = 0;
+        /** @var list<string> $stringDirs */
+        $stringDirs = array_values(array_filter($dirs, static fn(mixed $dir): bool => is_string($dir) && $dir !== ''));
 
-        foreach ($dirs as $dir) {
-            $resolved = is_string($dir) && $dir !== '' ? realpath($dir) : false;
+        foreach ($stringDirs as $dir) {
+            $resolved = realpath($dir);
             if ($resolved === false || !is_dir($resolved)) {
                 continue;
             }
@@ -1161,5 +1165,24 @@ class DatabaseConnection
         if ($perms !== false && ( $perms & 0o020 ) === 0) {
             @chmod($path, ( $perms | 0o060 ) & 0o7777);
         }
+    }
+
+    private function shouldSynchronouslyCompileSchema(): bool
+    {
+        return PHP_SAPI === 'cli';
+    }
+
+    private function queueDeferredSchemaRefresh(): void
+    {
+        if (self::$schemaRefreshQueued) {
+            return;
+        }
+
+        $this->forceRefreshSchemaDeferred();
+    }
+
+    private function isDebugMode(): bool
+    {
+        return defined('FLUTE_DEBUG') && constant('FLUTE_DEBUG') === true;
     }
 }

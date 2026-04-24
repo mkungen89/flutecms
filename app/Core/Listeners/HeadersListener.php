@@ -3,12 +3,19 @@
 namespace Flute\Core\Listeners;
 
 use Flute\Core\Events\ResponseEvent;
+use Flute\Core\Services\SessionService;
 
 class HeadersListener
 {
     public static function onRouteResponse(ResponseEvent $event): void
     {
         $response = $event->getResponse();
+        /** @var SessionService $session */
+        $session = session();
+        $sessionName = $session->getName();
+        $hasSessionCookie = $sessionName !== '' && isset($_COOKIE[$sessionName]);
+        $shouldUseSession = $session->isStarted() || $hasSessionCookie;
+        $isLoggedIn = $shouldUseSession && $session->has('user_id');
 
         header_remove('X-Powered-By');
 
@@ -44,20 +51,20 @@ class HeadersListener
             logs()->warning('Application key (app.key) is not set. Using fallback for auth token HMAC.');
         }
 
-        if (!session()->has('auth_token')) {
-            $state = user()->isLoggedIn() ? '1:' . ( user()->id ?? '0' ) : '0:guest';
-            $secret = !empty($appKey) ? $appKey : hash('sha256', __DIR__ . session()->getId());
+        if ($shouldUseSession && !$session->has('auth_token')) {
+            $userId = $isLoggedIn ? (string) $session->get('user_id', '0') : '0';
+            $state = $isLoggedIn ? '1:' . $userId : '0:guest';
+            $secret = !empty($appKey) ? $appKey : hash('sha256', __DIR__ . $session->getId());
             $seed = bin2hex(random_bytes(8));
-            $token = hash_hmac('sha256', $state . '|' . session()->getId() . '|' . $seed, $secret);
-            session()->set('auth_token', $token);
+            $token = hash_hmac('sha256', $state . '|' . $session->getId() . '|' . $seed, $secret);
+            $session->set('auth_token', $token);
         }
-        $authToken = session()->get('auth_token');
 
         if (request()->getMethod() === 'HEAD') {
             $response->headers->set('Cache-Control', 'no-cache');
         }
 
-        $justLoggedInAt = session()->get('just_logged_in_at');
+        $justLoggedInAt = $shouldUseSession ? $session->get('just_logged_in_at') : null;
         $justLoggedInRecent = is_int($justLoggedInAt) && $justLoggedInAt > ( time() - 10 );
 
         if (
@@ -74,7 +81,7 @@ class HeadersListener
             ]);
             $response->setExpires(new \DateTimeImmutable('@0'));
             if ($justLoggedInRecent) {
-                session()->remove('just_logged_in_at');
+                $session->remove('just_logged_in_at');
             }
         } elseif (is_performance()) {
             $contentType = (string) $response->headers->get('Content-Type', '');
@@ -88,7 +95,7 @@ class HeadersListener
                 // Server-side page cache (App::tryServePageCache) already provides the
                 // fast-path for anonymous full-page GETs, so the browser only needs a
                 // short must-revalidate window.
-                if (user()->isLoggedIn()) {
+                if ($isLoggedIn) {
                     $response->setCache([
                         'private' => true,
                         'no_cache' => true,
@@ -103,7 +110,7 @@ class HeadersListener
                     $response->headers->addCacheControlDirective('s-maxage', '0');
                 }
             } else {
-                if (user()->isLoggedIn()) {
+                if ($isLoggedIn) {
                     $response->setCache([
                         'private' => true,
                         'max_age' => 300,
@@ -120,7 +127,7 @@ class HeadersListener
             }
         } else {
             if (!$response->headers->has('Cache-Control') || $response->headers->get('Cache-Control') === 'no-cache') {
-                if (user()->isLoggedIn()) {
+                if ($isLoggedIn) {
                     $response->setCache([
                         'private' => true,
                         'no_cache' => true,
@@ -152,7 +159,7 @@ class HeadersListener
         // (each session cookie = unique cache entry). Only add it for authenticated users.
         $varyHeaders = ['HX-Request', 'HX-Boosted'];
 
-        if (user()->isLoggedIn()) {
+        if ($isLoggedIn) {
             $varyHeaders[] = 'Cookie';
             $varyHeaders[] = 'Authorization';
         }
