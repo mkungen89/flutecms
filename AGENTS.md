@@ -25,6 +25,8 @@ Add under `tests/`, `Flute\Tests\`; `SomethingTest.php`; deterministic. For now 
 
 Imperative scoped commits, e.g. `core: fix router cache` or `module:Shop add refund hook`. PRs: purpose, issues, verify steps, `composer test` green; do not commit generated junk under `public/`.
 
+Assistants must not run `git commit` or `git push` on their own. If a commit or push is requested, stop and ask for explicit approval immediately before the command. Pushes must always be approved by the user in the current conversation.
+
 ## Security
 
 No secrets in repo; use `config-dev/`. `storage/` writable; only `public/` web-exposed.

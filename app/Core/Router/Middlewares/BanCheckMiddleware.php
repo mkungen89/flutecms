@@ -74,30 +74,36 @@ class BanCheckMiddleware extends BaseMiddleware
     {
         $cacheKey = 'flute.ip_block_info.' . md5($ipAddress);
 
-        return cache()->callback(
-            $cacheKey,
-            static function () use ($ipAddress) {
-                $userDevice = UserDevice::query()
-                    ->where('ip', $ipAddress)
-                    ->load(['user', 'user.blocksReceived'])
-                    ->fetchOne();
+        try {
+            return cache()->callback(
+                $cacheKey,
+                static function () use ($ipAddress) {
+                    $userDevice = UserDevice::query()
+                        ->where('ip', $ipAddress)
+                        ->load(['user', 'user.blocksReceived'])
+                        ->fetchOne();
 
-                if (!$userDevice) {
+                    if (!$userDevice) {
+                        return ['blocked' => false, 'reason' => null];
+                    }
+
+                    if ($userDevice->user->isBlocked()) {
+                        $info = $userDevice->user->getBlockInfo();
+
+                        return [
+                            'blocked' => true,
+                            'reason' => $info['reason'] ?? null,
+                        ];
+                    }
+
                     return ['blocked' => false, 'reason' => null];
-                }
+                },
+                self::CACHE_TIME,
+            );
+        } catch (\Throwable $e) {
+            logs('database')->warning('IP block lookup failed: ' . $e->getMessage());
 
-                if ($userDevice->user->isBlocked()) {
-                    $info = $userDevice->user->getBlockInfo();
-
-                    return [
-                        'blocked' => true,
-                        'reason' => $info['reason'] ?? null,
-                    ];
-                }
-
-                return ['blocked' => false, 'reason' => null];
-            },
-            self::CACHE_TIME,
-        );
+            return ['blocked' => true, 'reason' => __('def.unknown_reason')];
+        }
     }
 }

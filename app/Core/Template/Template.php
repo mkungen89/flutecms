@@ -951,6 +951,16 @@ class Template extends AbstractTemplateInstance implements ViewServiceInterface
 
     protected function isAdminPath(): bool
     {
-        return is_admin_path() && user()->can('admin');
+        if (!is_admin_path()) {
+            return false;
+        }
+
+        try {
+            return user()->can('admin');
+        } catch (Throwable $e) {
+            logs('templates')->warning('Unable to resolve admin template context: ' . $e->getMessage());
+
+            return false;
+        }
     }
 }

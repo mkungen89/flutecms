@@ -3,6 +3,7 @@
 namespace Flute\Core\Modules\Notifications\Services;
 
 use Cycle\ORM\RepositoryInterface;
+use DateTimeImmutable;
 use Flute\Core\Database\Entities\Notification;
 use Flute\Core\Database\Entities\User;
 use Throwable;
@@ -159,15 +160,81 @@ class NotificationService
      * @param string|null $icon The icon of the notification.
      * @throws Throwable
      */
-    public function createTextNotification(User $user, string $title, string $content, ?string $icon = null): void
-    {
+    public function createTextNotification(
+        User $user,
+        string $title,
+        string $content,
+        ?string $icon = null,
+        ?string $url = null,
+    ): void {
         $notification = new Notification();
         $notification->user = $user;
         $notification->title = strip_tags($title, '<b><i><strong><em>');
         $notification->content = $content;
         $notification->type = 'text';
         $notification->icon = $icon;
+        $notification->url = $url;
         $this->create($notification);
+    }
+
+    /**
+     * Create the same text notification for many users without hydrating users or notification entities.
+     *
+     * @param array<int,int|string> $userIds
+     */
+    public function createTextNotificationsForUserIds(
+        array $userIds,
+        string $title,
+        string $content,
+        ?string $icon = null,
+        ?string $url = null,
+    ): int {
+        $userIds = $this->normalizeUserIds($userIds);
+        if (empty($userIds)) {
+            return 0;
+        }
+
+        $createdAt = ( new DateTimeImmutable() )->format('Y-m-d H:i:s');
+        $title = strip_tags($title, '<b><i><strong><em>');
+        $inserted = 0;
+        $database = db();
+
+        $database->transaction(static function () use (
+            $database,
+            $userIds,
+            $title,
+            $content,
+            $icon,
+            $url,
+            $createdAt,
+            &$inserted,
+        ): void {
+            foreach ($userIds as $userId) {
+                $database
+                    ->insert('notifications')
+                    ->values([
+                        'user_id' => $userId,
+                        'icon' => $icon,
+                        'url' => $url,
+                        'title' => $title,
+                        'content' => $content,
+                        'type' => 'text',
+                        'extra_data' => null,
+                        'viewed' => false,
+                        'created_at' => $createdAt,
+                        'updated_at' => null,
+                    ])
+                    ->run();
+
+                $inserted++;
+            }
+        });
+
+        if ($inserted > 0) {
+            $this->invalidateCache();
+        }
+
+        return $inserted;
     }
 
     /**
@@ -467,5 +534,23 @@ class NotificationService
         $this->cachedTotalCount = null;
         $this->readCached = false;
         $this->cachedReadItems = [];
+    }
+
+    /**
+     * @param array<int,int|string> $userIds
+     * @return array<int,int>
+     */
+    protected function normalizeUserIds(array $userIds): array
+    {
+        $normalized = [];
+
+        foreach ($userIds as $userId) {
+            $userId = (int) $userId;
+            if ($userId > 0) {
+                $normalized[$userId] = $userId;
+            }
+        }
+
+        return array_values($normalized);
     }
 }

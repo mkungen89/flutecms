@@ -221,12 +221,12 @@ class Router implements RouterInterface
             $this->routes->add($routeName, $clone);
         }
 
-        $originalName = $routeName;
+        $registeredName = $routeName;
 
-        $route->setAfterModifyCallback(function (Route $modifiedRoute) use ($originalName) {
+        $route->setAfterModifyCallback(function (Route $modifiedRoute) use (&$registeredName) {
             $currentName = $modifiedRoute->getName();
 
-            if ($currentName !== $originalName) {
+            if ($currentName && $currentName !== $registeredName) {
                 foreach ([
                     $this->routes,
                     $this->frontCompilableRoutes,
@@ -234,8 +234,8 @@ class Router implements RouterInterface
                     $this->frontDynamicRoutes,
                     $this->adminDynamicRoutes,
                 ] as $collection) {
-                    if ($collection->get($originalName)) {
-                        $collection->remove($originalName);
+                    if ($collection->get($registeredName)) {
+                        $collection->remove($registeredName);
                     }
                 }
 
@@ -256,6 +256,8 @@ class Router implements RouterInterface
                     $clone->setDefaults($defaults);
                     $this->routes->add($currentName, $clone);
                 }
+
+                $registeredName = $currentName;
             }
         });
 

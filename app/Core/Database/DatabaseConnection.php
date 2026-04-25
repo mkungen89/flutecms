@@ -998,6 +998,13 @@ class DatabaseConnection
 
         $moduleKeys = $this->getInstalledModuleKeys();
 
+        if (empty($moduleKeys) && !$this->shouldSynchronouslyCompileSchema()) {
+            $cachedDirs = $this->getCachedSchemaDirs();
+            if ($cachedDirs !== []) {
+                return $this->normalizeDirs(array_merge($dirs, $cachedDirs));
+            }
+        }
+
         foreach ($moduleKeys as $moduleKey) {
             $candidates = [
                 path("app/Modules/{$moduleKey}/database/Entities"),
@@ -1042,6 +1049,10 @@ class DatabaseConnection
             return array_keys($keys);
         }
 
+        if (!$this->shouldSynchronouslyCompileSchema()) {
+            return [];
+        }
+
         // Fallback to DBAL (does not require ORM schema to include modules entities).
         try {
             if (!isset($this->dbal)) {
@@ -1062,6 +1073,26 @@ class DatabaseConnection
         }
 
         return array_keys($keys);
+    }
+
+    /**
+     * Reuse the last known schema directory set during HTTP boot.
+     * This avoids touching the database just to validate an already compiled schema.
+     *
+     * @return array<int,string>
+     */
+    private function getCachedSchemaDirs(): array
+    {
+        if (!is_file(self::SCHEMA_META_FILE)) {
+            return [];
+        }
+
+        $meta = @include self::SCHEMA_META_FILE;
+        if (!is_array($meta) || !is_array($meta['dirs'] ?? null)) {
+            return [];
+        }
+
+        return array_values(array_filter($meta['dirs'], static fn(mixed $dir): bool => is_string($dir) && $dir !== ''));
     }
 
     /**

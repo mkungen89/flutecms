@@ -46,6 +46,10 @@ class ModulesController extends BaseController
      */
     public function installModule(FluteRequest $request)
     {
+        if (!user()->can('admin.boss')) {
+            return $this->error(__('def.permission_denied'), 403);
+        }
+
         try {
             $uploadedFile = $request->files->get('module_archive');
             if (!$uploadedFile || !$uploadedFile->isValid()) {

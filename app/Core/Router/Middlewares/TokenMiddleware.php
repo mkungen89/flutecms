@@ -20,7 +20,7 @@ class TokenMiddleware extends BaseMiddleware
             return $next($request);
         }
 
-        $findToken = ApiKey::findOne(['key' => $token]);
+        $findToken = ApiKey::findByPlainKey($token, true);
 
         if (!$findToken) {
             return $this->error()->badRequest();

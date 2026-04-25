@@ -7,7 +7,7 @@ use Flute\Core\Router\Contracts\RouterInterface;
 
 $router->group([
     'prefix' => 'api/notifications',
-    'middleware' => ['auth', 'site_mode:notifications'],
+    'middleware' => ['auth', 'site_mode:notifications', 'csrf'],
 ], static function (RouterInterface $routeGroup) {
     $routeGroup->get('/all', [NotificationController::class, 'getAll']);
     $routeGroup->get('/unread', [NotificationController::class, 'getUnread']);

@@ -81,6 +81,8 @@ abstract class Table extends Layout
 
     protected $sortDirection;
 
+    protected $querySortColumn;
+
     protected $compact = false;
 
     /**
@@ -166,9 +168,11 @@ abstract class Table extends Layout
             $defaultSortColumn = $columns->first(static fn(TD $column) => $column->getAttribute('defaultSort', false));
             if ($defaultSortColumn) {
                 $this->sortColumn = $defaultSortColumn->getName();
+                $this->querySortColumn = $defaultSortColumn->getAttribute('sortField', $this->sortColumn);
                 $this->sortDirection = $defaultSortColumn->getAttribute('defaultSortDirection', 'asc');
             } else {
                 $this->sortColumn = '';
+                $this->querySortColumn = '';
                 $this->sortDirection = 'asc';
             }
         } else {
@@ -178,6 +182,8 @@ abstract class Table extends Layout
                 ->filter()
                 ->toArray();
             $this->sortColumn = in_array($candidateColumn, $allowedColumns, true) ? $candidateColumn : '';
+            $sortColumn = $columns->first(fn(TD $column) => $column->getName() === $this->sortColumn);
+            $this->querySortColumn = $sortColumn?->getAttribute('sortField', $this->sortColumn) ?? $this->sortColumn;
             $this->sortDirection = str_starts_with($requestSort, '-') ? 'desc' : 'asc';
         }
 
@@ -585,7 +591,12 @@ abstract class Table extends Layout
 
         return collect($this->columns())
             ->filter(static fn(TD $TD) => $TD->isSearchable())
-            ->map(static fn(TD $TD) => $TD->getName())
+            ->flatMap(static function (TD $TD) {
+                $searchFields = $TD->getAttribute('searchFields', []);
+
+                return !empty($searchFields) && is_array($searchFields) ? $searchFields : [$TD->getName()];
+            })
+            ->filter()
             ->toArray();
     }
 
@@ -674,7 +685,7 @@ abstract class Table extends Layout
     {
         $direction = $this->sortDirection === 'desc' ? 'DESC' : 'ASC';
 
-        return $select->orderBy($this->sortColumn, $direction);
+        return $select->orderBy($this->querySortColumn ?: $this->sortColumn, $direction);
     }
 
     /**

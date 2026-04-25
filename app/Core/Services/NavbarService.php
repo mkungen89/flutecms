@@ -61,8 +61,13 @@ class NavbarService
             . app()->getLang();
 
         $cacheTime = is_development() ? 30 : self::CACHE_TIME;
-        cache()->tagKey(self::CACHE_TAG, $cacheKey);
-        $this->cachedNavbarItems = cache()->callback($cacheKey, fn() => $this->getDefaultNavbarItems(), $cacheTime);
+        try {
+            cache()->tagKey(self::CACHE_TAG, $cacheKey);
+            $this->cachedNavbarItems = cache()->callback($cacheKey, fn() => $this->getDefaultNavbarItems(), $cacheTime);
+        } catch (\Throwable $e) {
+            logs('database')->warning('Navbar items lookup failed: ' . $e->getMessage());
+            $this->cachedNavbarItems = [];
+        }
 
         return $this->cachedNavbarItems;
     }
@@ -90,7 +95,17 @@ class NavbarService
      */
     public function all(bool $ignoreAuth = false): array
     {
-        return $ignoreAuth ? $this->getDefaultNavbarItems(true) : $this->loadItems();
+        if (!$ignoreAuth) {
+            return $this->loadItems();
+        }
+
+        try {
+            return $this->getDefaultNavbarItems(true);
+        } catch (\Throwable $e) {
+            logs('database')->warning('Navbar items lookup failed: ' . $e->getMessage());
+
+            return [];
+        }
     }
 
     /**

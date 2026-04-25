@@ -12,7 +12,6 @@ use Flute\Core\Console\Command\TemplateCacheClearCommand;
 use Flute\Core\Console\Command\LogsClearCommand;
 use Flute\Core\Console\Command\LogsCleanupCommand;
 use Flute\Core\Console\Command\RunCronCommand;
-use Flute\Modules\Clans\Console\ClansSelfTestCommand;
 
 define('FLUTE_START', microtime(true));
 define('BASE_PATH', __DIR__.DIRECTORY_SEPARATOR);
@@ -35,6 +34,5 @@ $console->add($app->get(GenerateModuleCommand::class));
 $console->add($app->get(ListRoutesCommand::class));
 $console->add($app->get(RouteDetailCommand::class));
 $console->add($app->get(RunCronCommand::class));
-$console->add($app->get(ClansSelfTestCommand::class));
 
 $app->run();

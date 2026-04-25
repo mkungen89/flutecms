@@ -211,7 +211,7 @@ abstract class ModuleServiceProvider implements ModuleServiceProviderInterface
      */
     public function loadPackage(AdminPackageInterface $package): void
     {
-        if (!is_admin_path() && !user()->can('admin')) {
+        if (!is_admin_path() || !user()->can('admin')) {
             return;
         }
 

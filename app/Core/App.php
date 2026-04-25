@@ -397,7 +397,7 @@ final class App
 
         $res->send();
 
-        if (function_exists('fastcgi_finish_request') && !is_debug()) {
+        if (function_exists('fastcgi_finish_request')) {
             @fastcgi_finish_request();
         }
 
@@ -667,7 +667,11 @@ final class App
             return null;
         }
 
-        return 'page_cache.' . app()->getLang() . '.' . md5($uri);
+        $query = $request->query->all();
+        ksort($query);
+        $queryHash = $query ? '?' . http_build_query($query) : '';
+
+        return 'page_cache.' . app()->getLang() . '.' . md5($uri . $queryHash);
     }
 
     protected function tryServePageCache(FluteRequest $request): ?Response

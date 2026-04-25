@@ -1,3 +1,4 @@
+@if (user()->can('admin.boss'))
 <div id="dropzone-overlay" class="dropzone-overlay">
     <div class="dropzone-overlay__content">
         <div class="upload-initial">
@@ -21,3 +22,4 @@
 
     <input type="file" name="module_archive" id="module-file-input" style="display:none;" accept=".zip">
 </div>
+@endif

@@ -90,7 +90,7 @@ class FluteRequest extends Request
     /**
      * Retrieve the current authenticated user.
      */
-    public function user(): User
+    public function user(): ?User
     {
         return user()->getCurrentUser();
     }

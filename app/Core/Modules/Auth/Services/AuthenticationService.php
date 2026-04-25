@@ -218,14 +218,12 @@ class AuthenticationService
 
         transaction($tokenEntity)->run();
 
-        $isSecure = str_starts_with(config('app.url', ''), 'https');
         $this->cookie->set(
             name: 'remember_token',
             value: $rememberToken,
             expire: $this->config->get('auth.remember_me_duration'),
             httpOnly: true,
             sameSite: 'Strict',
-            secure: $isSecure,
         );
 
         return $rememberToken;

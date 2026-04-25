@@ -20,6 +20,8 @@ use Cycle\ORM\Entity\Behavior;
 )]
 class ApiKey extends ActiveRecord
 {
+    private const HASH_PREFIX = 'sha256:';
+
     #[Column(type: "primary")]
     public int $id;
 
@@ -90,5 +92,50 @@ class ApiKey extends ActiveRecord
     {
         $this->lastUsedAt = new DateTimeImmutable();
         $this->saveOrFail();
+    }
+
+    public static function hashPlainKey(string $plainKey): string
+    {
+        return self::HASH_PREFIX . hash('sha256', $plainKey);
+    }
+
+    public static function findByPlainKey(string $plainKey, bool $migrateLegacy = false): ?self
+    {
+        if ($plainKey === '') {
+            return null;
+        }
+
+        $apiKey = self::findOne(['key' => self::hashPlainKey($plainKey)]);
+        if ($apiKey instanceof self) {
+            return $apiKey;
+        }
+
+        $legacyHash = hash('sha256', $plainKey);
+        $apiKey = self::findOne(['key' => $legacyHash]);
+        if ($apiKey instanceof self) {
+            if ($migrateLegacy) {
+                $apiKey->key = self::hashPlainKey($plainKey);
+                $apiKey->saveOrFail();
+            }
+
+            return $apiKey;
+        }
+
+        if (self::looksLikeStoredHash($plainKey)) {
+            return null;
+        }
+
+        $apiKey = self::findOne(['key' => $plainKey]);
+        if ($apiKey instanceof self && $migrateLegacy) {
+            $apiKey->key = self::hashPlainKey($plainKey);
+            $apiKey->saveOrFail();
+        }
+
+        return $apiKey instanceof self ? $apiKey : null;
+    }
+
+    public static function looksLikeStoredHash(string $value): bool
+    {
+        return str_starts_with($value, self::HASH_PREFIX) || preg_match('/^[a-f0-9]{64}$/i', $value) === 1;
     }
 }

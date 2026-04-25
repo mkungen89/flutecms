@@ -2,6 +2,7 @@
 
 namespace Flute\Admin\Packages\NotificationTemplates\Screens;
 
+use Cycle\Database\Injection\Fragment;
 use Cycle\Database\Injection\Parameter;
 use Flute\Admin\Platform\Actions\Button;
 use Flute\Admin\Platform\Fields\CheckBox;
@@ -11,7 +12,6 @@ use Flute\Admin\Platform\Fields\TextArea;
 use Flute\Admin\Platform\Layouts\LayoutFactory;
 use Flute\Admin\Platform\Screen;
 use Flute\Admin\Platform\Support\Color;
-use Flute\Core\Database\Entities\Role;
 use Flute\Core\Database\Entities\User;
 use Flute\Core\Modules\Notifications\Services\NotificationService;
 use Flute\Core\Modules\Notifications\Services\NotificationTemplateService;
@@ -19,6 +19,8 @@ use Throwable;
 
 class NotificationBroadcastScreen extends Screen
 {
+    private const RECIPIENT_BATCH_SIZE = 500;
+
     public ?string $name = null;
 
     public ?string $description = null;
@@ -137,14 +139,25 @@ class NotificationBroadcastScreen extends Screen
 
     public function send(): void
     {
+        @ignore_user_abort(true);
+        @set_time_limit(0);
+
         $target = request()->input('target', 'all');
         if (is_array($target)) {
             $target = $target[0] ?? 'all';
         }
-        $title = request()->input('title');
-        $content = request()->input('content');
-        $icon = request()->input('icon') ?: 'ph.bold.bell-bold';
-        $url = request()->input('url') ?: null;
+        $target = is_string($target) ? $target : 'all';
+
+        $title = trim((string) request()->input('title', ''));
+        $content = trim((string) request()->input('content', ''));
+        $icon = trim((string) request()->input('icon', '')) ?: 'ph.bold.bell-bold';
+        $url = $this->normalizeUrl(request()->input('url'));
+
+        if ($url === false) {
+            $this->flashMessage(__('admin-notifications.broadcast.invalid_url'), 'error');
+
+            return;
+        }
 
         $channels = [];
         if (request()->input('channel_inapp')) {
@@ -170,16 +183,9 @@ class NotificationBroadcastScreen extends Screen
             return;
         }
 
-        $users = $this->resolveRecipients($target);
-
-        if (empty($users)) {
-            $this->flashMessage(__('admin-notifications.broadcast.no_recipients'), 'error');
-
-            return;
-        }
-
         $notificationService = app(NotificationService::class);
         $count = 0;
+        $foundRecipients = false;
 
         $hasEmail = in_array('email', $channels, true) && function_exists('email');
         $hasPush = in_array('push', $channels, true);
@@ -194,33 +200,97 @@ class NotificationBroadcastScreen extends Screen
             }
         }
 
-        foreach ($users as $user) {
+        if (!$hasInApp && !$hasEmail && !$hasPush) {
+            $this->flashMessage(__('admin-notifications.broadcast.no_available_channels'), 'error');
+
+            return;
+        }
+
+        foreach ($this->resolveRecipientIdBatches($target) as $userIds) {
+            if (empty($userIds)) {
+                continue;
+            }
+
+            $foundRecipients = true;
+            $countedUserIds = [];
+
             try {
                 if ($hasInApp) {
-                    $notificationService->createTextNotification($user, $title, $content, $icon);
+                    $sentInApp = $notificationService->createTextNotificationsForUserIds(
+                        $userIds,
+                        $title,
+                        $content,
+                        $icon,
+                        $url,
+                    );
+                    foreach ($userIds as $userId) {
+                        $countedUserIds[$userId] = true;
+                    }
+                    if ($sentInApp !== count($userIds)) {
+                        logs()->warning('Notification broadcast inserted fewer in-app notifications than expected', [
+                            'expected' => count($userIds),
+                            'inserted' => $sentInApp,
+                        ]);
+                    }
                 }
-
-                if ($hasEmail && ( $user->email ?? null )) {
-                    $this->sendEmailNotification($user, $title, $content);
-                }
-
-                if ($hasPush && $pushService) {
-                    $pushService->sendToUser($user, $title, $content, $icon, $url);
-                }
-
-                $count++;
             } catch (Throwable $e) {
                 logs()->error($e);
             }
+
+            if ($hasEmail || $hasPush && $pushService) {
+                $users = $this->fetchUsersByIds($userIds);
+
+                foreach ($users as $user) {
+                    $sent = false;
+
+                    if ($hasEmail) {
+                        try {
+                            $sent = $this->sendEmailNotification($user, $title, $content) || $sent;
+                        } catch (Throwable $e) {
+                            logs()->error($e);
+                        }
+                    }
+
+                    if ($hasPush && $pushService) {
+                        try {
+                            $pushService->sendToUser($user, $title, $content, $icon, $url);
+                            $sent = true;
+                        } catch (Throwable $e) {
+                            logs()->error($e);
+                        }
+                    }
+
+                    if ($sent) {
+                        $countedUserIds[$user->id] = true;
+                    }
+                }
+
+                unset($users);
+                orm()->getHeap()->clean();
+            }
+
+            $count += count($countedUserIds);
         }
+
+        if (!$foundRecipients) {
+            $this->flashMessage(__('admin-notifications.broadcast.no_recipients'), 'error');
+
+            return;
+        }
+
+        logs()->info('Notification broadcast completed', [
+            'target' => $target,
+            'channels' => $channels,
+            'count' => $count,
+        ]);
 
         $this->flashMessage(__('admin-notifications.broadcast.sent', ['count' => $count]));
     }
 
-    protected function sendEmailNotification(User $user, string $title, string $content): void
+    protected function sendEmailNotification(User $user, string $title, string $content): bool
     {
         if (!function_exists('email') || !$user->email) {
-            return;
+            return false;
         }
 
         email()->send(
@@ -233,6 +303,8 @@ class NotificationBroadcastScreen extends Screen
                 'user' => $user,
             ]),
         );
+
+        return true;
     }
 
     protected function buildChannelFields(): array
@@ -262,47 +334,204 @@ class NotificationBroadcastScreen extends Screen
         return $fields;
     }
 
-    protected function resolveRecipients(string $target): array
+    /**
+     * @return iterable<array<int,int>>
+     */
+    protected function resolveRecipientIdBatches(string $target): iterable
     {
         switch ($target) {
             case 'roles':
-                $roleIds = (array) request()->input('roles', []);
-                $intRoleIds = array_values(array_filter(array_map('intval', $roleIds), static fn($id) => $id > 0));
-                if (empty($intRoleIds)) {
-                    return [];
+                $roleIds = $this->normalizeIdList(request()->input('roles', []));
+                if (empty($roleIds)) {
+                    return;
                 }
 
-                $roles = Role::query()->where('id', 'IN', new Parameter($intRoleIds))->fetchAll();
-                if (empty($roles)) {
-                    return [];
+                $validRoleIds = $this->fetchValidRoleIds($roleIds);
+                if (empty($validRoleIds)) {
+                    return;
                 }
 
-                $validRoleIds = array_map(static fn($r) => $r->id, $roles);
-                $users = User::query()->where('roles.id', 'IN', new Parameter($validRoleIds))->fetchAll();
+                yield from $this->fetchUserIdBatchesForRoles($validRoleIds);
 
-                // Deduplicate users (a user may have multiple matching roles)
-                $seen = [];
-                $unique = [];
-                foreach ($users as $user) {
-                    if (!isset($seen[$user->id])) {
-                        $seen[$user->id] = true;
-                        $unique[] = $user;
+                return;
+            case 'users':
+                $userIds = $this->normalizeIdList(request()->input('users', []));
+                foreach (array_chunk($userIds, self::RECIPIENT_BATCH_SIZE) as $chunk) {
+                    $batch = $this->fetchExistingUserIds($chunk);
+                    if (!empty($batch)) {
+                        yield $batch;
                     }
                 }
 
-                return $unique;
-
-            case 'users':
-                $userIds = (array) request()->input('users', []);
-                $intUserIds = array_values(array_filter(array_map('intval', $userIds), static fn($id) => $id > 0));
-                if (empty($intUserIds)) {
-                    return [];
-                }
-
-                return User::query()->where('id', 'IN', new Parameter($intUserIds))->fetchAll();
+                return;
 
             default:
-                return User::query()->fetchAll();
+                yield from $this->fetchAllUserIdBatches();
         }
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int,int>
+     */
+    protected function normalizeIdList(mixed $value): array
+    {
+        $items = is_array($value) ? $value : [$value];
+        $ids = [];
+
+        foreach ($items as $item) {
+            $id = (int) $item;
+            if ($id > 0) {
+                $ids[$id] = $id;
+            }
+        }
+
+        sort($ids);
+
+        return array_values($ids);
+    }
+
+    /**
+     * @param array<int,int> $roleIds
+     * @return array<int,int>
+     */
+    protected function fetchValidRoleIds(array $roleIds): array
+    {
+        $rows = db()->select('id')->from('roles')->where('id', 'IN', new Parameter($roleIds))->fetchAll();
+
+        return $this->extractIds($rows, 'id');
+    }
+
+    /**
+     * @return iterable<array<int,int>>
+     */
+    protected function fetchAllUserIdBatches(): iterable
+    {
+        $lastId = 0;
+
+        do {
+            $rows = db()
+                ->select('id')
+                ->from('users')
+                ->where('is_temporary', false)
+                ->where('id', '>', $lastId)
+                ->orderBy('id', 'ASC')
+                ->limit(self::RECIPIENT_BATCH_SIZE)
+                ->fetchAll();
+
+            $ids = $this->extractIds($rows, 'id');
+            if (!empty($ids)) {
+                $lastId = max($ids);
+                yield $ids;
+            }
+        } while (count($ids) === self::RECIPIENT_BATCH_SIZE);
+    }
+
+    /**
+     * @param array<int,int> $roleIds
+     * @return iterable<array<int,int>>
+     */
+    protected function fetchUserIdBatchesForRoles(array $roleIds): iterable
+    {
+        $lastId = 0;
+
+        do {
+            $rows = db()
+                ->select([new Fragment('ur.user_id as user_id')])
+                ->from('user_roles as ur')
+                ->distinct()
+                ->innerJoin('users as u')
+                ->on('u.id', 'ur.user_id')
+                ->where('u.is_temporary', false)
+                ->where('ur.role_id', 'IN', new Parameter($roleIds))
+                ->where('ur.user_id', '>', $lastId)
+                ->orderBy('ur.user_id', 'ASC')
+                ->limit(self::RECIPIENT_BATCH_SIZE)
+                ->fetchAll();
+
+            $ids = $this->extractIds($rows, 'user_id');
+            if (!empty($ids)) {
+                $lastId = max($ids);
+                yield $ids;
+            }
+        } while (count($ids) === self::RECIPIENT_BATCH_SIZE);
+    }
+
+    /**
+     * @param array<int,int> $userIds
+     * @return array<int,int>
+     */
+    protected function fetchExistingUserIds(array $userIds): array
+    {
+        if (empty($userIds)) {
+            return [];
+        }
+
+        $rows = db()
+            ->select('id')
+            ->from('users')
+            ->where('is_temporary', false)
+            ->where('id', 'IN', new Parameter($userIds))
+            ->orderBy('id', 'ASC')
+            ->fetchAll();
+
+        return $this->extractIds($rows, 'id');
+    }
+
+    /**
+     * @param array<int,int> $userIds
+     * @return User[]
+     */
+    protected function fetchUsersByIds(array $userIds): array
+    {
+        if (empty($userIds)) {
+            return [];
+        }
+
+        return User::query()
+            ->where('id', 'IN', new Parameter($userIds))
+            ->orderBy('id', 'ASC')
+            ->fetchAll();
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $rows
+     * @return array<int,int>
+     */
+    protected function extractIds(array $rows, string $column): array
+    {
+        $ids = [];
+
+        foreach ($rows as $row) {
+            $id = (int) ( $row[$column] ?? 0 );
+            if ($id > 0) {
+                $ids[$id] = $id;
+            }
+        }
+
+        return array_values($ids);
+    }
+
+    protected function normalizeUrl(mixed $url): string|false|null
+    {
+        $url = trim((string) $url);
+        if ($url === '') {
+            return null;
+        }
+
+        if (str_starts_with($url, '/') && !str_starts_with($url, '//')) {
+            return $url;
+        }
+
+        $scheme = parse_url($url, PHP_URL_SCHEME);
+        if (
+            is_string($scheme)
+            && in_array(strtolower($scheme), ['http', 'https'], true)
+            && filter_var($url, FILTER_VALIDATE_URL)
+        ) {
+            return $url;
+        }
+
+        return false;
     }
 }

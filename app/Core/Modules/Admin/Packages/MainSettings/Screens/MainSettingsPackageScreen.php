@@ -1022,6 +1022,8 @@ class MainSettingsPackageScreen extends Screen
             return;
         }
 
+        $connectionName = $databases[$databaseName]['connection'] ?? $databaseName;
+
         config()->set("database.databases.{$databaseName}.prefix", $data['prefix'] ?? '');
 
         if ($driver === 'mysql') {
@@ -1106,7 +1108,7 @@ class MainSettingsPackageScreen extends Screen
             return;
         }
 
-        config()->set("database.connections.{$databaseName}", $connectionConfig);
+        config()->set("database.connections.{$connectionName}", $connectionConfig);
 
         try {
             config()->save();
@@ -1140,8 +1142,10 @@ class MainSettingsPackageScreen extends Screen
             return;
         }
 
+        $connectionName = $databases[$databaseId]['connection'] ?? $databaseId;
+
         unset($databases[$databaseId]);
-        unset($connections[$databaseId]);
+        unset($connections[$connectionName]);
 
         config()->set('database.databases', $databases);
         config()->set('database.connections', $connections);

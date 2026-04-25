@@ -47,6 +47,10 @@ class ModuleManager
 
     protected array $serviceProviders;
 
+    protected bool $databaseUnavailable = false;
+
+    protected bool $databaseFailureLogged = false;
+
     protected bool $performance;
 
     protected ?ModuleDependencies $dependencyChecker;
@@ -302,14 +306,17 @@ class ModuleManager
 
     protected function forceReloadModulesFromDatabase(): void
     {
-        $modules = Module::findAll();
+        try {
+            $modules = Module::findAll();
+        } catch (Throwable $e) {
+            $this->useCachedModulesDatabase($e);
+            $this->setCurrentStatusModules();
 
-        $this->modulesDatabase = array_map(static fn($m) => [
-            'key' => $m->key,
-            'createdAt' => $m->createdAt,
-            'status' => $m->status,
-            'installedVersion' => $m->installedVersion,
-        ], $modules);
+            return;
+        }
+
+        $this->databaseUnavailable = false;
+        $this->modulesDatabase = $this->mapDatabaseModules($modules);
 
         cache()->set('flute.modules.alldb', $this->modulesDatabase, self::CACHE_TIME);
 
@@ -496,20 +503,16 @@ class ModuleManager
 
     protected function loadModulesFromDatabase(): void
     {
-        $this->modulesDatabase = cache()->callback(
-            'flute.modules.alldb',
-            static function () {
-                $modules = Module::findAll();
-
-                return array_map(static fn($m) => [
-                    'key' => $m->key,
-                    'createdAt' => $m->createdAt,
-                    'status' => $m->status,
-                    'installedVersion' => $m->installedVersion,
-                ], $modules);
-            },
-            self::CACHE_TIME,
-        );
+        try {
+            $this->modulesDatabase = cache()->callback(
+                'flute.modules.alldb',
+                fn() => $this->mapDatabaseModules(Module::findAll()),
+                self::CACHE_TIME,
+            );
+            $this->databaseUnavailable = false;
+        } catch (Throwable $e) {
+            $this->useCachedModulesDatabase($e);
+        }
 
         $this->setCurrentStatusModules();
     }
@@ -525,6 +528,10 @@ class ModuleManager
             $moduleResult = $this->modules->get($module->key);
 
             if (!isset($dbByKey[$module->key])) {
+                if ($this->databaseUnavailable) {
+                    continue;
+                }
+
                 $this->createModuleInDatabase($module);
             } else {
                 $row = $dbByKey[$module->key];
@@ -539,6 +546,10 @@ class ModuleManager
 
     protected function createModuleInDatabase(ModuleInformation $moduleInformation): void
     {
+        if ($this->databaseUnavailable) {
+            return;
+        }
+
         $existing = Module::findOne(['key' => $moduleInformation->key]);
         if ($existing) {
             $this->modulesDatabase[] = [
@@ -587,6 +598,37 @@ class ModuleManager
             }
 
             logs('modules')->error('Ошибка при создании модуля в базе данных: ' . $e->getMessage());
+        }
+    }
+
+    protected function mapDatabaseModules(array $modules): array
+    {
+        return array_map(static fn($m) => [
+            'key' => $m->key,
+            'createdAt' => $m->createdAt,
+            'status' => $m->status,
+            'installedVersion' => $m->installedVersion,
+        ], $modules);
+    }
+
+    protected function useCachedModulesDatabase(Throwable $e): void
+    {
+        $this->databaseUnavailable = true;
+        $cachedModules = [];
+
+        try {
+            $cachedModules = cache()->get('flute.modules.alldb', []);
+        } catch (Throwable) {
+            $cachedModules = [];
+        }
+
+        $this->modulesDatabase = is_array($cachedModules) ? $cachedModules : [];
+
+        if (!$this->databaseFailureLogged) {
+            logs('modules')->warning(
+                'Module database lookup failed, using cached module metadata: ' . $e->getMessage(),
+            );
+            $this->databaseFailureLogged = true;
         }
     }
 

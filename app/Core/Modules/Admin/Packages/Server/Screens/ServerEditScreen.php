@@ -275,6 +275,12 @@ class ServerEditScreen extends Screen
      */
     public function addDatabaseModal(Repository $parameters)
     {
+        if (!user()->can('admin.boss')) {
+            $this->flashMessage(__('def.permission_denied'), 'error');
+
+            return null;
+        }
+
         $defaultConnection = config('database.connections.default');
 
         $explode = explode('\\', $defaultConnection->driver);
@@ -604,6 +610,12 @@ class ServerEditScreen extends Screen
      */
     public function addDatabase()
     {
+        if (!user()->can('admin.boss')) {
+            $this->flashMessage(__('def.permission_denied'), 'error');
+
+            return;
+        }
+
         $data = request()->input();
 
         if (!$this->validate([
@@ -718,6 +730,7 @@ class ServerEditScreen extends Screen
                 reconnect: $reconnect,
                 timezone: 'Asia/Yekaterinburg',
                 queryCache: true,
+                readonlySchema: true,
             );
         } elseif ($driver === 'postgres') {
             $options = [];
@@ -739,6 +752,7 @@ class ServerEditScreen extends Screen
                 reconnect: $reconnect,
                 schema: 'public',
                 queryCache: true,
+                readonlySchema: true,
             );
         } else {
             $this->flashMessage(__('admin-main-settings.messages.unsupported_driver'), 'error');
@@ -1302,20 +1316,29 @@ class ServerEditScreen extends Screen
                 'mod',
                 'dbname',
             ])
-            ->commands([
-                Button::make(__('admin-server.db_connection.create_db.button'))
-                    ->type(Color::OUTLINE_SECONDARY)
-                    ->icon('ph.bold.database-bold')
-                    ->modal('addDatabaseModal')
-                    ->fullWidth(),
-
-                Button::make(__('admin-server.db_connection.add.button'))
-                    ->type(Color::OUTLINE_PRIMARY)
-                    ->icon('ph.bold.plus-bold')
-                    ->modal('addDbConnectionModal')
-                    ->fullWidth(),
-            ])
+            ->commands($this->dbConnectionCommands())
             ->setVisible($this->serverId);
+    }
+
+    private function dbConnectionCommands(): array
+    {
+        $commands = [];
+
+        if (user()->can('admin.boss')) {
+            $commands[] = Button::make(__('admin-server.db_connection.create_db.button'))
+                ->type(Color::OUTLINE_SECONDARY)
+                ->icon('ph.bold.database-bold')
+                ->modal('addDatabaseModal')
+                ->fullWidth();
+        }
+
+        $commands[] = Button::make(__('admin-server.db_connection.add.button'))
+            ->type(Color::OUTLINE_PRIMARY)
+            ->icon('ph.bold.plus-bold')
+            ->modal('addDbConnectionModal')
+            ->fullWidth();
+
+        return $commands;
     }
 
     /**

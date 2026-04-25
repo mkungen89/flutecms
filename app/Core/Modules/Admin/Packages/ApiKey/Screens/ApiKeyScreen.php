@@ -15,7 +15,6 @@ use Flute\Admin\Platform\Screen;
 use Flute\Admin\Platform\Support\Color;
 use Flute\Core\Database\Entities\ApiKey;
 use Flute\Core\Database\Entities\Permission;
-use Illuminate\Support\Str;
 
 class ApiKeyScreen extends Screen
 {
@@ -41,6 +40,7 @@ class ApiKeyScreen extends Screen
     {
         return [
             LayoutFactory::view('admin-api::components.api-info-alert'),
+            LayoutFactory::view('admin-api::components.api-key-created-alert'),
 
             LayoutFactory::table('apiKeys', [
                 TD::selection('id'),
@@ -80,6 +80,14 @@ class ApiKeyScreen extends Screen
                                 ->modal('editApiKeyModal', ['id' => $apiKey->id])
                                 ->icon('ph.bold.pencil-bold')
                                 ->type(Color::OUTLINE_PRIMARY)
+                                ->size('small')
+                                ->fullWidth(),
+
+                            DropDownItem::make(__('admin-apikey.buttons.regenerate'))
+                                ->confirm(__('admin-apikey.confirms.regenerate_key'))
+                                ->method('regenerateApiKey', ['id' => $apiKey->id])
+                                ->icon('ph.bold.arrows-clockwise-bold')
+                                ->type(Color::OUTLINE_WARNING)
                                 ->size('small')
                                 ->fullWidth(),
 
@@ -123,16 +131,6 @@ class ApiKeyScreen extends Screen
     {
         return LayoutFactory::modal($parameters, [
             LayoutFactory::field(
-                Input::make('key')
-                    ->type('text')
-                    ->placeholder(__('admin-apikey.fields.key.placeholder'))
-                    ->value(Str::random(32)),
-            )
-                ->label(__('admin-apikey.fields.key.label'))
-                ->required()
-                ->small(__('admin-apikey.fields.key.help')),
-
-            LayoutFactory::field(
                 Input::make('name')->type('text')->placeholder(__('admin-apikey.fields.name.placeholder')),
             )
                 ->label(__('admin-apikey.fields.name.label'))
@@ -169,7 +167,6 @@ class ApiKeyScreen extends Screen
 
         $validation = $this->validate(
             [
-                'key' => ['required', 'string', 'unique:api_keys,key'],
                 'name' => ['required', 'string', 'unique:api_keys,name'],
                 'permissions' => ['required', 'array'],
                 // 'permissions.*' => ['exists:permissions,name'],
@@ -181,18 +178,20 @@ class ApiKeyScreen extends Screen
             return;
         }
 
+        $plainKey = $this->generateUniqueApiKey();
+
         $apiKey = new ApiKey();
-        $apiKey->key = $data['key'];
         $apiKey->name = $data['name'];
+        $apiKey->key = ApiKey::hashPlainKey($plainKey);
         $apiKey->saveOrFail();
 
-        $permissions = Permission::query()->where('name', 'in', new Parameter($data['permissions']))->fetchAll();
-        foreach ($permissions as $permission) {
-            if (user()->can($permission->name)) {
-                $apiKey->addPermission($permission);
-            }
-        }
+        $this->syncPermissions($apiKey, $data['permissions']);
         $apiKey->saveOrFail();
+
+        session()->set('admin.api_keys.created_key', [
+            'name' => $apiKey->name,
+            'key' => $plainKey,
+        ]);
 
         $this->flashMessage(__('admin-apikey.messages.save_success'), 'success');
         $this->apiKeys = rep(ApiKey::class)->select();
@@ -214,16 +213,6 @@ class ApiKeyScreen extends Screen
         $selectedPermissions = array_map(static fn($permission) => $permission->name, $apiKey->permissions);
 
         return LayoutFactory::modal($parameters, [
-            LayoutFactory::field(
-                Input::make('key')
-                    ->type('text')
-                    ->placeholder(__('admin-apikey.fields.key.placeholder'))
-                    ->value($apiKey->key),
-            )
-                ->label(__('admin-apikey.fields.key.label'))
-                ->required()
-                ->small(__('admin-apikey.fields.key.help')),
-
             LayoutFactory::field(
                 Input::make('name')
                     ->type('text')
@@ -273,7 +262,6 @@ class ApiKeyScreen extends Screen
 
         $validation = $this->validate(
             [
-                'key' => ['required', 'string', "unique:api_keys,key,{$apiKey->id}"],
                 'name' => ['required', 'string'],
                 'permissions' => ['required', 'array'],
                 // 'permissions.*' => ['exists:permissions,name'],
@@ -285,19 +273,8 @@ class ApiKeyScreen extends Screen
             return;
         }
 
-        $apiKey->key = $data['key'];
         $apiKey->name = $data['name'];
-        $apiKey->saveOrFail();
-
-        $apiKey->permissions = [];
-
-        $permissions = Permission::query()->where('name', 'in', new Parameter($data['permissions']))->fetchAll();
-
-        foreach ($permissions as $permission) {
-            if (user()->can($permission->name)) {
-                $apiKey->addPermission($permission);
-            }
-        }
+        $this->syncPermissions($apiKey, $data['permissions']);
 
         $apiKey->save();
 
@@ -325,6 +302,30 @@ class ApiKeyScreen extends Screen
         $this->apiKeys = rep(ApiKey::class)->select();
     }
 
+    public function regenerateApiKey(): void
+    {
+        $id = request()->input('id');
+
+        $apiKey = ApiKey::findByPK($id);
+        if (!$apiKey) {
+            $this->flashMessage(__('admin-apikey.messages.key_not_found'), 'error');
+
+            return;
+        }
+
+        $plainKey = $this->generateUniqueApiKey();
+        $apiKey->key = ApiKey::hashPlainKey($plainKey);
+        $apiKey->saveOrFail();
+
+        session()->set('admin.api_keys.created_key', [
+            'name' => $apiKey->name,
+            'key' => $plainKey,
+        ]);
+
+        $this->flashMessage(__('admin-apikey.messages.regenerate_success'), 'success');
+        $this->apiKeys = rep(ApiKey::class)->select();
+    }
+
     public function bulkDeleteApiKeys(): void
     {
         $ids = request()->input('selected', []);
@@ -340,5 +341,27 @@ class ApiKeyScreen extends Screen
         }
         $this->apiKeys = rep(ApiKey::class)->select();
         $this->flashMessage(__('admin-apikey.messages.delete_success'), 'success');
+    }
+
+    private function generateUniqueApiKey(): string
+    {
+        do {
+            $plainKey = bin2hex(random_bytes(16));
+        } while (ApiKey::findByPlainKey($plainKey) !== null);
+
+        return $plainKey;
+    }
+
+    private function syncPermissions(ApiKey $apiKey, array $permissionNames): void
+    {
+        $apiKey->permissions = [];
+
+        $permissions = Permission::query()->where('name', 'in', new Parameter($permissionNames))->fetchAll();
+
+        foreach ($permissions as $permission) {
+            if (user()->can($permission->name)) {
+                $apiKey->addPermission($permission);
+            }
+        }
     }
 }

@@ -153,6 +153,9 @@ html[data-nav-style="sidebar"][data-nav-fixed="false"] {
         z-index: 200;
         transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         box-shadow: none;
+        background: var(--blurred-background);
+        backdrop-filter: blur(var(--blur-amount, 10px)) saturate(180%);
+        -webkit-backdrop-filter: blur(var(--blur-amount, 10px)) saturate(180%);
 
         &.is-mobile-open {
             transform: translateX(0);

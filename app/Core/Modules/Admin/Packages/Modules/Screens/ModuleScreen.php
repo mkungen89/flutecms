@@ -104,6 +104,17 @@ class ModuleScreen extends Screen
                     ->render(static function (ModuleInformation $module) {
                         $actions = [];
 
+                        if (!user()->can('admin.boss')) {
+                            $actions[] = DropDownItem::make(__('admin-modules.actions.details'))
+                                ->modal('moduleDetailsModal', ['key' => $module->key])
+                                ->icon('ph.bold.info-bold')
+                                ->type(Color::OUTLINE_PRIMARY)
+                                ->size('small')
+                                ->fullWidth();
+
+                            return DropDown::make()->icon('ph.regular.dots-three-outline-vertical')->list($actions);
+                        }
+
                         if (
                             $module->status !== ModuleManager::NOTINSTALLED
                             && $module->installedVersion !== $module->version
@@ -159,23 +170,7 @@ class ModuleScreen extends Screen
                     }),
             ])
                 ->searchable(['key', 'name'])
-                ->bulkActions([
-                    Button::make(__('admin.bulk.enable_selected'))
-                        ->icon('ph.bold.play-bold')
-                        ->type(Color::OUTLINE_SUCCESS)
-                        ->method('bulkActivateModules'),
-
-                    Button::make(__('admin.bulk.disable_selected'))
-                        ->icon('ph.bold.pause-bold')
-                        ->type(Color::OUTLINE_WARNING)
-                        ->method('bulkDisableModules'),
-
-                    Button::make(__('admin.bulk.delete_selected'))
-                        ->icon('ph.bold.trash-bold')
-                        ->type(Color::OUTLINE_DANGER)
-                        ->confirm(__('admin.confirms.delete_selected'))
-                        ->method('bulkUninstallModules'),
-                ])
+                ->bulkActions($this->moduleBulkActions())
                 ->commands([
                     Button::make(__('admin-modules.actions.refresh_list'))
                         ->icon('ph.regular.arrows-counter-clockwise')
@@ -184,6 +179,36 @@ class ModuleScreen extends Screen
                         ->method('refreshModules'),
                 ]),
         ];
+    }
+
+    private function moduleBulkActions(): array
+    {
+        if (!user()->can('admin.boss')) {
+            return [];
+        }
+
+        return [
+            Button::make(__('admin.bulk.enable_selected'))
+                ->icon('ph.bold.play-bold')
+                ->type(Color::OUTLINE_SUCCESS)
+                ->method('bulkActivateModules'),
+
+            Button::make(__('admin.bulk.disable_selected'))
+                ->icon('ph.bold.pause-bold')
+                ->type(Color::OUTLINE_WARNING)
+                ->method('bulkDisableModules'),
+
+            Button::make(__('admin.bulk.delete_selected'))
+                ->icon('ph.bold.trash-bold')
+                ->type(Color::OUTLINE_DANGER)
+                ->confirm(__('admin.confirms.delete_selected'))
+                ->method('bulkUninstallModules'),
+        ];
+    }
+
+    private function canDeployModules(): bool
+    {
+        return user()->can('admin.boss');
     }
 
     /**
@@ -254,6 +279,12 @@ class ModuleScreen extends Screen
      */
     public function installModule()
     {
+        if (!$this->canDeployModules()) {
+            $this->flashMessage(__('def.permission_denied'), 'error');
+
+            return;
+        }
+
         $key = $this->resolveKey();
         if (empty($key)) {
             $this->flashMessage(__('admin-modules.messages.module_not_found'), 'error');
@@ -284,6 +315,12 @@ class ModuleScreen extends Screen
      */
     public function activateModule()
     {
+        if (!$this->canDeployModules()) {
+            $this->flashMessage(__('def.permission_denied'), 'error');
+
+            return;
+        }
+
         $key = $this->resolveKey();
         if (empty($key)) {
             $this->flashMessage(__('admin-modules.messages.module_not_found'), 'error');
@@ -315,6 +352,12 @@ class ModuleScreen extends Screen
      */
     public function disableModule()
     {
+        if (!$this->canDeployModules()) {
+            $this->flashMessage(__('def.permission_denied'), 'error');
+
+            return;
+        }
+
         $key = $this->resolveKey();
         if (empty($key)) {
             $this->flashMessage(__('admin-modules.messages.module_not_found'), 'error');
@@ -345,6 +388,12 @@ class ModuleScreen extends Screen
      */
     public function updateModule()
     {
+        if (!$this->canDeployModules()) {
+            $this->flashMessage(__('def.permission_denied'), 'error');
+
+            return;
+        }
+
         $key = $this->resolveKey();
         if (empty($key)) {
             $this->flashMessage(__('admin-modules.messages.module_not_found'), 'error');
@@ -375,6 +424,12 @@ class ModuleScreen extends Screen
      */
     public function uninstallModule()
     {
+        if (!$this->canDeployModules()) {
+            $this->flashMessage(__('def.permission_denied'), 'error');
+
+            return;
+        }
+
         $key = $this->resolveKey();
         if (empty($key)) {
             $this->flashMessage(__('admin-modules.messages.module_not_found'), 'error');
@@ -402,6 +457,12 @@ class ModuleScreen extends Screen
 
     public function bulkActivateModules(): void
     {
+        if (!$this->canDeployModules()) {
+            $this->flashMessage(__('def.permission_denied'), 'error');
+
+            return;
+        }
+
         $keys = request()->input('selected', []);
         if (!$keys) {
             return;
@@ -415,6 +476,9 @@ class ModuleScreen extends Screen
             try {
                 app(ModuleActions::class)->activateModule($module, $this->moduleManager);
             } catch (Throwable $e) {
+                logs('modules')->warning('Bulk module activation failed: ' . $e->getMessage(), [
+                    'module' => $key,
+                ]);
             }
         }
         $this->loadModules(true);
@@ -424,6 +488,12 @@ class ModuleScreen extends Screen
 
     public function bulkDisableModules(): void
     {
+        if (!$this->canDeployModules()) {
+            $this->flashMessage(__('def.permission_denied'), 'error');
+
+            return;
+        }
+
         $keys = request()->input('selected', []);
         if (!$keys) {
             return;
@@ -437,6 +507,9 @@ class ModuleScreen extends Screen
             try {
                 app(ModuleActions::class)->disableModule($module, $this->moduleManager);
             } catch (Throwable $e) {
+                logs('modules')->warning('Bulk module disable failed: ' . $e->getMessage(), [
+                    'module' => $key,
+                ]);
             }
         }
         $this->loadModules(true);
@@ -446,6 +519,12 @@ class ModuleScreen extends Screen
 
     public function bulkUninstallModules(): void
     {
+        if (!$this->canDeployModules()) {
+            $this->flashMessage(__('def.permission_denied'), 'error');
+
+            return;
+        }
+
         $keys = request()->input('selected', []);
         if (!$keys) {
             return;
@@ -459,6 +538,9 @@ class ModuleScreen extends Screen
             try {
                 app(ModuleActions::class)->uninstallModule($module, $this->moduleManager);
             } catch (Throwable $e) {
+                logs('modules')->warning('Bulk module uninstall failed: ' . $e->getMessage(), [
+                    'module' => $key,
+                ]);
             }
         }
         $this->loadModules(true);
