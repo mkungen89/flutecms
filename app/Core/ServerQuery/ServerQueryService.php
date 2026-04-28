@@ -8,6 +8,7 @@ use Flute\Core\ServerQuery\Drivers\MinecraftBedrockQueryDriver;
 use Flute\Core\ServerQuery\Drivers\MinecraftJavaQueryDriver;
 use Flute\Core\ServerQuery\Drivers\SampQueryDriver;
 use Flute\Core\ServerQuery\Drivers\ValveQueryDriver;
+use Flute\Core\ServerQuery\Drivers\XashQueryDriver;
 
 class ServerQueryService
 {
@@ -50,6 +51,9 @@ class ServerQueryService
         '244850' => ValveQueryDriver::class, // Space Engineers
         'rust' => ValveQueryDriver::class,
         'all_hl_games_mods' => ValveQueryDriver::class,
+
+        // Xash3D FWGS
+        'xash3d' => XashQueryDriver::class,
 
         // Minecraft Java
         'minecraft' => MinecraftJavaQueryDriver::class,
