@@ -252,6 +252,7 @@ class AdminServersService
             'gta5' => 'GTA 5',
             'samp' => 'SAMP',
             'all_hl_games_mods' => 'HL1 / HL2 Game',
+            'xash3d' => 'Xash3D FWGS',
         ];
     }
 
