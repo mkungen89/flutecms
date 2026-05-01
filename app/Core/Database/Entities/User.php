@@ -266,6 +266,33 @@ class User extends ActiveRecord
         return ! empty($this->uri) ? $this->uri : (string) $this->id;
     }
 
+    /**
+     * Roles ordered by display priority, highest first.
+     *
+     * @return Role[]
+     */
+    public function getSortedRoles() : array
+    {
+        $roles = array_values($this->roles ?? []);
+
+        usort($roles, static function (Role $a, Role $b) : int {
+            $priorityCompare = $b->priority <=> $a->priority;
+
+            if ($priorityCompare !== 0) {
+                return $priorityCompare;
+            }
+
+            return ($a->id ?? 0) <=> ($b->id ?? 0);
+        });
+
+        return $roles;
+    }
+
+    public function getPrimaryRole() : ?Role
+    {
+        return $this->getSortedRoles()[0] ?? null;
+    }
+
     public function isOnline() : bool
     {
         $now = new \DateTimeImmutable();
@@ -321,8 +348,7 @@ class User extends ActiveRecord
 
     public function getMainRole() : ?string
     {
-        $maxPriorityRole = collect($this->roles)->sortByDesc('priority')->first();
-        return $maxPriorityRole ? $maxPriorityRole->name : null;
+        return $this->getPrimaryRole()?->name;
     }
 
     public function getLastLoggedPhrase() : string

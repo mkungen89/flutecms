@@ -245,10 +245,11 @@
                                     </div>
 
                                     {{-- Roles --}}
-                                    @if (sizeof($user->roles))
+                                    @php $profileRoles = $user->getSortedRoles(); @endphp
+                                    @if (sizeof($profileRoles))
                                         <div class="profile__roles" itemprop="jobTitle">
                                             <div class="role-badges" role="list">
-                                                @foreach ($user->roles as $role)
+                                                @foreach ($profileRoles as $role)
                                                     <x-role-badge :role="$role" mode="full" />
                                                 @endforeach
                                             </div>

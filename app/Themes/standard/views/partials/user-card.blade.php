@@ -1,6 +1,6 @@
 @php
-    $roles = $user->roles;
-    $primaryRole = $roles[0] ?? null;
+    $roles = $user->getSortedRoles();
+    $primaryRole = $user->getPrimaryRole();
     $roleColor = $primaryRole?->color ?? '#8e8e8e';
     $socialNetworks = $user->socialNetworks;
     $unhiddenSocialNetworks = [];
