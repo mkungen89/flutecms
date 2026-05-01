@@ -2,8 +2,8 @@
     <div class="user-mini-profile">
         <div class="user-mini-profile-content">
             @php
-                $roles = $user->roles;
-                $primaryRole = $roles[0] ?? null;
+                $roles = $user->getSortedRoles();
+                $primaryRole = $user->getPrimaryRole();
             @endphp
 
             <div class="user-mini-profile-main" hx-boost="true" hx-target="#main" hx-swap="outerHTML transition:true">

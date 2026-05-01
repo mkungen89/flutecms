@@ -197,16 +197,6 @@ class UserNameRenderer
 
     protected function getUserRoleColor(User $user): ?string
     {
-        $maxPriorityRole = null;
-        $maxPriority = -1;
-
-        foreach ($user->roles as $role) {
-            if ($role->priority > $maxPriority) {
-                $maxPriority = $role->priority;
-                $maxPriorityRole = $role;
-            }
-        }
-
-        return $maxPriorityRole?->color;
+        return $user->getPrimaryRole()?->color;
     }
 }

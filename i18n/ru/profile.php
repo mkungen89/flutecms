@@ -263,7 +263,7 @@ return [
         'ban_user' => 'Заблокировать',
         'unban_user' => 'Разблокировать',
         'verify_user' => 'Подтвердить email',
-        'unverify_user' => 'Снять подтверждение',
+        'unverify_user' => 'Снять подтверждение email',
         'clear_sessions' => 'Сбросить сессии',
         'current_balance' => 'Текущий баланс',
         'amount' => 'Сумма',
