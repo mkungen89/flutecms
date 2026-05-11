@@ -46,7 +46,6 @@ class ServerEditScreen extends Screen
     public $ranksFormats = [
         'webp' => 'webp',
         'png' => 'png',
-        'svg' => 'svg',
         'jpg' => 'jpg',
         'gif' => 'gif',
         'jpeg' => 'jpeg',

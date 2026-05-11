@@ -15,9 +15,10 @@ class TokenMiddleware extends BaseMiddleware
     public function handle(FluteRequest $request, Closure $next, ...$args): \Symfony\Component\HttpFoundation\Response
     {
         $token = $request->getAuthorizationBearerToken();
+        $optional = isset($args[0]) && $args[0] === 'optional';
 
         if (!$token) {
-            return $next($request);
+            return $optional ? $next($request) : $this->error()->unauthorized();
         }
 
         $findToken = ApiKey::findByPlainKey($token, true);

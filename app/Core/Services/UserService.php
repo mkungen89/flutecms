@@ -811,10 +811,11 @@ class UserService
             }
 
             if (config('auth.check_ip')) {
-                if ($tokenInfo->userDevice->ip !== request()->ip()) {
+                $clientIp = request()->getClientIp();
+                if ($tokenInfo->userDevice->ip !== $clientIp) {
                     logs()->warning('auth.token.ip_mismatch', [
                         'expected' => $tokenInfo->userDevice->ip,
-                        'actual' => request()->ip(),
+                        'actual' => $clientIp,
                     ]);
                     $this->sessionExpired();
 
@@ -843,7 +844,7 @@ class UserService
                 logs()->debug('auth.token.initialize_success', ['ms' => $dt, 'user_id' => (int) $tokenInfo->user->id]);
             }
         } catch (Throwable $e) {
-            logs()->warning($e->getMessage());
+            logs()->warning('auth.token.initialize_failed', ['reason' => $e->getMessage()]);
             $this->sessionExpired();
         }
     }

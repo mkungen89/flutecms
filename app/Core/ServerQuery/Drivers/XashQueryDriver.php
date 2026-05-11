@@ -31,16 +31,17 @@ class XashQueryDriver implements QueryDriverInterface
 
         if ($info === null) {
             logs()->debug("XashQuery: no response from {$ip}:{$queryPort}");
+
             return $result;
         }
 
-        $result->online     = true;
-        $result->hostname   = isset($info['host']) ? $this->stripColorCodes($info['host']) : null;
-        $result->map        = $info['map'] ?? null;
-        $result->players    = (int) ($info['numcl'] ?? 0);
-        $result->maxPlayers = (int) ($info['maxcl'] ?? 0);
-        $result->game       = $info['gamedir'] ?? 'cstrike';
-        $result->version    = 'Xash3D protocol ' . $protocol;
+        $result->online = true;
+        $result->hostname = isset($info['host']) ? $this->stripColorCodes($info['host']) : null;
+        $result->map = $info['map'] ?? null;
+        $result->players = (int) ( $info['numcl'] ?? 0 );
+        $result->maxPlayers = (int) ( $info['maxcl'] ?? 0 );
+        $result->game = $info['gamedir'] ?? 'cstrike';
+        $result->version = 'Xash3D protocol ' . $protocol;
         $result->additional = $info;
         // 'folder' is what ServerEditScreen uses for the Game display field
         $result->additional['folder'] = $info['gamedir'] ?? null;
@@ -82,7 +83,7 @@ class XashQueryDriver implements QueryDriverInterface
             $raw = $this->sendAndRead($socket, self::OOB_HEADER . "info {$protocol}");
             fclose($socket);
 
-            if ($raw === '' || ($protocol === 48 && strpos($raw, 'wrong version') !== false)) {
+            if ($raw === '' || $protocol === 48 && strpos($raw, 'wrong version') !== false) {
                 continue;
             }
 
@@ -144,7 +145,7 @@ class XashQueryDriver implements QueryDriverInterface
 
         if ($protocol === 49) {
             $kv = [];
-            for ($i = 0; $i + 1 < count($parts); $i += 2) {
+            for ($i = 0; ( $i + 1 ) < count($parts); $i += 2) {
                 $kv[$parts[$i]] = $parts[$i + 1];
             }
 
@@ -153,23 +154,23 @@ class XashQueryDriver implements QueryDriverInterface
                 $name = $kv["p{$i}name"];
                 if (trim($name) !== '') {
                     $players[] = [
-                        'name'  => $this->stripColorCodes($name),
-                        'score' => (int) ($kv["p{$i}frags"] ?? 0),
-                        'time'  => (float) ($kv["p{$i}time"] ?? 0),
+                        'name' => $this->stripColorCodes($name),
+                        'score' => (int) ( $kv["p{$i}frags"] ?? 0 ),
+                        'time' => (float) ( $kv["p{$i}time"] ?? 0 ),
                     ];
                 }
                 $i++;
             }
         } else {
-            for ($i = 0; $i + 3 < count($parts); $i += 4) {
+            for ($i = 0; ( $i + 3 ) < count($parts); $i += 4) {
                 $name = $parts[$i + 1] ?? '';
                 if (trim($name) === '') {
                     continue;
                 }
                 $players[] = [
-                    'name'  => $this->stripColorCodes($name),
-                    'score' => (int) ($parts[$i + 2] ?? 0),
-                    'time'  => (float) ($parts[$i + 3] ?? 0),
+                    'name' => $this->stripColorCodes($name),
+                    'score' => (int) ( $parts[$i + 2] ?? 0 ),
+                    'time' => (float) ( $parts[$i + 3] ?? 0 ),
                 ];
             }
         }
@@ -189,9 +190,9 @@ class XashQueryDriver implements QueryDriverInterface
         $kv = ltrim($newline !== false ? substr($body, $newline + 1) : $body, '\\');
 
         $parts = explode('\\', $kv);
-        $info  = [];
+        $info = [];
 
-        for ($i = 0; $i + 1 < count($parts); $i += 2) {
+        for ($i = 0; ( $i + 1 ) < count($parts); $i += 2) {
             $key = trim($parts[$i]);
             if ($key !== '') {
                 $info[$key] = trim($parts[$i + 1]);
@@ -220,8 +221,8 @@ class XashQueryDriver implements QueryDriverInterface
 
     private function readWithTimeout($socket, int $maxSize = 4096): string
     {
-        $read   = [$socket];
-        $write  = null;
+        $read = [$socket];
+        $write = null;
         $except = null;
 
         $ready = @stream_select($read, $write, $except, $this->readTimeout);
@@ -232,6 +233,6 @@ class XashQueryDriver implements QueryDriverInterface
 
         $data = @fread($socket, $maxSize);
 
-        return ($data === false || $data === '') ? '' : $data;
+        return $data === false || $data === '' ? '' : $data;
     }
 }

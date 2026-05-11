@@ -12,6 +12,12 @@ use ZipArchive;
 
 class FileUploader
 {
+    private const DEFAULT_ZIP_MAX_ENTRIES = 5000;
+
+    private const DEFAULT_ZIP_MAX_TOTAL_SIZE = 250 * 1024 * 1024;
+
+    private const DEFAULT_ZIP_MIN_COMPRESSION_RATIO = 0.001;
+
     private $targetDirectory;
 
     private $filesystem;
@@ -158,19 +164,18 @@ class FileUploader
             throw new Exception('Invalid ZIP file.');
         }
 
-        // Validate ZIP entries against Zip Slip and dangerous files
-        for ($i = 0; $i < $zip->numFiles; $i++) {
-            $entryName = $zip->getNameIndex($i);
-
-            if (str_contains($entryName, '..') || str_starts_with($entryName, '/') || str_contains($entryName, "\0")) {
-                $zip->close();
-                $this->filesystem->remove($filePath);
-
-                throw new Exception('ZIP contains suspicious path.');
-            }
-        }
-
         $zip->close();
+
+        try {
+            $this->inspectZipArchive($filePath, [
+                'max_total_size' => $this->convertMegabytesToBytes($maxSize),
+                'reject_dangerous_extensions' => true,
+            ]);
+        } catch (Throwable $e) {
+            $this->filesystem->remove($filePath);
+
+            throw $e;
+        }
 
         return 'assets/uploads/' . $fileName;
     }
@@ -182,8 +187,10 @@ class FileUploader
      * @param string $destination Directory to extract into
      * @return bool True on success
      */
-    public function safeExtractZip(string $zipPath, string $destination): bool
+    public function safeExtractZip(string $zipPath, string $destination, array $options = []): bool
     {
+        $this->inspectZipArchive($zipPath, $options);
+
         $zip = new ZipArchive();
 
         if ($zip->open($zipPath) !== true) {
@@ -197,27 +204,90 @@ class FileUploader
             throw new Exception('Extraction destination does not exist.');
         }
 
-        for ($i = 0; $i < $zip->numFiles; $i++) {
-            $entryName = $zip->getNameIndex($i);
-            $normalized = str_replace('\\', '/', (string) $entryName);
-
-            if (str_starts_with($normalized, '/') || str_contains($normalized, "\0")) {
-                $zip->close();
-
-                throw new Exception('ZIP Slip detected.');
-            }
-
-            if (!$this->zipArchiveEntryPathStaysInsideRoot($normalized)) {
-                $zip->close();
-
-                throw new Exception('ZIP Slip detected.');
-            }
-        }
-
         $zip->extractTo($destination);
         $zip->close();
 
         return true;
+    }
+
+    /**
+     * Inspect a ZIP archive before extraction or public storage.
+     */
+    public function inspectZipArchive(string $zipPath, array $options = []): void
+    {
+        $zip = new ZipArchive();
+
+        if ($zip->open($zipPath) !== true) {
+            throw new Exception('Cannot open ZIP file.');
+        }
+
+        $maxEntries = (int) ( $options['max_entries'] ?? self::DEFAULT_ZIP_MAX_ENTRIES );
+        $maxTotalSize = (int) ( $options['max_total_size'] ?? self::DEFAULT_ZIP_MAX_TOTAL_SIZE );
+        $minCompressionRatio = (float) ( $options['min_compression_ratio'] ?? self::DEFAULT_ZIP_MIN_COMPRESSION_RATIO );
+        $rejectDangerousExtensions = (bool) ( $options['reject_dangerous_extensions'] ?? false );
+        $allowedExtensions = $options['allowed_extensions'] ?? null;
+        if (is_array($allowedExtensions)) {
+            $allowedExtensions = array_map(static fn($ext) => strtolower((string) $ext), $allowedExtensions);
+        }
+
+        if ($zip->numFiles > $maxEntries) {
+            $zip->close();
+
+            throw new Exception('ZIP contains too many files.');
+        }
+
+        $totalSize = 0;
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $entryName = $zip->getNameIndex($i);
+            if ($entryName === false) {
+                $zip->close();
+
+                throw new Exception('Invalid ZIP entry.');
+            }
+
+            $normalized = str_replace('\\', '/', $entryName);
+            $this->assertSafeZipEntryPath($normalized);
+
+            $isDirectory = str_ends_with($normalized, '/');
+            $extension = strtolower(pathinfo($normalized, PATHINFO_EXTENSION));
+
+            if (!$isDirectory && $allowedExtensions !== null && !in_array($extension, $allowedExtensions, true)) {
+                $zip->close();
+
+                throw new Exception('ZIP contains unsupported file type.');
+            }
+
+            if (!$isDirectory && $rejectDangerousExtensions && $this->hasDangerousExtension($normalized)) {
+                $zip->close();
+
+                throw new Exception('ZIP contains dangerous file type.');
+            }
+
+            $stats = $zip->statIndex($i);
+            if (!is_array($stats)) {
+                $zip->close();
+
+                throw new Exception('Invalid ZIP entry metadata.');
+            }
+
+            $size = (int) ( $stats['size'] ?? 0 );
+            $compressedSize = (int) ( $stats['comp_size'] ?? 0 );
+            $totalSize += $size;
+
+            if ($totalSize > $maxTotalSize) {
+                $zip->close();
+
+                throw new Exception('ZIP extracted size exceeds the maximum limit.');
+            }
+
+            if ($size > 0 && ( $compressedSize <= 0 || ( $compressedSize / $size ) < $minCompressionRatio )) {
+                $zip->close();
+
+                throw new Exception('ZIP compression ratio is suspicious.');
+            }
+        }
+
+        $zip->close();
     }
 
     /**
@@ -284,6 +354,25 @@ class FileUploader
         }
 
         return true;
+    }
+
+    private function assertSafeZipEntryPath(string $normalizedEntryPath): void
+    {
+        if (
+            $normalizedEntryPath === ''
+            || str_starts_with($normalizedEntryPath, '/')
+            || str_contains($normalizedEntryPath, "\0")
+            || !$this->zipArchiveEntryPathStaysInsideRoot($normalizedEntryPath)
+        ) {
+            throw new Exception('ZIP Slip detected.');
+        }
+    }
+
+    private function hasDangerousExtension(string $path): bool
+    {
+        $pattern = '/\.(' . implode('|', self::DANGEROUS_EXTENSIONS) . ')(\.|$)/i';
+
+        return preg_match($pattern, basename($path)) === 1;
     }
 
     /**

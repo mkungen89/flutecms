@@ -78,9 +78,6 @@
         </noscript>
         <link rel="preload" href="@asset('grid')" as="style" onload="this.onload=null;this.rel='stylesheet'">
         <noscript><link rel="stylesheet" href="@asset('grid')" type='text/css'></noscript>
-        <link rel="stylesheet" href="@asset('assets/css/libs/filepond.min.css')">
-        <link rel="stylesheet" href="@asset('assets/css/libs/filepond-plugin-image-preview.min.css')">
-
         <link rel="stylesheet" href="@asset('assets/css/libs/cropper.min.css')" media="print" onload="this.media='all'">
         {{-- SCSS assets --}}
         @at('Core/Modules/Admin/Resources/assets/sass/admin.scss')
@@ -313,31 +310,6 @@
                     return !!(root.querySelector && root.querySelector(selector));
                 }
 
-                registry.filepond = {
-                    match: 'input.filepond',
-                    srcs: [
-                        "@asset('assets/js/libs/filepond-plugin-image-preview.js')",
-                        "@asset('assets/js/libs/filepond-plugin-file-validate-type.js')",
-                        "@asset('assets/js/libs/filepond-plugin-file-validate-size.js')",
-                        "@asset('assets/js/libs/filepond-plugin-image-exif-orientation.js')",
-                        "@asset('assets/js/libs/filepond.js')",
-                        "@asset('assets/js/libs/cropper.js')"
-                    ],
-                    init: function (root) {
-                        if (typeof window._registerFilePondPlugins === 'function') {
-                            window._registerFilePondPlugins();
-                        }
-
-                        if (typeof window.initializeFilePondElement === 'function') {
-                            var scope = root && root.querySelectorAll ? root : document;
-                            if (scope.matches && scope.matches('input.filepond')) {
-                                window.initializeFilePondElement(scope);
-                            }
-                            scope.querySelectorAll('input.filepond').forEach(window.initializeFilePondElement);
-                        }
-                    }
-                };
-
                 registry.tiptap = {
                     match: '[data-editor="richtext"]',
                     srcs: ["@asset('assets/js/libs/tiptap-editor.js')"],
@@ -451,6 +423,7 @@
         @at('Core/Modules/Admin/Resources/assets/js/secret.js')
         @at('Core/Modules/Admin/Resources/assets/js/scrollup.js')
         @at('Core/Modules/Admin/Resources/assets/js/select.js')
+        @at('Core/Modules/Admin/Resources/assets/js/file-upload.js')
         @at('Core/Modules/Admin/Resources/assets/js/table-search.js')
         {{-- Richtext editor (TipTap) --}}
         @at('Core/Modules/Admin/Resources/assets/js/richtext/icons.js')

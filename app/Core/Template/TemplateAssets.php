@@ -56,6 +56,8 @@ class TemplateAssets
 
     protected int $remoteAssetTimeout = 5;
 
+    protected int $remoteAssetMaxBytes = 5242880;
+
     /**
      * Safety threshold to skip autoprefixing very large stylesheets (bytes).
      */
@@ -94,6 +96,11 @@ class TemplateAssets
         $this->appUrl = config('app.url');
         $timeout = (int) ( config('assets.remote_asset_timeout') ?? 5 );
         $this->remoteAssetTimeout = $timeout > 0 ? $timeout : 5;
+        $maxBytes = (int) ( config('assets.remote_asset_max_bytes') ?? 0 );
+        if ($maxBytes > 0) {
+            $this->remoteAssetMaxBytes = $maxBytes;
+        }
+
         $limit = (int) ( config('assets.autoprefix_max_bytes') ?? 0 );
 
         if ($limit > 0) {
@@ -365,13 +372,15 @@ class TemplateAssets
      */
     protected function generateTag(string $url, string $type): string
     {
+        $escapedUrl = htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
         switch ($type) {
             case 'css':
-                return "<link href=\"{$url}\" rel=\"stylesheet\">";
+                return "<link href=\"{$escapedUrl}\" rel=\"stylesheet\">";
             case 'js':
-                return "<script src=\"{$url}\" defer></script>";
+                return "<script src=\"{$escapedUrl}\" defer></script>";
             case 'img':
-                return "<img src=\"{$url}\" alt=\"\" loading=\"lazy\" decoding=\"async\">";
+                return "<img src=\"{$escapedUrl}\" alt=\"\" loading=\"lazy\" decoding=\"async\">";
             default:
                 return '';
         }
@@ -417,13 +426,8 @@ class TemplateAssets
         $fullLocalPath = BASE_PATH . 'public/' . $localPath;
 
         if (!file_exists($fullLocalPath)) {
-            $context = stream_context_create([
-                'http' => ['timeout' => $this->remoteAssetTimeout],
-                'https' => ['timeout' => $this->remoteAssetTimeout],
-            ]);
-
-            $content = @file_get_contents($normalizedUrl, false, $context);
-            if ($content === false) {
+            $content = $this->fetchRemoteAsset($normalizedUrl);
+            if ($content === null) {
                 logs('templates')->warning('Failed to fetch remote asset: ' . $normalizedUrl);
 
                 return '';
@@ -439,7 +443,7 @@ class TemplateAssets
     /**
      * Prepare allowed remote host list from configuration.
      */
-    // Whitelist intentionally removed by request; keeping only basic checks above.
+    // Optional allowlist is configured by assets.remote_asset_hosts.
 
     /**
      * Saves asset content to a specified path, with optional minification.
@@ -1468,22 +1472,105 @@ class TemplateAssets
             return false;
         }
 
+        if (!$this->isRemoteAssetHostAllowed($host)) {
+            return false;
+        }
+
         // Reject raw IP addresses
         if (filter_var($host, FILTER_VALIDATE_IP)) {
             return false;
         }
 
         // Resolve hostname and reject private/reserved IPs
-        $ip = gethostbyname($host);
-        if ($ip === $host) {
+        $ips = gethostbynamel($host);
+        if ($ips === false || $ips === []) {
             return false; // DNS resolution failed
         }
 
-        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
-            return false;
+        foreach ($ips as $ip) {
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                return false;
+            }
         }
 
         return true;
+    }
+
+    private function fetchRemoteAsset(string $url): ?string
+    {
+        $options = [
+            'timeout' => $this->remoteAssetTimeout,
+            'follow_location' => 0,
+            'max_redirects' => 0,
+            'ignore_errors' => false,
+        ];
+
+        $context = stream_context_create([
+            'http' => $options,
+            'https' => $options,
+        ]);
+
+        $handle = @fopen($url, 'rb', false, $context);
+        if ($handle === false) {
+            return null;
+        }
+
+        try {
+            $meta = stream_get_meta_data($handle);
+            $headers = $meta['wrapper_data'] ?? [];
+            if (!$this->remoteAssetResponseIsOk(is_array($headers) ? $headers : [])) {
+                return null;
+            }
+
+            $content = stream_get_contents($handle, $this->remoteAssetMaxBytes + 1);
+            if ($content === false || strlen($content) > $this->remoteAssetMaxBytes) {
+                return null;
+            }
+
+            return $content;
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    private function remoteAssetResponseIsOk(array $headers): bool
+    {
+        foreach ($headers as $header) {
+            if (!is_string($header) || !preg_match('#^HTTP/\S+\s+(\d{3})#i', $header, $matches)) {
+                continue;
+            }
+
+            $status = (int) $matches[1];
+
+            return $status >= 200 && $status < 300;
+        }
+
+        return true;
+    }
+
+    private function isRemoteAssetHostAllowed(string $host): bool
+    {
+        $allowedHosts = config('assets.remote_asset_hosts', []);
+        if (!is_array($allowedHosts) || $allowedHosts === []) {
+            return true;
+        }
+
+        foreach ($allowedHosts as $allowedHost) {
+            if (!is_string($allowedHost) || $allowedHost === '') {
+                continue;
+            }
+
+            if (str_contains($allowedHost, '://')) {
+                $parsed = parse_url($allowedHost);
+                $allowedHost = (string) ( $parsed['host'] ?? '' );
+            }
+
+            if (strtolower($allowedHost) === strtolower($host)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

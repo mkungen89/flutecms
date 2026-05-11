@@ -121,6 +121,7 @@ class AuthenticationService
         $this->throttle('login');
 
         $validationResult = $this->validationProcessor->process($this->getAuthValidator(), $credentials);
+        $this->throttle('login_account', 5, 60, 5, (string) $validationResult->login);
 
         events()->dispatch(new UserAuthenticatingEvent($credentials), UserAuthenticatingEvent::NAME);
 
@@ -472,15 +473,20 @@ class AuthenticationService
      * @param int $burstiness The maximum number of requests in a burst.
      * @throws TooManyRequestsException
      */
-    protected function throttle(string $key, int $maxRequest = 5, int $perMinute = 60, int $burstiness = 5): void
-    {
+    protected function throttle(
+        string $key,
+        int $maxRequest = 5,
+        int $perMinute = 60,
+        int $burstiness = 5,
+        ?string $subject = null,
+    ): void {
+        $scope = ['action' => $key, 'ip' => $this->request->getClientIp()];
+        if ($subject !== null && $subject !== '') {
+            $scope['subject'] = hash('sha256', mb_strtolower(trim($subject)));
+        }
+
         try {
-            throttler()->throttle(
-                ['action' => $key, 'ip' => $this->request->getClientIp()],
-                $maxRequest,
-                $perMinute,
-                $burstiness,
-            );
+            throttler()->throttle($scope, $maxRequest, $perMinute, $burstiness);
         } catch (TooManyRequestsException $e) {
             throw $e;
         }

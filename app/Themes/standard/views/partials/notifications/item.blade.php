@@ -31,8 +31,12 @@
                         $btnStyle = $button['style'] ?? $button['type'] ?? 'primary';
                         $btnAction = $button['action'] ?? 'navigate';
                         $btnLabel = __($button['label'] ?? $button['text'] ?? '');
-                        $btnUrl = url($button['url'] ?? '#');
+                        $rawUrl = trim((string) ($button['url'] ?? ''));
+                        $hasUrl = $rawUrl !== '' && $rawUrl !== '#';
+                        $btnUrl = $hasUrl ? url($rawUrl) : '#';
                     @endphp
+                    @continue($btnAction === 'navigate' && !$hasUrl)
+                    @continue($btnAction === 'api' && !$hasUrl)
                     @if ($btnAction === 'api')
                         @php $btnMethod = strtolower($button['method'] ?? 'post'); @endphp
                         <button type="button"

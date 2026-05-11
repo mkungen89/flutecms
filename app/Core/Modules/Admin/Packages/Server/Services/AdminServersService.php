@@ -64,11 +64,11 @@ class AdminServersService
 
     /**
      * Detect the best available format in a rank pack directory.
-     * Priority: svg > webp > png > jpg > gif > jpeg
+     * Priority: webp > png > jpg > gif > jpeg
      */
     public function detectBestFormat(string $dir): string
     {
-        $priority = ['svg', 'webp', 'png', 'jpg', 'gif', 'jpeg'];
+        $priority = ['webp', 'png', 'jpg', 'gif', 'jpeg'];
 
         foreach ($priority as $ext) {
             if (glob($dir . '/*.' . $ext)) {
@@ -85,16 +85,14 @@ class AdminServersService
     private function getRankPreviews(string $dir, int $max = 5): array
     {
         $previews = [];
-        $files = glob($dir . '/*.{webp,png,svg,jpg,gif,jpeg}', GLOB_BRACE);
+        $files = glob($dir . '/*.{webp,png,jpg,gif,jpeg}', GLOB_BRACE);
 
         if (!$files) {
             return [];
         }
 
         // Sort numerically by filename
-        usort($files, static function ($a, $b) {
-            return (int) basename($a) - (int) basename($b);
-        });
+        usort($files, static fn($a, $b) => (int) basename($a) - (int) basename($b));
 
         $count = 0;
         foreach ($files as $file) {
@@ -124,7 +122,7 @@ class AdminServersService
             throw new Exception(__('admin-server.ranks_upload.invalid_archive'));
         }
 
-        $imageExtensions = ['webp', 'png', 'svg', 'jpg', 'gif', 'jpeg'];
+        $imageExtensions = ['webp', 'png', 'jpg', 'gif', 'jpeg'];
         $imageFiles = [];
         $packName = null;
         $inSubdir = false;
@@ -175,7 +173,11 @@ class AdminServersService
         // Extract to temp, then copy only image files
         $tempDir = path('storage/app/temp_ranks_' . bin2hex(random_bytes(8)));
         mkdir($tempDir, 0o755, true);
-        $uploader->safeExtractZip($zipFullPath, $tempDir);
+        $uploader->safeExtractZip($zipFullPath, $tempDir, [
+            'max_entries' => 2000,
+            'max_total_size' => 50 * 1024 * 1024,
+            'reject_dangerous_extensions' => true,
+        ]);
 
         $destDir = path('public/assets/img/ranks/' . $packName);
         if (!is_dir($destDir)) {

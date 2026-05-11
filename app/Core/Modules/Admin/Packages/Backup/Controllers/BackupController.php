@@ -34,7 +34,9 @@ class BackupController extends BaseController
 
             return $response;
         } catch (Throwable $e) {
-            return response()->json(['error' => $e->getMessage()], 404);
+            logs('backup')->warning('Backup download failed: ' . $e->getMessage(), ['exception' => $e]);
+
+            return response()->json(['error' => __('admin-backup.errors.backup_not_found')], 404);
         }
     }
 }

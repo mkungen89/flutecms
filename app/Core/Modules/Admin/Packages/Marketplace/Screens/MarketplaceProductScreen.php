@@ -105,7 +105,7 @@ class MarketplaceProductScreen extends Screen
                         $download = $moduleInstaller->downloadModule($module);
                     } catch (Throwable $e2) {
                         logs()->error($e2);
-                        $this->flashMessage($e2->getMessage(), 'error');
+                        $this->flashMessage(__('def.internal_server_error'), 'error');
                         $this->isLoading = false;
 
                         return;
@@ -171,7 +171,7 @@ class MarketplaceProductScreen extends Screen
             $this->triggerSidebarRefresh();
         } catch (Throwable $e) {
             logs()->error($e);
-            $this->flashMessage($e->getMessage(), 'error');
+            $this->flashMessage(__('def.internal_server_error'), 'error');
         } finally {
             if (isset($moduleInstaller)) {
                 $moduleInstaller->finishInstallation();
@@ -204,7 +204,7 @@ class MarketplaceProductScreen extends Screen
             $this->triggerSidebarRefresh();
         } catch (Throwable $e) {
             logs()->error($e);
-            $this->flashMessage($e->getMessage(), 'error');
+            $this->flashMessage(__('def.internal_server_error'), 'error');
         } finally {
             $this->marketplaceService->clearCache();
             $this->loadModule();
@@ -231,7 +231,7 @@ class MarketplaceProductScreen extends Screen
             $this->triggerSidebarRefresh();
         } catch (Throwable $e) {
             logs()->error($e);
-            $this->flashMessage($e->getMessage(), 'error');
+            $this->flashMessage(__('def.internal_server_error'), 'error');
         } finally {
             $this->marketplaceService->clearCache();
             $this->loadModule();
@@ -258,7 +258,7 @@ class MarketplaceProductScreen extends Screen
             $this->triggerSidebarRefresh();
         } catch (Throwable $e) {
             logs()->error($e);
-            $this->flashMessage($e->getMessage(), 'error');
+            $this->flashMessage(__('def.internal_server_error'), 'error');
         } finally {
             $this->marketplaceService->clearCache();
             $this->loadModule();
@@ -425,7 +425,7 @@ class MarketplaceProductScreen extends Screen
             $this->versions = $this->module['changelog'] ?? [];
         } catch (Throwable $e) {
             logs()->error($e);
-            $this->flashMessage($e->getMessage(), 'error');
+            $this->flashMessage(__('def.internal_server_error'), 'error');
         }
     }
 }
