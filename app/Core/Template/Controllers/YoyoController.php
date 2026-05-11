@@ -3,6 +3,7 @@
 namespace Flute\Core\Template\Controllers;
 
 use Flute\Core\Support\BaseController;
+use Flute\Core\Support\ExceptionReporter;
 use Flute\Core\Template\Template;
 use Throwable;
 
@@ -19,7 +20,12 @@ class YoyoController extends BaseController
                 throw $e;
             }
 
-            logs()->error('Error in Yoyo update: ' . $e->getMessage());
+            $msg = $e->getMessage();
+            if (stripos($msg, 'component name or action') !== false) {
+                return response()->error(400, 'Bad request');
+            }
+
+            ExceptionReporter::report($e, 'yoyo.update');
 
             return response()->error(500, __('def.unknown_error'));
         }

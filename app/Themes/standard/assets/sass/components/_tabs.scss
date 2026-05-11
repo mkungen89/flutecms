@@ -1,4 +1,4 @@
-.tabs-container {
+﻿.tabs-container {
     position: relative;
     width: 100%;
 
@@ -27,8 +27,7 @@
         }
     }
 
-    // --- nav list ---
-    .tabs-nav {
+.tabs-nav {
         display: inline-flex;
         flex-wrap: nowrap;
         position: relative;
@@ -275,10 +274,7 @@
         }
     }
 
-    // ======================
-    // Scrollable modifier
-    // ======================
-    &.scrollable-tabs {
+&.scrollable-tabs {
         .tabs-nav {
             -ms-overflow-style: none;
             position: relative;
@@ -287,7 +283,6 @@
     }
 }
 
-// --- Tab content panes ---
 .tabs-content {
     position: relative;
 

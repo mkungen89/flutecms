@@ -364,8 +364,7 @@ class InstallerController extends BaseController
                         "CREATE DATABASE IF NOT EXISTS `{$safeDbName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
                     );
                 } elseif ($driver === 'pgsql') {
-                    $quoted = $pdo->quote($safeDbName);
-                    $pdo->exec("CREATE DATABASE {$quoted}");
+                    $pdo->exec('CREATE DATABASE ' . $this->quotePostgresIdentifier($safeDbName));
                 }
             }
 
@@ -502,7 +501,7 @@ class InstallerController extends BaseController
             $siteRules = [
                 'siteName' => 'required|max-str-len:100',
                 'siteUrl' => 'required|url',
-                'timezone' => 'required',
+                'timezone' => 'required|timezone',
             ];
 
             $validatedSite = $this->validate($siteData, $siteRules);
@@ -1235,6 +1234,15 @@ class InstallerController extends BaseController
 
         app(DatabaseConnection::class)->recompileOrmSchema(false);
         $this->createNecessaryRolesAndPermissions();
+    }
+
+    protected function quotePostgresIdentifier(string $identifier): string
+    {
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $identifier)) {
+            throw new \InvalidArgumentException('Invalid PostgreSQL database name');
+        }
+
+        return '"' . str_replace('"', '""', $identifier) . '"';
     }
 
     /**

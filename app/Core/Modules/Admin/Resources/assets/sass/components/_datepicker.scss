@@ -1,4 +1,4 @@
-$fp-cell: 32px;
+﻿$fp-cell: 32px;
 $fp-radius: 6px;
 $fp-gap: 2px;
 
@@ -114,8 +114,6 @@ $fp-gap: 2px;
         }
     }
 }
-
-// ── Calendar popover ──
 
 .flatpickr-calendar {
     background: var(--background);
@@ -374,9 +372,6 @@ $fp-gap: 2px;
     }
 }
 
-// ── Weekday labels ──
-// text-[0.8rem] font-normal text-muted-foreground
-
 .flatpickr-weekdays {
     display: flex;
     align-items: center;
@@ -402,8 +397,6 @@ span.flatpickr-weekday {
     display: block;
     flex: 1;
 }
-
-// ── Day grid ──
 
 .flatpickr-days {
     position: relative;
@@ -431,7 +424,6 @@ span.flatpickr-weekday {
     opacity: 1;
 }
 
-// Day cell — ghost button style
 .flatpickr-day {
     background: none;
     border: none;
@@ -441,7 +433,7 @@ span.flatpickr-weekday {
     cursor: pointer;
     font-weight: 400;
     font-size: 0.8rem;
-    // 7 columns: 100% / 7 ≈ 14.28%
+
     width: 14.2857143%;
     flex-basis: 14.2857143%;
     max-width: 36px;
@@ -456,15 +448,13 @@ span.flatpickr-weekday {
     transition: background 0.1s, color 0.1s;
     user-select: none;
 
-    // hover — ghost
-    &:hover,
+&:hover,
     &:focus {
         outline: 0;
         background: var(--transp-1);
     }
 
-    // today — bg-muted
-    &.today {
+&.today {
         background: var(--transp-1);
         font-weight: 500;
 
@@ -474,8 +464,7 @@ span.flatpickr-weekday {
         }
     }
 
-    // selected — bg-primary text-primary-foreground
-    &.selected,
+&.selected,
     &.startRange,
     &.endRange,
     &.selected.inRange,
@@ -511,21 +500,18 @@ span.flatpickr-weekday {
         border-radius: $fp-radius;
     }
 
-    // range middle — bg-muted rounded-none
-    &.inRange {
+&.inRange {
         background: var(--transp-1);
         border-radius: 0;
         box-shadow: none;
     }
 
-    // outside — text-muted-foreground
-    &.prevMonthDay,
+&.prevMonthDay,
     &.nextMonthDay {
         color: var(--text-500);
     }
 
-    // disabled — text-muted-foreground opacity-50
-    &.flatpickr-disabled,
+&.flatpickr-disabled,
     &.flatpickr-disabled:hover {
         color: var(--text-500);
         opacity: 0.5;
@@ -545,8 +531,6 @@ span.flatpickr-weekday {
         visibility: hidden;
     }
 }
-
-// ── Time picker ──
 
 .flatpickr-time {
     text-align: center;
@@ -727,8 +711,6 @@ span.flatpickr-weekday {
     cursor: pointer;
 }
 
-// ── Week numbers ──
-
 .flatpickr-weekwrapper {
     float: left;
 
@@ -755,8 +737,6 @@ span.flatpickr-weekday {
         border: none;
     }
 }
-
-// ── Structural containers ──
 
 .flatpickr-innerContainer {
     display: flex;

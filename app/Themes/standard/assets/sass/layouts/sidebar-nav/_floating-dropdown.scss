@@ -1,4 +1,4 @@
-.sidebar-floating-dropdown {
+﻿.sidebar-floating-dropdown {
     position: fixed;
     min-width: 220px;
     max-width: 280px;
@@ -44,8 +44,7 @@
         }
     }
 
-    // Arrow
-    &::before {
+&::before {
         content: '';
         position: absolute;
         width: 8px;
@@ -70,8 +69,7 @@
         border-bottom: none;
     }
 
-    // Header with parent name
-    &__header {
+&__header {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -103,20 +101,17 @@
         white-space: nowrap;
     }
 
-    // Content area
-    &__content {
+&__content {
         padding: var(--space-2xs);
     }
 
-    // Flat items (no groups)
-    &__items {
+&__items {
         display: flex;
         flex-direction: column;
         gap: 1px;
     }
 
-    // Individual item
-    &__item {
+&__item {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -128,7 +123,7 @@
         font-weight: 500;
         transition: background 0.12s ease, color 0.12s ease, opacity 0.2s ease, transform 0.2s ease;
         line-height: 1;
-        // Stagger animation
+
         opacity: 0;
         transform: translateX(-4px);
 
@@ -174,8 +169,7 @@
         }
     }
 
-    // Group (3rd level container)
-    &__group {
+&__group {
         &:not(:first-child) {
             margin-top: 2px;
             padding-top: 2px;
@@ -195,8 +189,7 @@
         letter-spacing: 0.04em;
     }
 
-    // Nested items under a group — indented with left accent
-    &__group-items {
+&__group-items {
         display: flex;
         flex-direction: column;
         gap: 1px;

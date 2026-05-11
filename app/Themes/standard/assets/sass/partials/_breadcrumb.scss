@@ -1,11 +1,10 @@
-.breadcrumb {
+﻿.breadcrumb {
     display: flex;
     border-radius: 35px;
     margin: var(--space-lg) 0;
     margin-top: var(--space-xs);
 }
 
-// Hide standard breadcrumb in sidebar mode (shown in header instead)
 html[data-nav-style="sidebar"] .breadcrumb {
     display: none;
 }
@@ -57,7 +56,6 @@ html[data-nav-style="sidebar"] .breadcrumb {
     color: var(--primary-400);
 }
 
-// Truncate last breadcrumb item (e.g. long article titles)
 .breadcrumb-links li:last-child .breadcrumb-text {
     max-width: 28ch;
     overflow: hidden;

@@ -1,4 +1,4 @@
-[data-simplebar] {
+﻿[data-simplebar] {
     position: relative;
     flex-direction: column;
     flex-wrap: wrap;
@@ -50,12 +50,12 @@
     position: relative;
     display: block;
     height: 100%;
-    /* Required for horizontal native scrollbar to not appear if parent is taller than natural height */
+
     width: auto;
     max-width: 100%;
-    /* Not required for horizontal scroll to trigger */
+
     max-height: 100%;
-    /* Needed for vertical scroll to trigger */
+
     overflow: auto;
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -199,7 +199,6 @@
     width: auto;
 }
 
-/* Rtl support */
 [data-simplebar-direction='rtl'] .simplebar-track.simplebar-vertical {
     right: auto;
     left: 0;

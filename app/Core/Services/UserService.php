@@ -471,6 +471,8 @@ class UserService
         ?string $description = null,
         ?BalanceHistoryMeta $meta = null,
     ): void {
+        $sum = $this->normalizeMoneyAmount($sum);
+
         if ($sum <= 0) {
             throw new InvalidArgumentException('The sum must be a positive number.');
         }
@@ -490,8 +492,11 @@ class UserService
                 ->where(['id' => $balanceUser->id])
                 ->fetchOne();
 
-            if ($balanceUser->balance < $sum) {
-                $neededSum = $sum - $balanceUser->balance;
+            $balanceMinor = $this->moneyToMinorUnits((float) $balanceUser->balance);
+            $sumMinor = $this->moneyToMinorUnits($sum);
+
+            if ($balanceMinor < $sumMinor) {
+                $neededSum = $this->minorUnitsToMoney($sumMinor - $balanceMinor);
                 $database->rollback();
 
                 throw ( new BalanceNotEnoughException() )->setNeededSum($neededSum);
@@ -664,12 +669,30 @@ class UserService
                 return false;
             }
 
-            return ( $this->currentUser->balance ?? 0 ) >= $sum;
+            $balanceMinor = $this->moneyToMinorUnits((float) ( $this->currentUser->balance ?? 0 ));
+            $sumMinor = $this->moneyToMinorUnits($sum);
+
+            return $balanceMinor >= $sumMinor;
         } catch (Throwable $e) {
             $this->handleAuthStateFailure('Balance check failed', $e);
 
             return false;
         }
+    }
+
+    private function normalizeMoneyAmount(float $amount): float
+    {
+        return $this->minorUnitsToMoney($this->moneyToMinorUnits($amount));
+    }
+
+    private function moneyToMinorUnits(float $amount): int
+    {
+        return (int) round($amount * 100);
+    }
+
+    private function minorUnitsToMoney(int $amount): float
+    {
+        return round($amount / 100, 2);
     }
 
     /**

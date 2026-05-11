@@ -1,4 +1,4 @@
-.sidebar {
+﻿.sidebar {
     @extend .blur-bg;
     width: 260px;
     border-right: 1px solid var(--sidebar-border);
@@ -73,8 +73,7 @@
                 pointer-events: none;
             }
 
-            // Force all sections open in collapsed mode
-            .sidebar__section.collapsed .sidebar__menu {
+.sidebar__section.collapsed .sidebar__menu {
                 grid-template-rows: 1fr;
                 opacity: 1;
                 pointer-events: auto;
@@ -596,8 +595,7 @@
         }
     }
 
-    // --- Collapsible sections ---
-    &__section {
+&__section {
         margin-bottom: 0.125rem;
 
         &.collapsed {
@@ -723,7 +721,6 @@
     }
 }
 
-// Menu item styles — premium SaaS look
 .menu-item {
     display: flex;
     align-items: center;
@@ -754,8 +751,7 @@
         background-color: var(--sidebar-active);
         font-weight: 600;
 
-        // Left accent indicator
-        &::before {
+&::before {
             content: '';
             position: absolute;
             left: 0;
@@ -796,7 +792,6 @@
     transition: transform 0.2s ease;
 }
 
-// Menu badge styles
 .menu-badge {
     display: inline-flex;
     align-items: center;
@@ -812,8 +807,7 @@
     margin-left: auto;
     font-variant-numeric: tabular-nums;
 
-    // Default style - subtle muted
-    background-color: var(--sidebar-hover);
+background-color: var(--sidebar-hover);
     color: var(--sidebar-text-muted);
     border: 1px solid var(--sidebar-border);
 
@@ -891,7 +885,6 @@
     }
 }
 
-// Submenu with animation and left border
 .menu-sub {
     display: grid;
     grid-template-rows: 0fr;
@@ -938,7 +931,6 @@
     }
 }
 
-// Hamburger button
 .hamburger {
     display: none;
     color: var(--sidebar-text-muted);
@@ -961,14 +953,12 @@
     }
 }
 
-// Body states
 body.sidebar-collapsed {
     .sidebar__menu-item.sub-menu.open>.menu-sub {
         display: none !important;
     }
 }
 
-// Cloned flyout submenu
 .cloned-menu-sub {
     z-index: 1000001;
     pointer-events: auto;
@@ -1000,8 +990,7 @@ body.sidebar-collapsed {
         gap: 2px;
     }
 
-    // Reset submenu styles for flyout
-    &.menu-sub {
+&.menu-sub {
         display: block;
         grid-template-rows: unset;
         opacity: 0;
@@ -1020,7 +1009,6 @@ body.sidebar-collapsed {
     }
 }
 
-// --- Sidebar sort mode ---
 .sidebar__sort-toggle {
     display: flex;
     align-items: center;
@@ -1161,7 +1149,6 @@ body.sidebar-dragging {
     cursor: grabbing !important;
 }
 
-// Sidebar overlay for mobile
 .sidebar-overlay {
     position: fixed;
     inset: 0;

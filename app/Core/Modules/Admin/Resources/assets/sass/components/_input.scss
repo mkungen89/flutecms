@@ -1,4 +1,4 @@
-// ─── Input fields ───
+﻿
 
 .input {
     &-wrapper {
@@ -145,8 +145,6 @@
     }
 }
 
-// ─── Icon input field ───
-
 .icon-input-container {
     display: flex;
     align-items: center;
@@ -220,8 +218,6 @@
     }
 }
 
-// ─── Icon Picker — Centered Modal Overlay ───
-
 .icon-picker {
     position: fixed;
     inset: 0;
@@ -235,8 +231,7 @@
         display: flex;
     }
 
-    // ─── Backdrop ───
-    &__backdrop {
+&__backdrop {
         position: absolute;
         inset: 0;
         background: rgba(0, 0, 0, 0.4);
@@ -252,8 +247,7 @@
         }
     }
 
-    // ─── Dialog panel ───
-    &__dialog {
+&__dialog {
         position: relative;
         display: flex;
         flex-direction: column;
@@ -284,8 +278,7 @@
         }
     }
 
-    // ─── Header with search ───
-    &__header {
+&__header {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -365,8 +358,7 @@
         }
     }
 
-    // ─── Body ───
-    &__body {
+&__body {
         flex: 1;
         overflow: hidden;
         display: flex;
@@ -375,8 +367,7 @@
         padding-top: 12px;
     }
 
-    // ─── Category segmented control ───
-    &__categories {
+&__categories {
         display: flex;
         padding: 2px;
         gap: 0;
@@ -424,8 +415,7 @@
         }
     }
 
-    // ─── Style / variant pills ───
-    &__styles {
+&__styles {
         display: flex;
         padding: 10px 16px 0;
         gap: 4px;
@@ -469,8 +459,7 @@
         }
     }
 
-    // ─── Icons grid ───
-    &__content {
+&__content {
         display: grid;
         grid-template-columns: repeat(auto-fill, 48px);
         gap: 6px;
@@ -533,8 +522,7 @@
         }
     }
 
-    // ─── States ───
-    &__loading,
+&__loading,
     &__error,
     &__empty {
         grid-column: 1 / -1;
@@ -551,8 +539,7 @@
         color: var(--error);
     }
 
-    // ─── Skeleton loading ───
-    &__skeleton {
+&__skeleton {
         display: grid;
         grid-template-columns: repeat(auto-fill, 48px);
         gap: 6px;
@@ -568,8 +555,6 @@
         animation: iconPickerPulse 1.2s ease-in-out infinite;
     }
 }
-
-// ─── Animations ───
 
 @keyframes iconPickerPulse {
     0%, 100% { opacity: 0.7; }
@@ -587,8 +572,6 @@
     }
 }
 
-// ─── Autofill overrides ───
-
 input:-webkit-autofill,
 input:-webkit-autofill:focus {
     transition: background-color 600000s 0s, color 600000s 0s;
@@ -601,8 +584,6 @@ input[data-autocompleted] {
 input:disabled {
     opacity: 0.5 !important;
 }
-
-// ─── Reduced motion ───
 
 @media (prefers-reduced-motion: reduce) {
     .icon-picker,

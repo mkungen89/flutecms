@@ -1,5 +1,14 @@
-function initializeA11yDialog() {
-    const modals = document.querySelectorAll('.modal, .right_sidebar');
+function initializeA11yDialog(parentElement = document) {
+    const root = parentElement && parentElement.querySelectorAll ? parentElement : document;
+    const modals = [];
+
+    if (root.matches && root.matches('.modal, .right_sidebar')) {
+        modals.push(root);
+    }
+
+    root.querySelectorAll('.modal, .right_sidebar').forEach((modal) => {
+        modals.push(modal);
+    });
 
     modals.forEach((modalElement) => {
         if (modalElement.dialogInstance) {
@@ -106,8 +115,28 @@ window.addEventListener('DOMContentLoaded', () => {
     initializeA11yDialog();
 });
 
+const _pendingModalInitRoots = new Set();
+let _modalInitScheduled = false;
+
+function scheduleA11yDialogInit(root = document) {
+    _pendingModalInitRoots.add(root && root.querySelectorAll ? root : document);
+
+    if (_modalInitScheduled) {
+        return;
+    }
+
+    _modalInitScheduled = true;
+    requestAnimationFrame(() => {
+        const roots = Array.from(_pendingModalInitRoots);
+        _pendingModalInitRoots.clear();
+        _modalInitScheduled = false;
+
+        roots.forEach((initRoot) => initializeA11yDialog(initRoot));
+    });
+}
+
 document.body.addEventListener('htmx:afterSettle', (event) => {
-    initializeA11yDialog(event.detail.elt);
+    scheduleA11yDialogInit(event.detail?.target || event.detail?.elt || event.target || document);
 });
 
 function openModal(modalId) {

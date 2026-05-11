@@ -1,4 +1,4 @@
-html[data-nav-style="sidebar"][data-sidebar-style="mini"] {
+﻿html[data-nav-style="sidebar"][data-sidebar-style="mini"] {
     --sidebar-width: var(--sidebar-mini-width, #{$sidebar-mini-width});
 
     .sidebar-nav {
@@ -27,7 +27,7 @@ html[data-nav-style="sidebar"][data-sidebar-style="mini"] {
     }
 
     .sidebar-nav__section {
-        flex: 0 0 auto; // Don't stretch, let items keep natural size
+        flex: 0 0 auto;
         display: flex;
         flex-direction: column;
     }
@@ -115,8 +115,7 @@ html[data-nav-style="sidebar"][data-sidebar-style="mini"] {
         display: none !important;
     }
 
-    // Hide guest block in mini mode - too compact
-    .sidebar-nav__guest {
+.sidebar-nav__guest {
         display: none;
     }
 }

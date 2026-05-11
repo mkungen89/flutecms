@@ -1,10 +1,8 @@
-.image-cropper {
+﻿.image-cropper {
     width: min(700px, 92vw) !important;
     min-width: unset !important;
 
-    // ── Body ─────────────────────────────────────────────────────────────
-
-    &__body {
+&__body {
         padding: var(--space-md) var(--space-xl) var(--space-sm) !important;
 
         @media (max-width: 600px) {
@@ -12,9 +10,7 @@
         }
     }
 
-    // ── Canvas ───────────────────────────────────────────────────────────
-
-    &__canvas {
+&__canvas {
         position: relative;
         width: 100%;
         height: 380px;
@@ -46,9 +42,7 @@
         }
     }
 
-    // ── Icon wrapper ─────────────────────────────────────────────────────
-
-    &__icon {
+&__icon {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -68,9 +62,7 @@
         }
     }
 
-    // ── Toolbar (ratios + tools, single row) ─────────────────────────────
-
-    &__toolbar {
+&__toolbar {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -83,9 +75,7 @@
         }
     }
 
-    // ── Ratio presets ────────────────────────────────────────────────────
-
-    &__ratios {
+&__ratios {
         display: flex;
         align-items: center;
         gap: 4px;
@@ -136,9 +126,7 @@
         }
     }
 
-    // ── Tool buttons ─────────────────────────────────────────────────────
-
-    &__tools {
+&__tools {
         display: flex;
         align-items: center;
         gap: 2px;
@@ -177,9 +165,7 @@
         flex-shrink: 0;
     }
 
-    // ── Footer ───────────────────────────────────────────────────────────
-
-    &__footer {
+&__footer {
         display: flex !important;
         justify-content: flex-end;
         align-items: center;
@@ -192,8 +178,6 @@
         }
     }
 }
-
-// ── Cropper.js visual overrides ──────────────────────────────────────────────
 
 .image-cropper__canvas {
     .cropper-container {
@@ -266,8 +250,6 @@
     }
 }
 
-// Container class added by JS — provides positioning context for the edit button
-// without breaking FilePond layout (no inline style changes).
 .has-crop-edit {
     position: relative;
 }

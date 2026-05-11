@@ -1,4 +1,4 @@
-// ── Overlay ──
+﻿
 .shepherd-modal-overlay-container {
     position: fixed;
     inset: 0;
@@ -21,7 +21,6 @@
     }
 }
 
-// ── Tooltip element (positioning) ──
 .shepherd-element {
     position: absolute;
     z-index: 10050;
@@ -60,7 +59,6 @@
     }
 }
 
-// ── Card wrapper ──
 .shepherd-content {
     border-radius: 14px;
     background: radial-gradient(var(--blurred-background), var(--background));
@@ -92,7 +90,6 @@
     }
 }
 
-// ── Progress (top edge-to-edge) ──
 .onboarding-bar {
     height: 2px;
     background: var(--transp-05);
@@ -106,7 +103,6 @@
     }
 }
 
-// ── Header ──
 .shepherd-header {
     display: flex;
     align-items: flex-start;
@@ -127,7 +123,6 @@
     padding: 0;
 }
 
-// ── Close ──
 .shepherd-cancel-icon {
     display: flex;
     align-items: center;
@@ -153,7 +148,6 @@
     }
 }
 
-// ── Body text ──
 .shepherd-text {
     padding: .375rem 1.25rem .5rem;
     font-size: var(--p);
@@ -184,7 +178,6 @@
     }
 }
 
-// ── Footer ──
 .shepherd-footer {
     display: flex;
     align-items: center;
@@ -192,7 +185,6 @@
     gap: .375rem;
 }
 
-// ── Counter (left side of footer) ──
 .onboarding-meta {
     font-size: 12px;
     color: var(--text-600);
@@ -210,7 +202,6 @@
     }
 }
 
-// ── Buttons ──
 .shepherd-button {
     display: inline-flex;
     align-items: center;
@@ -228,8 +219,7 @@
     border: none;
     outline: none;
 
-    // Primary
-    &:not(:disabled):not(.shepherd-button-secondary):not(.onboarding-meta) {
+&:not(:disabled):not(.shepherd-button-secondary):not(.onboarding-meta) {
         background: var(--text);
         color: var(--background);
 
@@ -242,8 +232,7 @@
         }
     }
 
-    // Secondary / back
-    &.shepherd-button-secondary {
+&.shepherd-button-secondary {
         background: var(--transp-1);
         color: var(--text-300);
 
@@ -263,7 +252,6 @@
     }
 }
 
-// ── Target highlight ──
 .shepherd-target {
     outline: 2px solid rgba(var(--accent-rgb), .5) !important;
     outline-offset: 3px;
@@ -282,7 +270,6 @@
     pointer-events: none;
 }
 
-// ── Centered (welcome / finish) ──
 .shepherd-element.shepherd-centered > .shepherd-content {
     text-align: center;
 

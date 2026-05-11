@@ -1,11 +1,10 @@
-.dashboard-notices {
+﻿.dashboard-notices {
     display: flex;
     flex-direction: column;
     gap: 8px;
     margin-bottom: 1rem;
 
-    // ── Attention pills ──
-    &__alerts {
+&__alerts {
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
@@ -58,8 +57,7 @@
         transition: all var(--transition);
     }
 
-    // ── Setup checklist ──
-    &__checklist {
+&__checklist {
         background-color: var(--transp-1);
         border: 1px solid var(--transp-1);
         border-radius: var(--border05);

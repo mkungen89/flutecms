@@ -104,6 +104,8 @@ class Template extends AbstractTemplateInstance implements ViewServiceInterface
         ?string $viewsPath = null,
         ?string $cachePath = null,
     ) {
+        self::$instance = $this;
+
         $this->templateAssets = $templateAssets;
         $this->router = $router;
         $this->themeManager = $themeManager;
@@ -149,6 +151,11 @@ class Template extends AbstractTemplateInstance implements ViewServiceInterface
     public function getYoyo(): Yoyo
     {
         return $this->yoyo;
+    }
+
+    public static function getInitializedInstance(): ?self
+    {
+        return self::$instance ?? null;
     }
 
     /**
@@ -920,6 +927,14 @@ class Template extends AbstractTemplateInstance implements ViewServiceInterface
     protected function resolveTemplatePath(string $path): string
     {
         return str_replace(['.blade.php', '/'], ['', '.'], $path);
+    }
+
+    /**
+     * Resolve a view path through theme replacements (public wrapper).
+     */
+    public function resolveViewReplacement(string $viewPath): string
+    {
+        return $this->searchReplacementForInterface($viewPath);
     }
 
     /**

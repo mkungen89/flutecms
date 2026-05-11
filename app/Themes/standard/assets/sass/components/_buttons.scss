@@ -1,4 +1,4 @@
-// ─── Button Types ───
+﻿
 $button-types: (
     primary: (
         color: var(--background),
@@ -44,7 +44,6 @@ $button-types: (
     ),
 );
 
-// ─── Outline Types ───
 $button-outline-types: (
     primary: (
         color: var(--text),
@@ -78,7 +77,6 @@ $button-outline-types: (
     ),
 );
 
-// ─── Sizes ───
 $sizes: (
     tiny: (
         height: 1.75rem,
@@ -110,7 +108,6 @@ $sizes: (
     ),
 );
 
-// ─── Base ───
 @mixin button-base {
     @extend .flex-center;
 
@@ -170,7 +167,6 @@ $sizes: (
     }
 }
 
-// ─── Type Mixin ───
 @mixin button-type($type-name, $type-map) {
     &-#{$type-name} {
         color: map-get($type-map, color);
@@ -183,7 +179,6 @@ $sizes: (
     }
 }
 
-// ─── Outline Mixin ───
 @mixin button-outline-type($type-name, $outline-map) {
     &-outline-#{$type-name} {
         color: map-get($outline-map, color);
@@ -198,7 +193,6 @@ $sizes: (
     }
 }
 
-// ─── Size Mixin ───
 @mixin button-size($size-name, $size-map) {
     &-#{$size-name} {
         height: map-get($size-map, height);
@@ -213,7 +207,6 @@ $sizes: (
     }
 }
 
-// ─── Output ───
 .btn {
     @include button-base;
 
@@ -229,8 +222,7 @@ $sizes: (
         @include button-size($size, $properties);
     }
 
-    // Secondary gets a subtle border for definition
-    &-secondary {
+&-secondary {
         border: 1px solid var(--transp-1);
 
         &:hover:not(:disabled):not([aria-busy="true"]) {
@@ -239,8 +231,7 @@ $sizes: (
         }
     }
 
-    // Error/success/warning/info get slightly bolder hover
-    &-error,
+&-error,
     &-success,
     &-warning,
     &-info {

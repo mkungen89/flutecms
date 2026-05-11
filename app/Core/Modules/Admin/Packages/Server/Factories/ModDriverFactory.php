@@ -25,6 +25,10 @@ class ModDriverFactory
         }
 
         if (isset($this->drivers[$key])) {
+            if ($this->drivers[$key] === $driverClass) {
+                return;
+            }
+
             throw new InvalidArgumentException("Driver [{$key}] already registered.");
         }
 

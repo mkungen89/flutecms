@@ -1,4 +1,4 @@
-.md-content {
+﻿.md-content {
 	line-height: 1.55;
 	color: var(--text-100);
 	font-size: var(--p-small);
@@ -58,8 +58,7 @@
 		margin: 0;
 	}
 
-	/* nested lists and variants */
-	ul ul {
+ul ul {
 		list-style: circle;
 		margin-top: var(--space-2xs);
 	}
@@ -77,8 +76,7 @@
 		margin-left: var(--space-md);
 	}
 
-	/* task lists */
-	li input[type="checkbox"] {
+li input[type="checkbox"] {
 		margin-right: var(--space-xs);
 		vertical-align: middle;
 	}
@@ -214,8 +212,7 @@
 		}
 	}
 
-	/* images and figures */
-	img {
+img {
 		max-width: 100%;
 		height: auto;
 		border-radius: var(--border05);
@@ -234,8 +231,7 @@
 		margin-top: var(--space-2xs);
 	}
 
-	/* description list */
-	dl {
+dl {
 		margin: var(--space-xs) 0;
 	}
 	dt {
@@ -246,8 +242,7 @@
 		margin: var(--space-2xs) 0 var(--space-xs) var(--space-sm);
 	}
 
-	/* details/summary */
-	details {
+details {
 		background: var(--transp-05);
 		border: 1px solid var(--transp-1);
 		border-radius: var(--border05);

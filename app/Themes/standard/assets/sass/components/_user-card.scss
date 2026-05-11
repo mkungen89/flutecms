@@ -1,4 +1,4 @@
-.user-card-overlay {
+﻿.user-card-overlay {
     position: fixed;
     top: 0;
     left: 0;
@@ -199,12 +199,10 @@
     }
 }
 
-// Roles inside user-card — override role-badge sizing
 .uc-roles {
     padding: 0 10px;
 }
 
-// Card bottom: socials + profile button
 .uc-card-bottom {
     display: flex;
     align-items: center;

@@ -6,16 +6,16 @@ use Exception;
 
 class BalanceNotEnoughException extends Exception
 {
-    protected int $need = 0;
+    protected float $need = 0.0;
 
-    public function setNeededSum(int $amount): BalanceNotEnoughException
+    public function setNeededSum(float $amount): BalanceNotEnoughException
     {
-        $this->need = $amount;
+        $this->need = max(0.0, $amount);
 
         return $this;
     }
 
-    public function getNeededSum(): int
+    public function getNeededSum(): float
     {
         return $this->need;
     }

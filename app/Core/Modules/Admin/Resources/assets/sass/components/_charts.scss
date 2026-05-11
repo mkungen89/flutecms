@@ -1,4 +1,4 @@
-// ── Chart wrapper & skeleton ────────────────────────────────────────────────
+﻿
 .chart-wrapper {
     position: relative;
     border-radius: var(--border1);
@@ -29,13 +29,11 @@
     100% { background-position: -200% 0; }
 }
 
-// ── Canvas ─────────────────────────────────────────────────────────────────
 .apexcharts-canvas,
 .apexcharts-svg {
     background: transparent !important;
 }
 
-// ── Tooltip — shadcn popover style ─────────────────────────────────────────
 .apexcharts-tooltip {
     background: var(--background) !important;
     border: 1px solid var(--transp-1) !important;
@@ -101,7 +99,6 @@
     }
 }
 
-// ── Legend — pill-style, shadcn ────────────────────────────────────────────
 .apexcharts-legend {
     padding: 12px 0 0 !important;
 
@@ -143,7 +140,6 @@
     }
 }
 
-// ── Grid — thin solid lines ────────────────────────────────────────────────
 .apexcharts-gridlines-horizontal line,
 .apexcharts-gridlines-vertical line {
     stroke: var(--transp-05) !important;
@@ -154,7 +150,6 @@
     stroke: var(--transp-05) !important;
 }
 
-// ── Axis labels ────────────────────────────────────────────────────────────
 .apexcharts-xaxis-label,
 .apexcharts-yaxis-label {
     fill: var(--text-600) !important;
@@ -169,21 +164,16 @@
     font-weight: 500 !important;
 }
 
-// ── Area charts — let ApexCharts handle gradient fill opacity via SVG ──────
-
-// ── Line charts — thin clean lines ─────────────────────────────────────────
 .apexcharts-line {
     stroke-width: 2px !important;
     stroke-linecap: round !important;
     stroke-linejoin: round !important;
 }
 
-// ── Data points / Markers ──────────────────────────────────────────────────
 .apexcharts-marker {
     stroke-width: 2px !important;
 }
 
-// ── Bar charts — rounded, clean ────────────────────────────────────────────
 .apexcharts-bar-area {
     rx: 4px;
     ry: 4px;
@@ -197,7 +187,6 @@
     }
 }
 
-// ── Donut / Pie — no scale, clean hover ────────────────────────────────────
 .apexcharts-pie-series path {
     transition: opacity 0.15s ease !important;
 
@@ -228,7 +217,6 @@
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4) !important;
 }
 
-// ── Radial bar ─────────────────────────────────────────────────────────────
 .apexcharts-radialbar-track path {
     stroke: var(--transp-05) !important;
 }
@@ -237,7 +225,6 @@
     fill: transparent !important;
 }
 
-// ── Selection / Zoom ───────────────────────────────────────────────────────
 .apexcharts-selection-rect {
     fill: var(--primary) !important;
     fill-opacity: 0.08 !important;
@@ -251,7 +238,6 @@
     fill-opacity: 0.08 !important;
 }
 
-// ── Crosshairs — clean vertical line ───────────────────────────────────────
 .apexcharts-xcrosshairs,
 .apexcharts-ycrosshairs {
     stroke: var(--text-600) !important;
@@ -259,7 +245,6 @@
     stroke-dasharray: 3 3 !important;
 }
 
-// ── Toolbar — minimal ──────────────────────────────────────────────────────
 .apexcharts-toolbar {
     opacity: 0;
     transition: opacity 0.15s ease !important;
@@ -319,7 +304,6 @@
     }
 }
 
-// ── Annotations ────────────────────────────────────────────────────────────
 .apexcharts-annotation-rect {
     fill: var(--primary) !important;
     fill-opacity: 0.06 !important;
@@ -331,19 +315,16 @@
     font-weight: 500 !important;
 }
 
-// ── No data ────────────────────────────────────────────────────────────────
 .apexcharts-no-data {
     fill: var(--text-600) !important;
     font-size: 13px !important;
     font-weight: 400 !important;
 }
 
-// ── Drip ───────────────────────────────────────────────────────────────────
 .apexcharts-series {
     transition: opacity 0.2s ease !important;
 }
 
-// ── Responsive ─────────────────────────────────────────────────────────────
 @media (max-width: 768px) {
     .apexcharts-legend {
         flex-wrap: wrap !important;

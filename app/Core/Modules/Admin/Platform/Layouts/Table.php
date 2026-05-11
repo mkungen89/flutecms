@@ -199,14 +199,42 @@ abstract class Table extends Layout
         $currentPage = $repository->has('currentPage') ? $repository->get('currentPage') : $this->getCurrentPage();
 
         if ($content instanceof Select || $content instanceof SelectQuery) {
-            $paginator = new Paginator($perPage);
-            $paginator = $paginator->withPage($currentPage);
-            $paginator = $paginator->paginate($content);
+            $runQuery = function ($query) use ($perPage, $currentPage) {
+                $paginator = new Paginator($perPage);
+                $paginator = $paginator->withPage($currentPage);
+                $paginator = $paginator->paginate($query);
 
-            $rows = collect($content->fetchAll());
+                return [
+                    collect($query->fetchAll()),
+                    $paginator->count(),
+                    $paginator->countPages(),
+                ];
+            };
 
-            $totalItems = $paginator->count();
-            $totalPages = $paginator->countPages();
+            try {
+                [$rows, $totalItems, $totalPages] = $runQuery($content);
+            } catch (\Throwable $e) {
+                $isSqlError = $e instanceof \PDOException || str_contains((string) $e->getMessage(), 'SQLSTATE');
+
+                if (!$isSqlError || !$this->sortColumn) {
+                    throw $e;
+                }
+
+                logs()->warning('Admin Table sort fallback: ' . $e->getMessage(), [
+                    'sortColumn' => $this->sortColumn,
+                    'querySortColumn' => $this->querySortColumn,
+                    'target' => $this->target,
+                ]);
+
+                // Rebuild content without sort
+                $this->sortColumn = '';
+                $this->querySortColumn = '';
+                $content = $repository->getContent($this->target);
+                if ($this->isSearchable() && $this->searchQuery) {
+                    $content = $this->applySearch($content);
+                }
+                [$rows, $totalItems, $totalPages] = $runQuery($content);
+            }
         } else {
             $collection = $this->getCollectionFromContent($content);
             $totalItems = $collection->count();

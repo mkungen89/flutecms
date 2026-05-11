@@ -35,10 +35,18 @@ window.FluteRichText.BubbleManager = class {
         this._bindImageEvents(editor, modals);
 
         // Prevent selection loss on mousedown for all bubble menus
+        // — but allow Pickr widgets and inputs to capture focus / drag
         var self = this;
         Object.keys(this.elements).forEach(function (key) {
             var el = self.elements[key];
-            if (el) el.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            if (el) el.addEventListener('mousedown', function (e) {
+                var t = e.target;
+                if (t && (t.closest('.pcr-app') || t.closest('.rt-pickr-host') ||
+                          t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) {
+                    return;
+                }
+                e.preventDefault();
+            });
         });
 
         var update = function () { self._updateBubbles(); };
@@ -95,7 +103,8 @@ window.FluteRichText.BubbleManager = class {
             '<button type="button" class="bubble-btn" data-cmd="underline" data-tooltip="' + t('underline', 'Underline') + '">' + icon('underline') + '</button>' +
             '<button type="button" class="bubble-btn" data-cmd="strike" data-tooltip="' + t('strikethrough', 'Strikethrough') + '">' + icon('strikethrough') + '</button>' +
             '<span class="bubble-sep"></span>' +
-            '<button type="button" class="bubble-btn" data-cmd="highlight" data-tooltip="' + t('highlight', 'Highlight') + '">' + icon('highlight') + '</button>' +
+            this._colorDropdownHtml('color', t('text_color', 'Text color'), icon) +
+            this._colorDropdownHtml('highlight', t('bg_color', 'Background'), icon) +
             '<button type="button" class="bubble-btn" data-cmd="code" data-tooltip="' + t('inline_code', 'Code') + '">' + icon('inline-code') + '</button>' +
             '<button type="button" class="bubble-btn" data-cmd="link" data-tooltip="' + t('link', 'Link') + '">' + icon('link') + '</button>' +
             '<span class="bubble-sep"></span>' +
@@ -104,6 +113,25 @@ window.FluteRichText.BubbleManager = class {
             '<button type="button" class="bubble-btn" data-cmd="align-right" data-tooltip="' + t('align_right', 'Right') + '">' + icon('align-right') + '</button>';
         wrapper.appendChild(bubble);
         return bubble;
+    }
+
+    _colorDropdownHtml(mode, label, icon) {
+        var t = this._t.bind(this);
+        var iconName = mode === 'highlight' ? 'highlight' : 'text-color';
+        return '<div class="bubble-color-dropdown toolbar-color-picker" data-color-mode="' + mode + '">' +
+                '<button type="button" class="bubble-btn bubble-color-toggle" data-tooltip="' + label + '">' +
+                    '<span class="bubble-color-icon">' + icon(iconName) + '</span>' +
+                    '<span class="bubble-color-indicator" data-color-indicator></span>' +
+                '</button>' +
+                '<div class="bubble-color-menu">' +
+                    '<div class="rt-pickr-host" data-pickr-host></div>' +
+                    '<div class="rt-pickr-actions">' +
+                        '<button type="button" class="rt-pickr-reset" data-color-reset>' +
+                            icon('clear') + '<span>' + t('reset_color', 'Reset') + '</span>' +
+                        '</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
     }
 
     _bindTextEvents(editor, modals) {
@@ -117,6 +145,7 @@ window.FluteRichText.BubbleManager = class {
             headingToggle.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
+                bubble.querySelectorAll('.bubble-color-dropdown.is-open').forEach(function (dd) { dd.classList.remove('is-open'); });
                 headingMenu.classList.toggle('is-open');
             });
             headingMenu.querySelectorAll('[data-heading]').forEach(function (item) {
@@ -139,6 +168,13 @@ window.FluteRichText.BubbleManager = class {
             });
         }
 
+        // Color dropdowns (text color + bg color) — shared Pickr helper
+        bubble.querySelectorAll('.bubble-color-dropdown').forEach(function (dd) {
+            if (window.FluteRichText && window.FluteRichText.bindColorPicker) {
+                window.FluteRichText.bindColorPicker(dd, editor);
+            }
+        });
+
         bubble.querySelectorAll('[data-cmd]').forEach(function (btn) {
             btn.addEventListener('click', function (e) {
                 e.preventDefault();
@@ -148,7 +184,6 @@ window.FluteRichText.BubbleManager = class {
                     case 'italic': editor.chain().focus().toggleItalic().run(); break;
                     case 'underline': editor.chain().focus().toggleUnderline().run(); break;
                     case 'strike': editor.chain().focus().toggleStrike().run(); break;
-                    case 'highlight': editor.chain().focus().toggleHighlight().run(); break;
                     case 'code': editor.chain().focus().toggleCode().run(); break;
                     case 'link': modals.showLink(editor); break;
                     case 'align-left': editor.chain().focus().setTextAlign('left').run(); break;
@@ -188,7 +223,6 @@ window.FluteRichText.BubbleManager = class {
             'italic': editor.isActive('italic'),
             'underline': editor.isActive('underline'),
             'strike': editor.isActive('strike'),
-            'highlight': editor.isActive('highlight'),
             'code': editor.isActive('code'),
             'link': editor.isActive('link'),
             'align-left': editor.isActive({ textAlign: 'left' }),
@@ -199,6 +233,21 @@ window.FluteRichText.BubbleManager = class {
         bubble.querySelectorAll('[data-cmd]').forEach(function (btn) {
             btn.classList.toggle('is-active', !!states[btn.dataset.cmd]);
         });
+
+        // Color indicators
+        try {
+            var colorAttr = editor.getAttributes('textStyle');
+            var hlAttr = editor.getAttributes('highlight');
+            var curColor = (colorAttr && colorAttr.color) || '';
+            var curBg = (hlAttr && hlAttr.color) || '';
+            bubble.querySelectorAll('.bubble-color-dropdown').forEach(function (dd) {
+                var mode = dd.dataset.colorMode;
+                var ind = dd.querySelector('[data-color-indicator]');
+                var val = mode === 'highlight' ? curBg : curColor;
+                if (ind) ind.style.backgroundColor = val || 'transparent';
+                dd.classList.toggle('has-color', !!val);
+            });
+        } catch (e) {}
     }
 
     // ========= LINK BUBBLE =========
@@ -450,6 +499,10 @@ window.FluteRichText.BubbleManager = class {
         var el = this.elements[type];
         if (!el) return;
         el.style.display = 'none';
+        // Close any open color dropdowns
+        el.querySelectorAll('.bubble-color-dropdown.is-open, .toolbar-color-picker.is-open').forEach(function (dd) {
+            dd.classList.remove('is-open');
+        });
         this._visible[type] = false;
         this._stopPositioning(type);
     }

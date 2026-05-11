@@ -1,4 +1,4 @@
-@media(min-width: 769px) {
+﻿@media(min-width: 769px) {
     .sidebar-nav.is-collapsed {
         width: var(--sidebar-collapsed-width, #{$sidebar-collapsed-width});
 
@@ -92,8 +92,7 @@
             }
         }
 
-        // Guest block in collapsed mode — accent-outlined icon button
-        .sidebar-nav__guest {
+.sidebar-nav__guest {
             justify-content: center;
             padding: 0;
             margin: 0 auto var(--space-2xs);

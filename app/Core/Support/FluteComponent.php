@@ -5,6 +5,7 @@ namespace Flute\Core\Support;
 use Clickfwd\Yoyo\ClassHelpers;
 use Clickfwd\Yoyo\Component;
 use Clickfwd\Yoyo\Exceptions\BypassRenderMethod;
+use Clickfwd\Yoyo\Interfaces\ViewProviderInterface;
 use Flute\Core\Contracts\FluteComponentInterface;
 use Flute\Core\Exceptions\TooManyRequestsException;
 use ReflectionException;
@@ -22,6 +23,13 @@ abstract class FluteComponent extends Component implements FluteComponentInterfa
     public array $confirmedActions = [];
 
     protected array $excludesVariables = ['redirectTo', 'confirmedActions'];
+
+    protected function view($template, $vars = []): ViewProviderInterface
+    {
+        $template = template()->resolveViewReplacement($template);
+
+        return parent::view($template, $vars);
+    }
 
     protected $validator;
 

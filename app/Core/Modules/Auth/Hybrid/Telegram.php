@@ -67,7 +67,7 @@ class Telegram extends OAuth2
         }
 
         $userProfile->data = [
-            'telegram_id' => $claims['sub'],
+            'telegram_id' => $claims['id'],
             'username' => $username,
             'first_name' => $claims['first_name'] ?? null,
             'last_name' => $claims['last_name'] ?? null,

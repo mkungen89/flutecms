@@ -96,8 +96,20 @@ class RequestServiceProvider extends AbstractServiceProvider
         if ($appUrl) {
             $appHost = parse_url($appUrl, PHP_URL_HOST);
             if ($appHost) {
-                $trustedHosts[] = '^' . preg_quote($appHost, '#') . '$';
+                $trustedHosts[] = '^' . preg_quote($appHost, '#') . '\.?$';
+
+                if (!filter_var($appHost, FILTER_VALIDATE_IP) && str_contains($appHost, '.')) {
+                    $wwwPeerHost = str_starts_with($appHost, 'www.') ? substr($appHost, 4) : 'www.' . $appHost;
+
+                    $trustedHosts[] = '^' . preg_quote($wwwPeerHost, '#') . '\.?$';
+                }
             }
+        }
+
+        if (!empty($trustedHosts)) {
+            $trustedHosts[] = '^localhost$';
+            $trustedHosts[] = '^127\.0\.0\.1$';
+            $trustedHosts[] = '^\[?::1\]?$';
         }
 
         $trustedHosts = array_values(array_unique($trustedHosts));

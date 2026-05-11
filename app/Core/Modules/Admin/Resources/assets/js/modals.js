@@ -1,17 +1,18 @@
 function initializeA11yDialog(parentElement = document) {
-    const modals = parentElement.querySelectorAll('.modal, .right_sidebar');
+    const root = parentElement && parentElement.querySelectorAll ? parentElement : document;
+    const modals = [];
+
+    if (root.matches && root.matches('.modal, .right_sidebar')) {
+        modals.push(root);
+    }
+
+    root.querySelectorAll('.modal, .right_sidebar').forEach((modal) => {
+        modals.push(modal);
+    });
 
     modals.forEach((modalElement) => {
         if (modalElement.dialogInstance) {
-            if (modalElement.classList.contains('is-open')) {
-                return;
-            }
-            try {
-                if (typeof modalElement.dialogInstance.destroy === 'function') {
-                    modalElement.dialogInstance.destroy();
-                }
-            } catch (_) {}
-            modalElement.dialogInstance = null;
+            return;
         }
 
         const arrivedOpen = modalElement.classList.contains('is-open');
@@ -149,26 +150,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // --- Two detection mechanisms for modals added after page load ---
 
+const _pendingModalInitRoots = new Set();
+let _modalInitScheduled = false;
+
+function scheduleA11yDialogInit(root = document) {
+    _pendingModalInitRoots.add(root && root.querySelectorAll ? root : document);
+
+    if (_modalInitScheduled) {
+        return;
+    }
+
+    _modalInitScheduled = true;
+    requestAnimationFrame(() => {
+        const roots = Array.from(_pendingModalInitRoots);
+        _pendingModalInitRoots.clear();
+        _modalInitScheduled = false;
+
+        roots.forEach((initRoot) => initializeA11yDialog(initRoot));
+    });
+}
+
 // 1. MutationObserver: catches any DOM insertion.
 const _modalObserver = new MutationObserver((mutations) => {
-    let needsInit = false;
     for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
             if (node.nodeType !== 1) continue;
-            if (node.matches && node.matches('.modal, .right_sidebar')) { needsInit = true; break; }
-            if (node.querySelector && node.querySelector('.modal, .right_sidebar')) { needsInit = true; break; }
+            if (node.matches && node.matches('.modal, .right_sidebar')) {
+                scheduleA11yDialogInit(node);
+                continue;
+            }
+            if (node.querySelector && node.querySelector('.modal, .right_sidebar')) {
+                scheduleA11yDialogInit(node);
+            }
         }
-        if (needsInit) break;
-    }
-    if (needsInit) {
-        initializeA11yDialog(document);
     }
 });
 _modalObserver.observe(document.body, { childList: true, subtree: true });
 
 // 2. htmx:afterSettle: backup for HTMX/Yoyo swaps.
-document.body.addEventListener('htmx:afterSettle', () => {
-    initializeA11yDialog(document);
+document.body.addEventListener('htmx:afterSettle', (event) => {
+    scheduleA11yDialogInit(event.detail?.target || event.target || document);
 });
 
 function hasOpenModals() {

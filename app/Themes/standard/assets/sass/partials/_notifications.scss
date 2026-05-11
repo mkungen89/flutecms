@@ -1,4 +1,4 @@
-.notifications {
+﻿.notifications {
     &__container {
         width: 450px;
     }
@@ -87,7 +87,6 @@
     }
 }
 
-// Notification Dropdown
 .navbar__notifications-wrapper {
     position: relative;
 }
@@ -488,8 +487,7 @@
             }
         }
 
-        // Ensure <button> elements look the same as <a> elements
-        &[type="button"] {
+&[type="button"] {
             border: none;
             outline: none;
 
@@ -546,7 +544,6 @@
     }
 }
 
-// Popup Notifications
 .notification-popups {
     position: fixed;
     bottom: 20px;
@@ -693,7 +690,6 @@
     to { transform: scaleX(0); }
 }
 
-// ─── Dropdown Backdrop (mobile) ─────────
 .dropdown-backdrop {
     display: none;
 

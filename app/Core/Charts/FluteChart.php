@@ -417,7 +417,7 @@ class FluteChart
 
         $cdnLink = asset('assets/js/libs/apex-charts.js');
 
-        return "<script src={$cdnLink}></script>";
+        return "<script src=\"{$cdnLink}\" defer></script>";
     }
 
     // public static function cdn(): string

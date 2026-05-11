@@ -3,7 +3,6 @@
 namespace Flute\Core\Support;
 
 use Clickfwd\Yoyo\Yoyo;
-use Exception;
 use Flute\Core\App;
 use Flute\Core\Contracts\ServiceProviderInterface;
 use Flute\Core\Router\Contracts\RouterInterface;
@@ -52,7 +51,9 @@ abstract class AbstractServiceProvider implements ServiceProviderInterface
         if (file_exists($fullPath)) {
             require $fullPath;
         } else {
-            throw new Exception("Routes from {$relativePath} wasn't found");
+            if (function_exists('logs')) {
+                logs()->warning("Routes from {$relativePath} wasn't found");
+            }
         }
     }
 
@@ -63,10 +64,16 @@ abstract class AbstractServiceProvider implements ServiceProviderInterface
      */
     public function addNamespace(string $namespace, $hints): void
     {
-        $template = template();
+        try {
+            $template = template();
 
-        if ($template) {
-            $template->addNamespace($namespace, $hints);
+            if ($template) {
+                $template->addNamespace($namespace, $hints);
+            }
+        } catch (\Throwable $e) {
+            if (function_exists('logs')) {
+                logs()->warning("Failed to register view namespace {$namespace}: " . $e->getMessage());
+            }
         }
     }
 

@@ -45,6 +45,17 @@ function destroyFilePondsIn(scope) {
 
 function initializeFilePondElement(element) {
     if (!element.classList.contains('filepond')) return;
+    if (typeof FilePond === 'undefined') {
+        if (window.ThemeAssetLoader && typeof window.ThemeAssetLoader.ensure === 'function') {
+            window.ThemeAssetLoader.ensure('filepond', function () {
+                if (document.body.contains(element)) {
+                    initializeFilePondElement(element);
+                }
+            }, element);
+        }
+        return;
+    }
+
     const wrapper = element.closest('.input-wrapper') || element.closest('.form-field') || element.parentElement;
     if (!wrapper || _filePondInstances.has(wrapper)) return;
     const defaultFile = element.dataset.defaultFile || null;
@@ -210,6 +221,9 @@ function _registerFilePondPlugins() {
 document.addEventListener('DOMContentLoaded', function () {
     (typeof requestIdleCallback === 'function' ? requestIdleCallback : setTimeout)(_registerFilePondPlugins);
 });
+
+window._registerFilePondPlugins = _registerFilePondPlugins;
+window.initializeFilePondElement = initializeFilePondElement;
 
 // Destroy FilePond instances BEFORE swap (especially morph) so that the
 // original <input> elements are restored and the morph algorithm can

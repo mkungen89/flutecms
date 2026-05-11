@@ -1,6 +1,8 @@
 @php
     $inputId = $id ?: $name;
     $hasError = $errors->has($name);
+    $title = $title ?? null;
+    $popover = $popover ?? null;
 
     $config = [
         'enableTime' => $enableTime ?? false,

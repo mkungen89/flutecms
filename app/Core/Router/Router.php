@@ -577,11 +577,7 @@ class Router implements RouterInterface
                 throw $exception;
             }
 
-            if (function_exists('logs')) {
-                logs()->error($exception);
-            }
-
-            \Flute\Core\Services\CrashReportService::capture($exception, ['source' => 'router']);
+            \Flute\Core\Support\ExceptionReporter::report($exception, 'router');
 
             $response = response()->error(500, __('def.internal_server_error'));
         }

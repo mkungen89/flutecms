@@ -31,7 +31,7 @@ class NotificationServiceProvider extends AbstractServiceProvider
 
             $this->loadRoutesFrom(cms_path('Notifications/Routes/notifications.php'));
 
-            $this->addNamespace('notifications', cms_path('Modules/Notifications/Resources/views'));
+            $this->addNamespace('notifications', cms_path('Notifications/Resources/views'));
 
             events()->addDeferredListener(UserRegisteredEvent::NAME, [
                 CoreNotificationListener::class,

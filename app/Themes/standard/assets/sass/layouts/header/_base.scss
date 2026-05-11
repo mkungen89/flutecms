@@ -1,4 +1,4 @@
-$nav-ease: cubic-bezier(0.32, 0.72, 0, 1);
+﻿$nav-ease: cubic-bezier(0.32, 0.72, 0, 1);
 $nav-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
 .flute_header {
@@ -49,8 +49,7 @@ $nav-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
         background-color: var(--transp-2);
     }
 
-    // Legacy navbar items
-    &__items {
+&__items {
         @extend .flex-center;
         margin: 0 auto;
         gap: var(--space-sm);
@@ -255,8 +254,7 @@ $nav-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
         }
     }
 
-
-    &__lang,
+&__lang,
     &__langs {
         span {
             @extend .flex-center;

@@ -1,6 +1,5 @@
-$contained-gap: 10px;
+﻿$contained-gap: 10px;
 
-// Hover trigger zone for contained+collapsed mode
 .sidebar-hover-zone {
     display: none;
     position: fixed;
@@ -48,8 +47,6 @@ $contained-gap: 10px;
     }
 }
 
-// Reusable mask mixin: 4 gradient strips forming a frame
-// $left-width — width of the left strip (sidebar area)
 @mixin frame-blur-mask($left-width) {
     -webkit-mask:
         linear-gradient(#000 0 0) 0 0 / 100% #{$contained-gap} no-repeat,
@@ -63,14 +60,13 @@ $contained-gap: 10px;
         linear-gradient(#000 0 0) 100% 0 / #{$contained-gap} 100% no-repeat;
 }
 
-// ─── Desktop only ────────────────────────────────────────────
 @media (min-width: 769px) {
     html[data-nav-style="sidebar"][data-sidebar-contained="true"] {
-        // Base background
+
         background: var(--secondary);
 
         body {
-            // Use background-color (not shorthand) to preserve gradient & custom bg-image
+
             background-color: transparent;
             padding-top: $contained-gap;
             padding-right: $contained-gap;
@@ -93,10 +89,7 @@ $contained-gap: 10px;
             }
         }
 
-        // Content frame — base bg for content area
-        // z-index: -2 so bg effects (z:-1) render on top
-        // Carries gradient + bg-image so they appear rounded within the frame
-        .content-frame {
+.content-frame {
             display: block;
             position: fixed;
             top: $contained-gap;
@@ -115,8 +108,7 @@ $contained-gap: 10px;
             transition: left 0.3s $sidebar-ease;
         }
 
-        // ── Frame blur overlay ──
-        .frame-blur {
+.frame-blur {
             display: block;
             position: fixed;
             inset: 0;
@@ -128,8 +120,7 @@ $contained-gap: 10px;
             @include frame-blur-mask(var(--sidebar-width, #{$sidebar-width}));
         }
 
-        // Sidebar — monolith with frame, no gaps, no rounding
-        .sidebar-nav {
+.sidebar-nav {
             top: 0;
             bottom: 0;
             left: 0;
@@ -144,8 +135,7 @@ $contained-gap: 10px;
                         box-shadow 0.3s ease;
         }
 
-        // Header — clean, no border, no shadow
-        .flute_header {
+.flute_header {
             z-index: 55;
             background: transparent;
 
@@ -158,8 +148,7 @@ $contained-gap: 10px;
             }
         }
 
-        // Content above the frame panel
-        #main {
+#main {
             position: relative;
             z-index: 1;
         }
@@ -170,8 +159,7 @@ $contained-gap: 10px;
             margin-left: 0;
         }
 
-        // ── Toggle button logic (standard sidebar) ──
-        .sidebar-nav__contained-collapse {
+.sidebar-nav__contained-collapse {
             display: flex;
         }
 
@@ -183,16 +171,14 @@ $contained-gap: 10px;
             display: none;
         }
 
-        // ── Non-fixed header ──
-        &[data-nav-fixed="false"] {
+&[data-nav-fixed="false"] {
             .flute_header {
                 position: relative;
                 left: auto;
             }
         }
 
-        // ── Collapsed — fully hide sidebar ──
-        &[data-sidebar-collapsed="true"] {
+&[data-sidebar-collapsed="true"] {
             body {
                 padding-left: $contained-gap;
 
@@ -218,8 +204,7 @@ $contained-gap: 10px;
                     width: var(--sidebar-width, #{$sidebar-width});
                 }
 
-                // Hover preview — slides in as overlay without affecting layout
-                &.is-hover-open {
+&.is-hover-open {
                     transform: translateX(0);
                     opacity: 1;
                     pointer-events: auto;
@@ -249,15 +234,13 @@ $contained-gap: 10px;
                 left: calc(#{$contained-gap} + 14px);
             }
 
-            // Show hover zone trigger
-            .sidebar-hover-zone {
+.sidebar-hover-zone {
                 display: block;
             }
         }
     }
 
-    // ── Mini sidebar + contained ──
-    html[data-nav-style="sidebar"][data-sidebar-style="mini"][data-sidebar-contained="true"] {
+html[data-nav-style="sidebar"][data-sidebar-style="mini"][data-sidebar-contained="true"] {
         body {
             padding-left: var(--sidebar-width, #{$sidebar-mini-width}) !important;
 
@@ -278,8 +261,7 @@ $contained-gap: 10px;
             margin-left: 0 !important;
         }
 
-        // Mini: only external toggle, no internal
-        .sidebar-nav__contained-collapse {
+.sidebar-nav__contained-collapse {
             display: none !important;
         }
 
@@ -320,7 +302,6 @@ $contained-gap: 10px;
     }
 }
 
-// ─── Mobile — disable contained mode ─────────────────────────
 @media (max-width: 768px) {
     html[data-nav-style="sidebar"][data-sidebar-contained="true"] {
         background: var(--background);

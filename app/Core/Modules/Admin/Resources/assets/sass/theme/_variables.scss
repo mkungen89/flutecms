@@ -1,4 +1,4 @@
-@function hexToRGB($hex) {
+﻿@function hexToRGB($hex) {
     @return red($hex), green($hex), blue($hex);
 }
 
@@ -116,7 +116,7 @@
     --secondary: #2c2c2e;
     --accent: #32d74b;
     --accent-rgb: #{hexToRGB(#32d74b)};
-    
+
     --success: #30d158;
     --success-light: rgba(48, 209, 88, 0.15);
     --error: #ff453a;

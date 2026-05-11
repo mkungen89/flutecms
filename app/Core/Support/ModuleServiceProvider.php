@@ -136,7 +136,17 @@ abstract class ModuleServiceProvider implements ModuleServiceProviderInterface
      */
     public function loadRoutesFrom(string $path): void
     {
-        require path($path);
+        $fullPath = path($path);
+
+        if (!is_file($fullPath)) {
+            if (function_exists('logs')) {
+                logs()->warning("Routes from {$path} wasn't found");
+            }
+
+            return;
+        }
+
+        require $fullPath;
     }
 
     /**
@@ -510,7 +520,11 @@ abstract class ModuleServiceProvider implements ModuleServiceProviderInterface
         $fullPath = $this->getModulePath($viewDirectory);
 
         if (!is_dir($fullPath)) {
-            throw new InvalidArgumentException("View directory does not exist: {$fullPath}");
+            if (function_exists('logs')) {
+                logs()->warning("View directory does not exist: {$fullPath}");
+            }
+
+            return;
         }
 
         $this->namespace = $namespace;

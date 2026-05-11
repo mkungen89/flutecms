@@ -1,6 +1,4 @@
-// ========================================
-// MOBILE RESPONSIVE FOR NAV STYLES
-// ========================================
+﻿
 
 @include media(tablet) {
 
@@ -86,8 +84,7 @@
         }
     }
 
-    // Centered nav - revert to default layout on mobile
-    html[data-nav-style="centered"] {
+html[data-nav-style="centered"] {
         .navbar {
             &__left {
                 display: flex;

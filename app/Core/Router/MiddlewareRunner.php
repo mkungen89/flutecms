@@ -54,11 +54,7 @@ class MiddlewareRunner
                 throw $e;
             }
 
-            if (function_exists('logs')) {
-                logs()->error('Middleware failed: ' . $e->getMessage(), ['exception' => $e]);
-            }
-
-            \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'middleware']);
+            \Flute\Core\Support\ExceptionReporter::report($e, 'middleware');
 
             return response()->error(500, __('def.internal_server_error'));
         }

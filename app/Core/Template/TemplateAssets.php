@@ -521,7 +521,7 @@ class TemplateAssets
                                 ));
                             }
                         } catch (Throwable $e) {
-                            logs()->error('Autoprefixer failed: ' . $e->getMessage());
+                            logs()->warning('Autoprefixer skipped: ' . $e->getMessage());
                             $content = $originalContent;
                         }
                     }

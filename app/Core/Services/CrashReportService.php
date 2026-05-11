@@ -48,6 +48,35 @@ class CrashReportService
         RequestValidateException::class,
     ];
 
+    private const LOCAL_ONLY_MESSAGE_PATTERNS = [
+        '/Failed to save cache/i',
+        '/No space left on device/i',
+        '/could not be opened in append mode/i',
+        '/Writing to the log file failed/i',
+        '/Permission denied/i',
+        '/Operation not permitted/i',
+        '/Cannot rename .*storage/i',
+        '/vendor directory is not writable/i',
+        '/composer\.(json|lock) is not writable/i',
+        '/SQLSTATE\[[^\]]+\] \[(2002|1040|1045|1698)\]/i',
+        '/php_network_getaddresses/i',
+        '/Connection refused/i',
+        '/Too many connections/i',
+        '/Access denied for user/i',
+        '/Unable to reach verification service/i',
+        '/cURL error 28/i',
+        '/Resolving timed out/i',
+        '/FLUTE_LICENSE_ERROR/i',
+        '/Missing download token/i',
+        '/Module .* wasn\'t found in the FileSystem/i',
+        '/No hint path defined for/i',
+        '/View directory does not exist/i',
+        '/Routes .* wasn\'t found/i',
+        '/The component parameter is missing the component name or action/i',
+        '/Channel not found/i',
+        '/Забагато запитів/i',
+    ];
+
     private static array $buffer = [];
     private static bool $shutdownRegistered = false;
     private static ?array $configCache = null;
@@ -57,7 +86,7 @@ class CrashReportService
         try {
             $config = self::loadConfig();
 
-            if (empty($config['share']) || !self::shouldReport($e)) {
+            if (empty($config['share']) || !self::shouldReport($e, $context)) {
                 return;
             }
 
@@ -79,7 +108,7 @@ class CrashReportService
         try {
             $config = self::loadConfig();
 
-            if (empty($config['share'])) {
+            if (empty($config['share']) || self::isLocalOnlyMessage((string) ( $error['message'] ?? '' ))) {
                 return;
             }
 
@@ -121,8 +150,12 @@ class CrashReportService
         }
     }
 
-    private static function shouldReport(\Throwable $e): bool
+    private static function shouldReport(\Throwable $e, array $context = []): bool
     {
+        if (( $context['crash_report'] ?? null ) === false) {
+            return false;
+        }
+
         foreach (self::IGNORED_EXCEPTIONS as $class) {
             if ($e instanceof $class) {
                 return false;
@@ -133,7 +166,18 @@ class CrashReportService
             return false;
         }
 
-        return true;
+        return !self::isLocalOnlyMessage($e->getMessage());
+    }
+
+    private static function isLocalOnlyMessage(string $message): bool
+    {
+        foreach (self::LOCAL_ONLY_MESSAGE_PATTERNS as $pattern) {
+            if (preg_match($pattern, $message)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function fingerprint(\Throwable $e, string $source = ''): string
@@ -622,6 +666,10 @@ class CrashReportService
                 return [];
             }
 
+            if (method_exists($app, 'isBooted') && !$app->isBooted()) {
+                return [];
+            }
+
             /** @var ModuleManager $manager */
             $manager = $app->get(ModuleManager::class);
             $modules = [];
@@ -650,6 +698,10 @@ class CrashReportService
         try {
             $app = App::getInstance();
             if (!$app->has(ThemeManager::class)) {
+                return [];
+            }
+
+            if (method_exists($app, 'isBooted') && !$app->isBooted()) {
                 return [];
             }
 

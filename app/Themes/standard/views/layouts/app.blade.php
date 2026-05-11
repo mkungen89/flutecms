@@ -233,6 +233,18 @@
     @include('flute::partials.colors')
 
     <script>
+        window.u = window.u || function(path) {
+            var base = @json((string) url('/'));
+            if (!path) return base;
+            path = String(path);
+            if (/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(path) || path.charAt(0) === '#') {
+                return path;
+            }
+            return base.replace(/\/+$/, '') + '/' + path.replace(/^\/+/, '');
+        };
+    </script>
+
+    <script>
         (function() {
             function updateThemeColor() {
                 var m = document.querySelector('meta[name="theme-color"]#theme-color-meta');
@@ -472,19 +484,61 @@
                             window.fluteRichTextEditor.initialize();
                         }
                     }
+                },
+                pickr: {
+                    match: '[data-pickr-never-match]',
+                    srcs: ["@asset('assets/js/libs/pickr.js')"],
+                    init: function () {}
                 }
             };
+
+            function ensure(key, cb, root) {
+                var lib = libs[key];
+                if (!lib) {
+                    if (cb) cb();
+                    return;
+                }
+
+                if (lib.done) {
+                    if (lib.init) lib.init(root);
+                    if (cb) cb();
+                    return;
+                }
+
+                if (lib.loading) {
+                    lib.callbacks.push({ cb: cb, root: root });
+                    return;
+                }
+
+                lib.loading = true;
+                lib.callbacks = [{ cb: cb, root: root }];
+                load(lib.srcs, function() {
+                    lib.done = true;
+                    lib.loading = false;
+                    var callbacks = lib.callbacks || [];
+                    lib.callbacks = [];
+                    callbacks.forEach(function(item) {
+                        if (lib.init) lib.init(item.root);
+                        if (item.cb) item.cb();
+                    });
+                });
+            }
 
             function scan(root) {
                 Object.keys(libs).forEach(function(key) {
                     var lib = libs[key];
                     if (lib.done) return;
                     if (matches(root, lib.match)) {
-                        lib.done = true;
-                        load(lib.srcs, lib.init || null);
+                        ensure(key, null, root);
                     }
                 });
             }
+
+            window.ThemeAssetLoader = {
+                ensure: ensure,
+                loadScripts: load,
+                scan: scan
+            };
 
             document.addEventListener('DOMContentLoaded', function() { scan(); });
             document.body.addEventListener('htmx:load', function(e) { scan(e.detail.elt); });

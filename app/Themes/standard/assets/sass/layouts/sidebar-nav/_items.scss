@@ -1,4 +1,4 @@
-.sidebar-nav {
+﻿.sidebar-nav {
     &__items {
         display: flex;
         flex-direction: column;
@@ -41,8 +41,7 @@
             background-color: var(--sidebar-active);
             font-weight: 600;
 
-            // Left accent indicator
-            &::before {
+&::before {
                 content: '';
                 position: absolute;
                 left: 0;

@@ -239,11 +239,7 @@ final class App
                 throw $e;
             }
 
-            if (function_exists('logs')) {
-                logs()->error($e);
-            }
-
-            \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'provider.register']);
+            \Flute\Core\Support\ExceptionReporter::report($e, 'provider.register');
         }
 
         return $this;
@@ -276,11 +272,7 @@ final class App
                     throw $e;
                 }
 
-                if (function_exists('logs')) {
-                    logs()->error($e);
-                }
-
-                \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'provider.boot']);
+                \Flute\Core\Support\ExceptionReporter::report($e, 'provider.boot');
             }
         }
 
@@ -313,6 +305,11 @@ final class App
     public function getVersion(): string
     {
         return self::VERSION;
+    }
+
+    public function isBooted(): bool
+    {
+        return $this->isBooted;
     }
 
     /**
@@ -554,13 +551,9 @@ final class App
                                 throw $e;
                             }
 
-                            if (function_exists('logs')) {
-                                logs()->error("Event listener {$listener} failed: " . $e->getMessage(), [
-                                    'exception' => $e,
-                                ]);
-                            }
-
-                            \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'event.listener']);
+                            \Flute\Core\Support\ExceptionReporter::report($e, 'event.listener', [
+                                'listener' => $listener,
+                            ]);
 
                             return null;
                         }

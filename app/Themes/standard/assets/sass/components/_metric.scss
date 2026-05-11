@@ -1,4 +1,4 @@
-.metrics {
+﻿.metrics {
 	margin-bottom: var(--space-md);
 
 	&__title {
@@ -8,8 +8,7 @@
 		font-size: var(--h4);
 	}
 
-	// --- Unified (default): single card shell ---
-	&__grid {
+&__grid {
 		@extend .blur-bg;
 		display: flex;
 		background-color: var(--blurred-background);
@@ -19,8 +18,7 @@
 		overflow: hidden;
 	}
 
-	// Items inside unified grid get dividers
-	&__grid > .metric {
+&__grid > .metric {
 		flex: 1;
 		min-width: 0;
 		position: relative;
@@ -35,8 +33,7 @@
 			background-color: var(--transp-05);
 		}
 
-		// Vertical divider between items
-		& + .metric::before {
+& + .metric::before {
 			content: '';
 			position: absolute;
 			left: 0;
@@ -47,8 +44,7 @@
 		}
 	}
 
-	// --- Cards variant: separate cards ---
-	&--cards &__grid {
+&--cards &__grid {
 		display: grid;
 		grid-template-columns: repeat(var(--metrics-cols, auto-fit), minmax(200px, 1fr));
 		gap: var(--space-md);
@@ -78,10 +74,6 @@
 	}
 }
 
-// =========================================================
-// Metric card
-// =========================================================
-
 .metric {
 	@extend .blur-bg;
 	position: relative;
@@ -96,8 +88,7 @@
 	box-shadow: var(--shadow-small);
 	@include transition(background-color);
 
-	// --- Color accents (top bar) ---
-	@each $name in primary, success, warning, error, info {
+@each $name in primary, success, warning, error, info {
 		&--#{$name} {
 			.metric__icon-svg {
 				color: var(--#{$name});
@@ -109,8 +100,7 @@
 		}
 	}
 
-	// --- Sizes ---
-	&--sm {
+&--sm {
 		padding: var(--space-md);
 		gap: var(--space-2xs);
 
@@ -127,8 +117,7 @@
 		}
 	}
 
-	// --- Header ---
-	&__header {
+&__header {
 		display: flex;
 		align-items: center;
 		gap: var(--space-xs);
@@ -155,8 +144,7 @@
 		text-overflow: ellipsis;
 	}
 
-	// --- Body ---
-	&__body {
+&__body {
 		margin-top: auto;
 	}
 
@@ -192,8 +180,7 @@
 		}
 	}
 
-	// --- Trend badge ---
-	&__trend {
+&__trend {
 		display: inline-flex;
 		align-items: center;
 		gap: 2px;
@@ -219,8 +206,7 @@
 		height: 1em;
 	}
 
-	// --- Progress ---
-	&__progress {
+&__progress {
 		margin-top: var(--space-sm);
 		width: 100%;
 		height: 4px;
@@ -236,8 +222,7 @@
 		@include transition(width);
 	}
 
-	// --- Hint / Extra ---
-	&__hint {
+&__hint {
 		margin-top: var(--space-xs);
 		color: var(--text-500);
 		font-size: var(--p-small);
@@ -249,18 +234,14 @@
 	}
 }
 
-// =========================================================
-// Responsive
-// =========================================================
-
 @media (max-width: 768px) {
-	// Unified: stack vertically
+
 	.metrics__grid {
 		flex-direction: column;
 	}
 
 	.metrics__grid > .metric + .metric::before {
-		// Horizontal divider instead of vertical
+
 		left: var(--space-lg);
 		right: var(--space-lg);
 		top: 0;
@@ -269,8 +250,7 @@
 		height: 1px;
 	}
 
-	// Cards variant
-	.metrics--cards .metrics__grid {
+.metrics--cards .metrics__grid {
 		grid-template-columns: repeat(2, 1fr);
 		gap: var(--space-sm);
 	}

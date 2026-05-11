@@ -362,11 +362,18 @@ abstract class Table extends FluteComponent
             $column = collect($this->columns())->firstWhere('field', $this->sortField);
             if ($column && ( $column['allowSort'] ?? true )) {
                 $direction = strtolower($this->sortDirection) === 'desc' ? 'desc' : 'asc';
-                $query->orderBy($column['field'], $direction);
+                $query->orderBy($this->getColumnSortField($column), $direction);
             }
         }
 
         return $query;
+    }
+
+    protected function getColumnSortField(array $column): string
+    {
+        $sortField = $column['sortField'] ?? $column['field'] ?? '';
+
+        return is_string($sortField) && $sortField !== '' ? $sortField : (string) ( $column['field'] ?? '' );
     }
 
     /**
@@ -446,16 +453,35 @@ abstract class Table extends FluteComponent
     protected function getPaginatedData(): array
     {
         if ($this->select) {
-            $query = $this->buildQuery();
+            $runQuery = function () {
+                $query = $this->buildQuery();
+                $total = $query->count();
+                $pages = max(ceil($total / $this->perPage), 1);
+                $currentPage = min($this->page, $pages);
+                $data = $query
+                    ->offset(( $currentPage - 1 ) * $this->perPage)
+                    ->limit($this->perPage)
+                    ->fetchAll();
 
-            $total = $query->count();
-            $pages = max(ceil($total / $this->perPage), 1);
-            $currentPage = min($this->page, $pages);
+                return [$total, $pages, $currentPage, $data];
+            };
 
-            $data = $query
-                ->offset(( $currentPage - 1 ) * $this->perPage)
-                ->limit($this->perPage)
-                ->fetchAll();
+            try {
+                [$total, $pages, $currentPage, $data] = $runQuery();
+            } catch (\Throwable $e) {
+                $isSqlError = $e instanceof \PDOException || str_contains((string) $e->getMessage(), 'SQLSTATE');
+
+                if (!$isSqlError || $this->sortField === null) {
+                    throw $e;
+                }
+
+                logs()->warning('Table sort fallback: ' . $e->getMessage(), [
+                    'sortField' => $this->sortField,
+                    'component' => static::class,
+                ]);
+                $this->sortField = null;
+                [$total, $pages, $currentPage, $data] = $runQuery();
+            }
 
             $data = $this->processData($data);
 

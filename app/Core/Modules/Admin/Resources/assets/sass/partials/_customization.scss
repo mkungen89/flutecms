@@ -1,4 +1,4 @@
-.customization-section {
+﻿.customization-section {
     @extend .flex-column;
     gap: 15px;
     margin-bottom: 30px;
@@ -18,7 +18,6 @@
     }
 }
 
-// Theme Toggle
 .theme-toggle {
     @extend .d-flex;
     gap: 10px;
@@ -69,7 +68,6 @@
     }
 }
 
-// Color Schemes
 .color-schemes {
     @extend .d-grid;
     grid-template-columns: repeat(2, 1fr);
@@ -140,7 +138,6 @@
     }
 }
 
-// Container Width
 .container-width {
     @extend .d-flex;
     gap: 10px;
@@ -215,7 +212,6 @@
     }
 }
 
-// Customization button in navbar
 .navbar {
     &__customization {
         @extend .flex-center;

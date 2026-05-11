@@ -1,8 +1,7 @@
-// Top Donors Widget — Minimal Design
-// ===================================
+﻿
 
 .top-donors {
-    // Medal colors — muted, elegant
+
     --medal-gold: #d4a853;
     --medal-silver: #9ca3af;
     --medal-bronze: #b87333;
@@ -21,10 +20,7 @@
         gap: var(--space-sm);
     }
 
-    // ==========================================
-    // Podium Mode
-    // ==========================================
-    &__podium {
+&__podium {
         display: flex;
         align-items: flex-end;
         justify-content: center;
@@ -46,8 +42,7 @@
             transform: translateY(-2px);
         }
 
-        // First place — larger
-        &--1 {
+&--1 {
             max-width: 6.5rem;
 
             .top-donors__podium-avatar {
@@ -85,8 +80,7 @@
             border-radius: 50%;
         }
 
-        // Place indicator
-        &::after {
+&::after {
             content: attr(data-place);
             position: absolute;
             bottom: -4px;
@@ -130,10 +124,7 @@
         line-height: 1.2;
     }
 
-    // ==========================================
-    // List Mode
-    // ==========================================
-    &__list {
+&__list {
         display: flex;
         flex-direction: column;
 
@@ -157,8 +148,7 @@
             background: var(--transp-03);
         }
 
-        // Medal positions
-        &--1 .top-donors__list-rank {
+&--1 .top-donors__list-rank {
             color: var(--medal-gold);
         }
 
@@ -203,10 +193,7 @@
         font-variant-numeric: tabular-nums;
     }
 
-    // ==========================================
-    // Compact Mode
-    // ==========================================
-    &__compact {
+&__compact {
         display: flex;
         flex-wrap: wrap;
         gap: var(--space-xs);
@@ -231,8 +218,7 @@
             border-radius: 50%;
         }
 
-        // Medal borders
-        &--1 img {
+&--1 img {
             box-shadow: 0 0 0 2px var(--medal-gold);
         }
 
@@ -277,10 +263,7 @@
         }
     }
 
-    // ==========================================
-    // Empty State
-    // ==========================================
-    &__empty {
+&__empty {
         display: flex;
         flex-direction: column;
         align-items: center;

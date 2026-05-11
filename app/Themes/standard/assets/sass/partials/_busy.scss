@@ -1,4 +1,4 @@
-$color-spinner: var(--text);
+﻿$color-spinner: var(--text);
 $spinner-opacity: 0.75;
 $spinner-speed: 0.75s;
 $spacing-unit: 8px;
@@ -46,7 +46,6 @@ input[type="submit"][aria-busy="true"] {
         transform: rotate(360deg);
     }
 }
-
 
 @media (prefers-reduced-motion:reduce) {
 

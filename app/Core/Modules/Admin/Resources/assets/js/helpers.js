@@ -44,6 +44,18 @@ function destroyFilePondsIn(scope) {
 
 function initializeFilePondElement(element) {
     if (!element.classList.contains('filepond')) return;
+    if (typeof FilePond === 'undefined') {
+        if (window.AdminAssetLoader && typeof window.AdminAssetLoader.ensure === 'function') {
+            window.AdminAssetLoader.ensure('filepond', function () {
+                if (document.body.contains(element)) {
+                    initializeFilePondElement(element);
+                }
+            }, element);
+        }
+
+        return;
+    }
+
     const defaultFile = element.dataset.defaultFile || null;
     const wrapper = element.closest('.input-wrapper');
     if (!wrapper || _filePondInstances.has(wrapper)) return;
@@ -234,17 +246,25 @@ function initializeFilePondElement(element) {
     }
 }
 
-document.addEventListener('DOMContentLoaded', function () {
-    // Register FilePond plugins here — deferred scripts have all executed by now.
-    if (typeof FilePond !== 'undefined' && !window.filePondPluginsRegistered) {
-        const plugins = [];
-        if (typeof FilePondPluginImagePreview !== 'undefined') plugins.push(FilePondPluginImagePreview);
-        if (typeof FilePondPluginFileValidateType !== 'undefined') plugins.push(FilePondPluginFileValidateType);
-        if (typeof FilePondPluginFileValidateSize !== 'undefined') plugins.push(FilePondPluginFileValidateSize);
-        if (typeof FilePondPluginImageExifOrientation !== 'undefined') plugins.push(FilePondPluginImageExifOrientation);
-        if (plugins.length) FilePond.registerPlugin(...plugins);
-        window.filePondPluginsRegistered = true;
+function _registerFilePondPlugins() {
+    if (typeof FilePond === 'undefined' || window.filePondPluginsRegistered) {
+        return;
     }
+
+    const plugins = [];
+    if (typeof FilePondPluginImagePreview !== 'undefined') plugins.push(FilePondPluginImagePreview);
+    if (typeof FilePondPluginFileValidateType !== 'undefined') plugins.push(FilePondPluginFileValidateType);
+    if (typeof FilePondPluginFileValidateSize !== 'undefined') plugins.push(FilePondPluginFileValidateSize);
+    if (typeof FilePondPluginImageExifOrientation !== 'undefined') plugins.push(FilePondPluginImageExifOrientation);
+    if (plugins.length) FilePond.registerPlugin(...plugins);
+    window.filePondPluginsRegistered = true;
+}
+
+window._registerFilePondPlugins = _registerFilePondPlugins;
+window.initializeFilePondElement = initializeFilePondElement;
+
+document.addEventListener('DOMContentLoaded', function () {
+    _registerFilePondPlugins();
 
     document.querySelectorAll('input.filepond').forEach(initializeFilePondElement);
     // Destroy FilePond instances BEFORE swap (especially morph) so that the
@@ -365,4 +385,3 @@ document.addEventListener('change', function (event) {
         }
     }
 });
-

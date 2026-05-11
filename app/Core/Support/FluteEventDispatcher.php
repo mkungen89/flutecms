@@ -6,6 +6,7 @@ use Closure;
 use Laravel\SerializableClosure\SerializableClosure;
 use ReflectionFunction;
 use Symfony\Component\EventDispatcher\EventDispatcher;
+use Throwable;
 
 class FluteEventDispatcher extends EventDispatcher
 {
@@ -85,13 +86,23 @@ class FluteEventDispatcher extends EventDispatcher
             return;
         }
 
-        cache()->set($this->deferredListenersKey, $this->deferredListeners, 3600);
-        $this->isDirty = false;
+        try {
+            if (function_exists('cache')) {
+                cache()->set($this->deferredListenersKey, $this->deferredListeners, 3600);
+            }
+            $this->isDirty = false;
+        } catch (Throwable) {
+            $this->isDirty = true;
+        }
     }
 
     private function initializeDeferredListeners()
     {
-        $deferredListeners = cache()->get($this->deferredListenersKey, []);
+        try {
+            $deferredListeners = function_exists('cache') ? cache()->get($this->deferredListenersKey, []) : [];
+        } catch (Throwable) {
+            $deferredListeners = [];
+        }
 
         if (!is_array($deferredListeners)) {
             $deferredListeners = [];

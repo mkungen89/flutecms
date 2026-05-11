@@ -1567,11 +1567,9 @@ class TooltipManager {
             this.hideAllTooltips();
         });
 
-        // Close all portaled dropdowns/popups on page swap to prevent orphaned elements
         htmx.on("htmx:beforeSwap", (event) => {
             if (event.detail.target && event.detail.target.tagName && event.detail.target.tagName.toLowerCase() === "main") {
-                // Close data-dropdown elements (DropdownManager)
-                this.dropdowns.closeAllDropdowns(true);
+                if (app && app.dropdowns) app.dropdowns.closeAllDropdowns(true);
 
                 // Close profile dropdown (ProfileDropdownManager)
                 if (typeof profileDropdown !== "undefined" && profileDropdown) {

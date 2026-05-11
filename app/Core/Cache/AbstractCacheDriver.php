@@ -92,16 +92,27 @@ abstract class AbstractCacheDriver implements CacheInterface
         $result = $this->cache->save($item);
 
         if (!$result) {
+            static $reportedFailures = [];
+
             $adapter = is_object($this->cache) ? get_class($this->cache) : gettype($this->cache);
+            if (isset($reportedFailures[$adapter])) {
+                $this->saveToStale($key, $value, $ttl);
+
+                return $result;
+            }
+
+            $reportedFailures[$adapter] = true;
             $type = is_object($value) ? $value::class : gettype($value);
             $sizeHint = null;
 
             try {
                 $sizeHint = is_string($value) ? strlen($value) : ( is_array($value) ? count($value) : null );
             } catch (Throwable) {
+                $sizeHint = null;
             }
-            $this->logger->error("Failed to save cache for key: {$key}", [
+            $this->logger->warning('Failed to save cache item; serving request without persistent cache', [
                 'adapter' => $adapter,
+                'key_hash' => hash('sha256', $key),
                 'ttl' => $ttl,
                 'value_type' => $type,
                 'value_size_hint' => $sizeHint,
