@@ -121,6 +121,7 @@ return [
     "sidebar_position"      => "Положение пунктов",
     "sidebar_position_top"  => "Пункты сверху",
     "sidebar_position_center" => "Пункты по центру",
+    "sidebar_mini_show_labels" => "Показывать подписи под иконками",
     "position_top"          => "Сверху",
     "position_center"       => "По центру",
     "nav_fixed"             => "Фиксированная навигация",

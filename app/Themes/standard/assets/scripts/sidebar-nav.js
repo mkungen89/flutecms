@@ -536,12 +536,18 @@ class SidebarNav {
     updateTooltips() {
         const items = this.sidebar.querySelectorAll('.sidebar-nav__item');
         const isCompact = this.isCollapsed && !this.isMini && !this.isMobile() && !this.hoverPreviewActive;
+        const isMiniTooltip = this.isMini
+            && !this.isMobile()
+            && document.documentElement.getAttribute('data-sidebar-mini-labels') === 'tooltip';
 
         items.forEach(item => {
             const text = item.querySelector('.sidebar-nav__item-text')?.textContent?.trim();
             if (!text) return;
 
-            if (isCompact) {
+            const hasDropdown = !!item.closest('[data-sidebar-dropdown]');
+            const wantsTooltip = isCompact || (isMiniTooltip && !hasDropdown);
+
+            if (wantsTooltip) {
                 if (!item.hasAttribute('data-original-tooltip')) {
                     item.setAttribute('data-original-tooltip', item.getAttribute('data-tooltip') || '');
                 }

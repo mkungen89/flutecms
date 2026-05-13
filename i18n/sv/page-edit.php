@@ -110,6 +110,7 @@ return [
     'sidebar_position' => 'Objektposition',
     'sidebar_position_top' => 'Objekt justerade till toppen',
     'sidebar_position_center' => 'Objekt centrerade vertikalt',
+    'sidebar_mini_show_labels' => 'Visa etiketter under ikonerna',
     'position_top' => 'Topp',
     'position_center' => 'Centrerad',
     'nav_fixed' => 'Fast navigering',

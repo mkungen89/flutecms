@@ -283,6 +283,8 @@ class VisualEditor {
         // Sidebar position section and cards
         this.sidebarPositionSection = document.getElementById('ve-sidebar-position');
         this.sidebarPositionCards = this.editor.querySelectorAll('[data-sidebar-position]');
+        this.sidebarMiniLabelsWrap = document.getElementById('ve-sidebar-mini-labels-wrap');
+        this.sidebarMiniLabelsToggle = document.getElementById('ve-sidebar-mini-labels');
         // Sidebar contained toggle
         this.sidebarContainedToggle = document.getElementById('ve-sidebar-contained');
         this.sidebarContainedWrap = document.getElementById('ve-sidebar-contained-wrap');
@@ -704,6 +706,12 @@ class VisualEditor {
             });
         });
 
+        // Sidebar mini-labels toggle
+        this.sidebarMiniLabelsToggle?.addEventListener('change', (e) => {
+            this.setSidebarMiniLabels(e.target.checked ? 'text' : 'tooltip');
+            this.recordHistory();
+        });
+
         // Sidebar contained toggle
         this.sidebarContainedToggle?.addEventListener('change', (e) => {
             this.setSidebarContained(e.target.checked);
@@ -1058,6 +1066,17 @@ class VisualEditor {
         this.sidebarPositionCards.forEach(card => {
             card.classList.toggle('active', card.dataset.sidebarPosition === sidebarPosition);
         });
+
+        // Show/hide sidebar mini-labels toggle (only for mini style)
+        if (this.sidebarMiniLabelsWrap) {
+            this.sidebarMiniLabelsWrap.hidden = sidebarStyle !== 'mini';
+        }
+
+        // Sidebar mini-labels
+        if (this.sidebarMiniLabelsToggle) {
+            const value = this.root.getAttribute('data-sidebar-mini-labels') || 'text';
+            this.sidebarMiniLabelsToggle.checked = value !== 'tooltip';
+        }
 
         // Sidebar contained
         if (this.sidebarContainedToggle) {
@@ -2045,6 +2064,26 @@ class VisualEditor {
         if (this.sidebarPositionSection) {
             this.sidebarPositionSection.hidden = style !== 'mini';
         }
+
+        // Show/hide sidebar mini-labels toggle (only for mini style)
+        if (this.sidebarMiniLabelsWrap) {
+            this.sidebarMiniLabelsWrap.hidden = style !== 'mini';
+        }
+    }
+
+    // Sidebar mini-labels (text/tooltip) - only for mini style
+    setSidebarMiniLabels(value) {
+        this.root.setAttribute('data-sidebar-mini-labels', value);
+        this.setProperty('--sidebar-mini-labels', value);
+        this.setThemeAttr('sidebar-mini-labels', value);
+
+        if (this.sidebarMiniLabelsToggle) {
+            this.sidebarMiniLabelsToggle.checked = value !== 'tooltip';
+        }
+
+        if (window.sidebarNav && typeof window.sidebarNav.updateTooltips === 'function') {
+            window.sidebarNav.updateTooltips();
+        }
     }
 
     // Sidebar mode (minimal/full) - only for default style
@@ -2206,7 +2245,7 @@ class VisualEditor {
             '--shadow-small', '--shadow-medium', '--shadow-large',
             '--gradient-type', '--gradient-angle', '--gradient-pos-x', '--gradient-pos-y', '--gradient-intensity', '--page-gradient',
             '--bg-effect', '--bg-effect-opacity', '--container-width', '--widget-gap',
-            '--nav-style', '--sidebar-style', '--sidebar-position', '--sidebar-contained', '--nav-fixed', '--nav-blur', '--nav-socials', '--hover-scale', '--footer-type', '--footer-socials', '--footer-logo',
+            '--nav-style', '--sidebar-style', '--sidebar-position', '--sidebar-mini-labels', '--sidebar-contained', '--nav-fixed', '--nav-blur', '--nav-socials', '--hover-scale', '--footer-type', '--footer-socials', '--footer-logo',
             '--emoji-pattern', '--emoji-tile-width', '--emoji-tile-height', '--emoji-angle', '--emoji-accent-filter'
         ];
         
@@ -2233,6 +2272,7 @@ class VisualEditor {
         state['_sidebar-style'] = this.root.getAttribute('data-sidebar-style') || 'default';
         state['_sidebar-mode'] = this.root.getAttribute('data-sidebar-mode') || 'full';
         state['_sidebar-position'] = this.root.getAttribute('data-sidebar-position') || 'top';
+        state['_sidebar-mini-labels'] = this.root.getAttribute('data-sidebar-mini-labels') || 'text';
         state['_sidebar-contained'] = this.root.getAttribute('data-sidebar-contained') || 'false';
         state['_nav-fixed'] = this.root.getAttribute('data-nav-fixed') || 'true';
         state['_nav-blur'] = this.root.getAttribute('data-nav-blur') || 'true';
@@ -2256,7 +2296,7 @@ class VisualEditor {
             '--shadow-small', '--shadow-medium', '--shadow-large',
             '--gradient-type', '--gradient-angle', '--gradient-pos-x', '--gradient-pos-y', '--gradient-intensity', '--page-gradient',
             '--bg-effect', '--bg-effect-opacity', '--container-width',
-            '--nav-style', '--sidebar-style', '--sidebar-position', '--sidebar-contained', '--nav-fixed', '--nav-blur', '--nav-socials', '--hover-scale', '--footer-type', '--footer-socials', '--footer-logo',
+            '--nav-style', '--sidebar-style', '--sidebar-position', '--sidebar-mini-labels', '--sidebar-contained', '--nav-fixed', '--nav-blur', '--nav-socials', '--hover-scale', '--footer-type', '--footer-socials', '--footer-logo',
             '--emoji-pattern', '--emoji-tile-width', '--emoji-tile-height', '--emoji-angle', '--emoji-accent-filter'
         ];
         
@@ -2330,6 +2370,8 @@ class VisualEditor {
                 this.setSidebarMode(value);
             } else if (key === '_sidebar-position') {
                 this.setSidebarPosition(value);
+            } else if (key === '_sidebar-mini-labels') {
+                this.setSidebarMiniLabels(value);
             } else if (key === '_sidebar-contained') {
                 this.setSidebarContained(value === 'true');
             } else if (key === '_nav-fixed') {
@@ -2655,6 +2697,7 @@ class VisualEditor {
         colors['--sidebar-style'] = state['_sidebar-style'] || 'default';
         colors['--sidebar-mode'] = state['_sidebar-mode'] || 'full';
         colors['--sidebar-position'] = state['_sidebar-position'] || 'top';
+        colors['--sidebar-mini-labels'] = state['_sidebar-mini-labels'] || 'text';
         colors['--sidebar-contained'] = state['_sidebar-contained'] || 'false';
         colors['--nav-fixed'] = state['_nav-fixed'] || 'true';
         colors['--nav-blur'] = state['_nav-blur'] || 'true';

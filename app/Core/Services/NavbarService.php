@@ -108,6 +108,32 @@ class NavbarService
         }
     }
 
+    public function count(bool $ignoreAuth = false): int
+    {
+        return count($this->all($ignoreAuth));
+    }
+
+    public function topLevel(int $limit = 4, bool $ignoreAuth = false): array
+    {
+        return array_slice($this->all($ignoreAuth), 0, max(0, $limit));
+    }
+
+    public function overflow(int $limit = 4, bool $ignoreAuth = false): array
+    {
+        return array_slice($this->all($ignoreAuth), max(0, $limit));
+    }
+
+    public function mobileNavMode(int $limit = 4, bool $ignoreAuth = false): string
+    {
+        $count = $this->count($ignoreAuth);
+
+        if ($count === 0) {
+            return 'empty';
+        }
+
+        return $count <= $limit ? 'tabbar' : 'hybrid';
+    }
+
     /**
      * Checks if user has access to navbar item
      *

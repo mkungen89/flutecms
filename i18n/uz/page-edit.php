@@ -120,6 +120,7 @@ return [
     'sidebar_position' => 'Elementlar Pozitsiyasi',
     'sidebar_position_top' => 'Elementlar yuqoriga tekislangan',
     'sidebar_position_center' => 'Elementlar vertikal markazlashtirilgan',
+    'sidebar_mini_show_labels' => 'Belgilar ostida yorliqlarni koʻrsatish',
     'position_top' => 'Yuqori',
     'position_center' => 'Markaz',
     'nav_fixed' => 'Qattiq Navigatsiya',

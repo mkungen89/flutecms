@@ -180,6 +180,7 @@ return [
     'sidebar_position' => 'Позиція елементів',
     'sidebar_position_top' => 'Елементи вирівняні зверху',
     'sidebar_position_center' => 'Елементи вирівняні по центру вертикально',
+    'sidebar_mini_show_labels' => 'Показувати підписи під іконками',
     'position_top' => 'Зверху',
     'position_center' => 'Центр',
 

@@ -244,6 +244,11 @@
                         </div>
                     </div>
 
+                    <div class="ve__field ve__field--switch" id="ve-sidebar-mini-labels-wrap" style="margin-top: var(--space-md);" hidden>
+                        <label class="ve__field-label">{{ __('page-edit.sidebar_mini_show_labels') }}</label>
+                        <x-fields.toggle name="ve-sidebar-mini-labels" id="ve-sidebar-mini-labels" :checked="true" />
+                    </div>
+
                     <div class="ve__sidebar-position" id="ve-sidebar-position" hidden>
                         <h4 class="ve__section-title" style="margin-top: var(--space-md);">{{ __('page-edit.sidebar_position') }}</h4>
                         <div class="ve__option-cards ve__option-cards--nav-2col">

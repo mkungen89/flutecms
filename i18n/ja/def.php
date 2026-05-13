@@ -286,4 +286,5 @@ return [
     'created' => '作成済み',
     'deleted' => '削除済み',
     'auth_required' => '認証が必要です',
+    'more' => 'もっと見る',
 ];

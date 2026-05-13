@@ -1,5 +1,70 @@
 ﻿
 
+@media (max-width: 1100px) {
+    .navbar {
+        &__left {
+            gap: var(--space-sm);
+        }
+
+        &__separator {
+            display: none !important;
+        }
+
+        &__socials {
+            display: none;
+        }
+
+        &__actions {
+            gap: var(--space-2xs);
+
+            &.login {
+                gap: var(--space-sm);
+            }
+        }
+
+        &__widgets {
+            gap: var(--space-2xs);
+        }
+
+        &__content-logo img {
+            max-height: 32px;
+        }
+    }
+
+    .navbar-dropdown {
+        &__item {
+            padding: var(--space-2xs) var(--space-xs);
+
+            span {
+                font-size: 13px;
+            }
+        }
+    }
+}
+
+@media (max-width: 900px) {
+    .navbar {
+        &__content-logo {
+            .navbar__logo {
+                max-width: 90px;
+            }
+        }
+
+        &__left {
+            gap: var(--space-xs);
+        }
+
+        &__notifications svg {
+            width: 1.25em;
+            height: 1.25em;
+        }
+    }
+
+    .navbar-dropdown__item-icon {
+        display: none;
+    }
+}
+
 @include media(tablet) {
 
     html[data-nav-style="pill"],

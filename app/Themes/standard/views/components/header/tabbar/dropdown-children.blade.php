@@ -2,39 +2,48 @@
 
 @foreach ($children as $child)
     @if (!empty($child['children']) && count($child['children']) > 0)
-        <div class="tabbar__modal-submenu" data-level="{{ $level }}">
-            <button type="button" class="tabbar__modal-item tabbar__modal-submenu-trigger">
+        <div class="tabbar-sheet__group" data-level="{{ $level }}">
+            <button type="button" class="tabbar-sheet__item tabbar-sheet__group-trigger"
+                aria-expanded="false">
                 @if ($child['icon'])
-                    <x-icon path="{{ $child['icon'] }}" />
+                    <span class="tabbar-sheet__item-icon">
+                        <x-icon path="{{ $child['icon'] }}" />
+                    </span>
                 @endif
-                @if (!empty($child['description']))
-                    <div class="tabbar__modal-item-content">
-                        <span>{{ transValue($child['title']) }}</span>
-                        <small class="tabbar__modal-item-description">{{ transValue($child['description']) }}</small>
-                    </div>
-                @else
-                    <span>{{ transValue($child['title']) }}</span>
-                @endif
-                <x-icon class="tabbar__modal-submenu-arrow" path="ph.bold.caret-down-bold" />
+                <span class="tabbar-sheet__item-text">
+                    <span class="tabbar-sheet__item-title">{{ transValue($child['title']) }}</span>
+                    @if (!empty($child['description']))
+                        <span class="tabbar-sheet__item-desc">{{ transValue($child['description']) }}</span>
+                    @endif
+                </span>
+                <span class="tabbar-sheet__group-chevron" aria-hidden="true">
+                    <x-icon path="ph.bold.caret-down-bold" />
+                </span>
             </button>
-            <div class="tabbar__modal-submenu-content" style="padding-left: {{ ($level + 1) * 16 }}px;">
+            <div class="tabbar-sheet__group-children" data-level="{{ $level + 1 }}">
                 <x-header.tabbar.dropdown-children :children="$child['children']" :level="$level + 1" />
             </div>
         </div>
     @else
-        <a href="{{ url($child['url']) }}" @if ($child['new_tab']) target="_blank" rel="noopener" @endif
-            class="tabbar__modal-item" itemprop="url" style="@if($level > 0) padding-left: {{ $level * 16 }}px; @endif">
+        @php
+            $_active = trim(active($child['url'])) !== '';
+        @endphp
+        <a href="{{ url($child['url']) }}"
+            @if ($child['new_tab']) target="_blank" rel="noopener" @endif
+            class="tabbar-sheet__item {{ $_active ? 'is-active' : '' }}"
+            @if ($_active) aria-current="page" @endif
+            itemprop="url">
             @if ($child['icon'])
-                <x-icon path="{{ $child['icon'] }}" />
+                <span class="tabbar-sheet__item-icon">
+                    <x-icon path="{{ $child['icon'] }}" />
+                </span>
             @endif
-            @if (!empty($child['description']))
-                <div class="tabbar__modal-item-content">
-                    <span itemprop="name">{{ transValue($child['title']) }}</span>
-                    <small class="tabbar__modal-item-description">{{ transValue($child['description']) }}</small>
-                </div>
-            @else
-                <span itemprop="name">{{ transValue($child['title']) }}</span>
-            @endif
+            <span class="tabbar-sheet__item-text">
+                <span class="tabbar-sheet__item-title" itemprop="name">{{ transValue($child['title']) }}</span>
+                @if (!empty($child['description']))
+                    <span class="tabbar-sheet__item-desc">{{ transValue($child['description']) }}</span>
+                @endif
+            </span>
         </a>
     @endif
 @endforeach

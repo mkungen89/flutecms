@@ -327,5 +327,6 @@
     "unknown_reason" => "Неизвестная причина",
     "upload_error" => "Ошибка загрузки",
     "language_select" => "Выбрать язык",
-    "auth_required" => "Требуется авторизация"
+    "auth_required" => "Требуется авторизация",
+    "more" => "Ещё"
 ];

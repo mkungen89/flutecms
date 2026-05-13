@@ -20,7 +20,16 @@
                             </button>
 
                             @if ($_isSidebarMode)
-                                {{-- Breadcrumb in navbar for sidebar mode --}}
+                                <a class="navbar__mobile-logo" href="{{ url('/') }}"
+                                    aria-label="{{ config('app.name') }} - Home" itemprop="url">
+                                    <img class="navbar__mobile-logo-img navbar__mobile-logo-img--dark"
+                                        src="{{ asset(config('app.logo')) }}"
+                                        alt="{{ config('app.name') }}" itemprop="logo" fetchpriority="high" decoding="async">
+                                    <img class="navbar__mobile-logo-img navbar__mobile-logo-img--light"
+                                        src="{{ asset(config('app.logo_light', config('app.logo'))) }}"
+                                        alt="{{ config('app.name') }}" itemprop="logo" fetchpriority="high" decoding="async">
+                                    <span class="navbar__mobile-logo-name">{{ config('app.name') }}</span>
+                                </a>
                                 <nav class="breadcrumb breadcrumb--navbar" id="navbar-breadcrumb" aria-label="Breadcrumb navigation"
                                     hx-swap-oob="true" hx-boost="true" hx-target="#main"
                                     hx-swap="outerHTML transition:true">

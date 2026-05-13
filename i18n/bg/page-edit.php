@@ -110,6 +110,7 @@ return [
     'sidebar_position' => 'Позиция на елементите',
     'sidebar_position_top' => 'Елементи подравнени отгоре',
     'sidebar_position_center' => 'Елементи центрирани вертикално',
+    'sidebar_mini_show_labels' => 'Показвай етикети под иконите',
     'position_top' => 'Горе',
     'position_center' => 'Център',
     'nav_fixed' => 'Фиксирана навигация',

@@ -119,6 +119,7 @@
     "sidebar_position"      => "Items Position",
     "sidebar_position_top"  => "Items aligned to top",
     "sidebar_position_center" => "Items centered vertically",
+    "sidebar_mini_show_labels" => "Show labels under icons",
     "position_top"          => "Top",
     "position_center"       => "Center",
     "nav_fixed"             => "Fixed Navigation",

@@ -10,12 +10,17 @@
     $_sidebarPosition = $_themeColors['--sidebar-position'] ?? 'top';
     $_sidebarCollapsed = cookie()->get('sidebar_collapsed', 'false');
     $_sidebarContained = $_themeColors['--sidebar-contained'] ?? 'false';
+    $_sidebarMiniLabels = $_themeColors['--sidebar-mini-labels'] ?? 'text';
     $_designPreset = $_themeColors['--design-preset'] ?? 'default';
+    $_tabbarLimit = 4;
+    $_mobileNavMode = navbar()->mobileNavMode($_tabbarLimit);
 @endphp
 <html lang="{{ strtolower(app()->getLang()) }}" data-theme="{{ $_currentThemeMode }}" data-nav-style="{{ $_navStyle }}"
     data-sidebar-style="{{ $_sidebarStyle }}" data-sidebar-mode="{{ $_sidebarMode }}"
     data-sidebar-position="{{ $_sidebarPosition }}" data-sidebar-collapsed="{{ $_sidebarCollapsed }}"
-    data-sidebar-contained="{{ $_sidebarContained }}" data-design-preset="{{ $_designPreset }}">
+    data-sidebar-contained="{{ $_sidebarContained }}" data-sidebar-mini-labels="{{ $_sidebarMiniLabels }}"
+    data-design-preset="{{ $_designPreset }}"
+    data-mobile-nav-mode="{{ $_mobileNavMode }}">
 
 <head hx-head="append">
     @php
@@ -631,6 +636,8 @@
 
         {{-- Always load sidebar-nav script, it handles visibility check internally --}}
         @at(tt(path: 'assets/scripts/sidebar-nav.js'))
+
+        @at(tt('assets/scripts/tabbar.js'))
 
         @at(tt('assets/scripts/app.js'))
 
