@@ -184,6 +184,7 @@
         <link rel="preload" href="@asset('assets/fonts/manrope/Manrope-Medium.woff2')" as="font" type="font/woff2" crossorigin>
         <link rel="preload" href="@asset('assets/js/htmx/core.js')" as="script">
         <link rel="preload" href="@asset('assets/js/app.js')" as="script">
+        <link rel="preload" href="@at('Core/Template/Resources/js/prefetch.js', true)" as="script">
 
         @at(tt('assets/sass/app.scss'))
 
@@ -424,6 +425,21 @@
         <script src="@asset('assets/js/libs/floating.js')" defer></script>
         <script src="@asset('jquery')" defer></script>
         <script src="@asset('assets/js/app.js')" defer></script>
+        <script>
+            window.FlutePrefetchConfig = window.FlutePrefetchConfig || [];
+            window.FlutePrefetchConfig.push({
+                root: 'body',
+                target: 'main',
+                swap: 'outerHTML transition:true',
+                maxEntries: 48,
+                maxConcurrent: 2,
+                hoverDelay: 30,
+                ttl: 180000,
+                visibleLimit: 3,
+                visibleDelay: 350
+            });
+        </script>
+        @at('Core/Template/Resources/js/prefetch.js')
         <script src="@asset('assets/js/libs/notyf.js')" defer fetchpriority="low"></script>
         <script src="@asset('assets/js/libs/nprogress.js')" defer></script>
         <script src="@asset('assets/js/libs/flute-select.js')" defer fetchpriority="low"></script>
@@ -626,52 +642,6 @@
             {!! $sections['scripts'] !!}
         @endif
 
-        <script>
-        (function(){
-            var done = {};
-            var timer = null;
-
-            function getHref(a) {
-                if (a.getAttribute('hx-boost') === 'false' || a.closest('[hx-boost=false]')) return null;
-                if (!a.closest('[hx-boost=true]') && !a.hasAttribute('hx-boost')) return null;
-                var href = a.getAttribute('href');
-                if (!href || href.charAt(0) === '#' || href.startsWith('javascript') ||
-                    a.hasAttribute('data-modal-open') || a.hasAttribute('data-dropdown-open') ||
-                    a.hasAttribute('download') || a.getAttribute('target') === '_blank') return null;
-                try { var p = new URL(href, location.origin).pathname; return p !== location.pathname ? p : null; } catch(e) { return null; }
-            }
-
-            function warm(href) {
-                if (done[href]) return;
-                done[href] = 1;
-                fetch(href, {
-                    priority: 'low',
-                    headers: {
-                        'HX-Request': 'true',
-                        'HX-Boosted': 'true',
-                        'HX-Target': 'main',
-                        'HX-Current-URL': location.href
-                    }
-                }).catch(function(){});
-            }
-
-            document.addEventListener('mouseover', function(e) {
-                var a = e.target.closest && e.target.closest('a[href]');
-                if (!a) return;
-                var href = getHref(a);
-                if (!href) return;
-                clearTimeout(timer);
-                timer = setTimeout(function() { warm(href); }, 65);
-            }, true);
-            document.addEventListener('mouseout', function() { clearTimeout(timer); }, true);
-            document.addEventListener('touchstart', function(e) {
-                var a = e.target.closest && e.target.closest('a[href]');
-                if (!a) return;
-                var href = getHref(a);
-                if (href) warm(href);
-            }, {passive: true, capture: true});
-        })();
-        </script>
     @endif
 </body>
 

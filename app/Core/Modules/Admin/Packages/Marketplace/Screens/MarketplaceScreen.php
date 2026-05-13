@@ -123,10 +123,10 @@ class MarketplaceScreen extends Screen
         $this->categoryService = app(ModuleCategoryService::class);
 
         $req = request();
-        $this->searchQuery = (string) $req->input('q', '');
+        $this->searchQuery = (string) $req->input('searchQuery', $req->input('q', ''));
         $this->selectedCategory = (string) $req->input('category', '');
-        $this->priceFilter = (string) $req->input('price', '');
-        $this->statusFilter = (string) $req->input('status', '');
+        $this->priceFilter = (string) $req->input('priceFilter', $req->input('price', ''));
+        $this->statusFilter = (string) $req->input('statusFilter', $req->input('status', ''));
         $this->categoryFilter = (string) $req->input('categoryFilter', '');
         $this->sortBy = (string) $req->input('sortBy', 'featured');
         $this->viewMode = (string) session()->get('mp_view_mode', 'grid');
@@ -171,10 +171,10 @@ class MarketplaceScreen extends Screen
     public function handleFilters(): void
     {
         $req = request();
-        $this->searchQuery = (string) $req->input('q', '');
+        $this->searchQuery = (string) $req->input('searchQuery', $req->input('q', ''));
         $this->selectedCategory = (string) $req->input('category', '');
-        $this->priceFilter = (string) $req->input('price', '');
-        $this->statusFilter = (string) $req->input('status', '');
+        $this->priceFilter = (string) $req->input('priceFilter', $req->input('price', ''));
+        $this->statusFilter = (string) $req->input('statusFilter', $req->input('status', ''));
         $this->categoryFilter = (string) $req->input('categoryFilter', '');
         $this->sortBy = (string) $req->input('sortBy', 'featured');
 

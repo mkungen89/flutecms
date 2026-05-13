@@ -36,10 +36,14 @@ class SteamService
 
     protected static array $requestCache = [];
 
+    protected static array $invalidSteamIds = [];
+
     // Memory leak prevention limits
     protected static int $maxDeferredRequests = 100;
 
     protected static int $maxRequestCache = 500;
+
+    protected static int $maxInvalidSteamIds = 500;
 
     public function __construct(string $apiKey, CacheManager $cache)
     {
@@ -71,6 +75,7 @@ class SteamService
         self::$deferreds = [];
         self::$collectedSteamIds = [];
         self::$requestCache = [];
+        self::$invalidSteamIds = [];
         self::$isBatchScheduled = false;
     }
 
@@ -223,6 +228,10 @@ class SteamService
         $steamIdMap = [];
 
         foreach ($steamIds as $steamId) {
+            if (isset(self::$invalidSteamIds[$steamId])) {
+                continue;
+            }
+
             try {
                 $normalizedId = $this->normalizeSteamId($steamId);
                 $steamIdMap[$normalizedId] = $steamId;
@@ -240,7 +249,7 @@ class SteamService
                     $uncachedIds[$normalizedId] = $steamId;
                 }
             } catch (Throwable $e) {
-                logs()->debug('Invalid Steam ID skipped in batch lookup: ' . $e->getMessage());
+                $this->rememberInvalidSteamId($steamId);
             }
         }
 
@@ -297,6 +306,15 @@ class SteamService
         }
 
         return $result;
+    }
+
+    private function rememberInvalidSteamId(string $steamId): void
+    {
+        if (count(self::$invalidSteamIds) >= self::$maxInvalidSteamIds) {
+            self::$invalidSteamIds = array_slice(self::$invalidSteamIds, -400, null, true);
+        }
+
+        self::$invalidSteamIds[$steamId] = true;
     }
 
     /**

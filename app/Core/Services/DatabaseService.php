@@ -11,6 +11,8 @@ class DatabaseService
 {
     public array $cachedConnections;
 
+    private static array $modesCache = [];
+
     /**
      * Retrieves server modes based on provided mods.
      *
@@ -139,13 +141,46 @@ class DatabaseService
     private function fetchModes(string|array $criteria): array
     {
         $mods = is_array($criteria) ? $criteria : [$criteria];
+        sort($mods);
+
+        $cacheKey = implode('|', $mods);
+        if (isset(self::$modesCache[$cacheKey])) {
+            return self::$modesCache[$cacheKey];
+        }
 
         $query = DatabaseConnection::query()->with('server');
         if ($mods) {
             $query->where('mod', 'IN', new Parameter($mods));
         }
 
-        return $query->fetchAll();
+        $modes = $query->fetchAll();
+        $this->hydrateServerConnections($modes);
+
+        return self::$modesCache[$cacheKey] = $modes;
+    }
+
+    /**
+     * @param array<int, DatabaseConnection> $modes
+     */
+    private function hydrateServerConnections(array $modes): void
+    {
+        $connectionsByServer = [];
+
+        foreach ($modes as $mode) {
+            if (!$mode->server) {
+                continue;
+            }
+
+            $connectionsByServer[$mode->server->id][] = $mode;
+        }
+
+        foreach ($modes as $mode) {
+            if (!$mode->server) {
+                continue;
+            }
+
+            $mode->server->dbconnections = $connectionsByServer[$mode->server->id] ?? [];
+        }
     }
 
     /**

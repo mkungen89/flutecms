@@ -45,8 +45,8 @@
     }'>
     <meta name="site_url" content="{{ config('app.url') }}">
 
-    <link rel="dns-prefetch" href="//fonts.googleapis.com">
-    <link rel="dns-prefetch" href="//fonts.gstatic.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
     <link rel="icon" type="image/x-icon" href="@asset('favicon.ico')?v={{ file_exists(public_path('favicon.ico')) ? filemtime(public_path('favicon.ico')) : 1 }}">
     <link rel="stylesheet" href="@asset('assets/css/libs/flute-select.css')" type='text/css' media="print" onload="this.media='all'">
@@ -72,6 +72,9 @@
         <link rel="preload" href="@asset('assets/fonts/manrope/Manrope-Medium.woff2')" as="font" type="font/woff2" crossorigin>
         <link rel="preload" href="@asset('assets/fonts/manrope/manrope.css')" as="style" onload="this.onload=null;this.rel='stylesheet'">
         <noscript><link rel="stylesheet" href="@asset('assets/fonts/manrope/manrope.css')"></noscript>
+        <link rel="preload" href="@asset('assets/js/htmx/core.js')" as="script">
+        <link rel="preload" href="@asset('assets/js/app.js')" as="script">
+        <link rel="preload" href="@at('Core/Template/Resources/js/prefetch.js', true)" as="script">
         <link rel="preload" href="@asset('animate')" as="style" onload="this.onload=null;this.rel='stylesheet'">
         <noscript>
             <link rel="stylesheet" href="@asset('animate')" type='text/css'>
@@ -272,6 +275,23 @@
         <script src="@asset('assets/js/libs/floating.js')" defer></script>
         <script src="@asset('jquery')" defer></script>
         <script src="@asset('assets/js/app.js')" defer></script>
+        <script>
+            window.FlutePrefetchConfig = window.FlutePrefetchConfig || [];
+            window.FlutePrefetchConfig.push({
+                root: 'body',
+                target: 'main',
+                swap: 'morph:outerHTML transition:true',
+                pathPrefix: '/admin',
+                maxEntries: 64,
+                maxConcurrent: 3,
+                hoverDelay: 0,
+                ttl: 180000,
+                visibleLimit: 8,
+                visibleDelay: 80,
+                visibleIdle: false
+            });
+        </script>
+        @at('Core/Template/Resources/js/prefetch.js')
         <script>
             (function () {
                 var loaded = {};

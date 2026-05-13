@@ -4,15 +4,14 @@ namespace Flute\Core\Services;
 
 use Flute\Core\Toast\Toast;
 use Flute\Core\Toast\ToastBuilder;
-use Symfony\Component\HttpFoundation\Session\SessionInterface;
 
 class ToastService
 {
     private const TOASTS_KEY = '_flute_toasts';
 
-    private SessionInterface $session;
+    private SessionService $session;
 
-    public function __construct(SessionInterface $session)
+    public function __construct(SessionService $session)
     {
         $this->session = $session;
     }
@@ -42,9 +41,26 @@ class ToastService
      */
     public function getToasts(): array
     {
+        if (!$this->shouldReadSession()) {
+            return [];
+        }
+
         $toasts = $this->session->get(self::TOASTS_KEY, []);
         $this->session->remove(self::TOASTS_KEY);
 
         return $toasts;
+    }
+
+    private function shouldReadSession(): bool
+    {
+        if ($this->session->isStarted() || session_status() === PHP_SESSION_ACTIVE) {
+            return true;
+        }
+
+        try {
+            return request()->hasSessionCookie();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

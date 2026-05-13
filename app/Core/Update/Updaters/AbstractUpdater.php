@@ -191,7 +191,7 @@ abstract class AbstractUpdater
         }
 
         $content = file_get_contents($path);
-        if ($content === false || strpos($content, "\r\n") === false) {
+        if ($content === false || !str_contains($content, "\r\n")) {
             return;
         }
 

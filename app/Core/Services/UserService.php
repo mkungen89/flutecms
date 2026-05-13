@@ -249,7 +249,14 @@ class UserService
             return;
         }
 
-        if (session()->has('user_id')) {
+        $request = request();
+        if (!$request->hasAuthenticationCookie() && empty($this->userToken)) {
+            $this->triedToLogin = true;
+
+            return;
+        }
+
+        if ($request->hasSessionCookie() && session()->has('user_id')) {
             $this->initializeBySession();
         } elseif ($this->userToken) {
             $this->initializeByToken();

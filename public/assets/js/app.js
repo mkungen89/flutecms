@@ -634,6 +634,23 @@ if ('serviceWorker' in navigator) {
         navigator.serviceWorker
             .register('/sw.js')
             .then((registration) => {
+                registration.update().catch(() => {});
+
+                if (registration.waiting) {
+                    registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                }
+
+                registration.addEventListener('updatefound', () => {
+                    var worker = registration.installing;
+                    if (!worker) return;
+
+                    worker.addEventListener('statechange', () => {
+                        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                            worker.postMessage({ type: 'SKIP_WAITING' });
+                        }
+                    });
+                });
+
                 console.log(
                     'ServiceWorker registration successful with scope: ',
                     registration.scope,
