@@ -1,7 +1,7 @@
 <?php
 
 /**
- * @author Flames <xenozf@gmail.com>
+ * @author Flames <flamesworkk@gmail.com>
  *
  * @copyright 2026 Flute
  */
@@ -48,7 +48,7 @@ final class App
     /**
      * @var string
      */
-    public const VERSION = '1.0.4.1';
+    public const VERSION = '1.0.5';
 
     /**
      * Set the base path of the application
