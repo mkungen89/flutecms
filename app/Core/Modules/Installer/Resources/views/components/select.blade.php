@@ -9,6 +9,8 @@
     'disabled' => false,
     'searchable' => false,
     'allowEmpty' => false,
+    'positioning' => 'dropdown',
+    'maxHeight' => 300,
     'class' => '',
 ])
 
@@ -40,6 +42,8 @@
         data-placeholder="{{ $placeholder ?? '' }}"
         data-allow-empty="{{ $allowEmpty ? 'true' : 'false' }}"
         data-searchable="{{ $searchable ? 'true' : 'false' }}"
+        data-positioning="{{ $positioning }}"
+        data-max-height="{{ $maxHeight }}"
         @if ($required) required @endif
         @if ($disabled) disabled @endif
         {{ $attributes }}

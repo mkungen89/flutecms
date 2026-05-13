@@ -86,13 +86,13 @@ class RateLimiterMiddleware extends BaseMiddleware
             $factoryCacheKey = md5(serialize($opts));
 
             if (!isset(self::$factoryCache[$factoryCacheKey])) {
+                $storage = $this->cache
+                    ? new \Symfony\Component\RateLimiter\Storage\CacheStorage($this->cache)
+                    : new \Symfony\Component\RateLimiter\Storage\InMemoryStorage();
+
                 if (!$this->cache) {
-                    logs()->warning('RateLimiter: cache storage is not available, skipping rate limit');
-
-                    return $next($request);
+                    logs()->warning('RateLimiter: cache storage is not available, using in-memory fallback');
                 }
-
-                $storage = new \Symfony\Component\RateLimiter\Storage\CacheStorage($this->cache);
 
                 self::$factoryCache[$factoryCacheKey] = new \Symfony\Component\RateLimiter\RateLimiterFactory(
                     $opts,

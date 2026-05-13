@@ -81,6 +81,8 @@ abstract class Table extends Layout
 
     protected $sortDirection;
 
+    protected $querySortColumn;
+
     protected $compact = false;
 
     /**
@@ -166,9 +168,11 @@ abstract class Table extends Layout
             $defaultSortColumn = $columns->first(static fn(TD $column) => $column->getAttribute('defaultSort', false));
             if ($defaultSortColumn) {
                 $this->sortColumn = $defaultSortColumn->getName();
+                $this->querySortColumn = $defaultSortColumn->getAttribute('sortField', $this->sortColumn);
                 $this->sortDirection = $defaultSortColumn->getAttribute('defaultSortDirection', 'asc');
             } else {
                 $this->sortColumn = '';
+                $this->querySortColumn = '';
                 $this->sortDirection = 'asc';
             }
         } else {
@@ -178,6 +182,8 @@ abstract class Table extends Layout
                 ->filter()
                 ->toArray();
             $this->sortColumn = in_array($candidateColumn, $allowedColumns, true) ? $candidateColumn : '';
+            $sortColumn = $columns->first(fn(TD $column) => $column->getName() === $this->sortColumn);
+            $this->querySortColumn = $sortColumn?->getAttribute('sortField', $this->sortColumn) ?? $this->sortColumn;
             $this->sortDirection = str_starts_with($requestSort, '-') ? 'desc' : 'asc';
         }
 
@@ -193,14 +199,42 @@ abstract class Table extends Layout
         $currentPage = $repository->has('currentPage') ? $repository->get('currentPage') : $this->getCurrentPage();
 
         if ($content instanceof Select || $content instanceof SelectQuery) {
-            $paginator = new Paginator($perPage);
-            $paginator = $paginator->withPage($currentPage);
-            $paginator = $paginator->paginate($content);
+            $runQuery = function ($query) use ($perPage, $currentPage) {
+                $paginator = new Paginator($perPage);
+                $paginator = $paginator->withPage($currentPage);
+                $paginator = $paginator->paginate($query);
 
-            $rows = collect($content->fetchAll());
+                return [
+                    collect($query->fetchAll()),
+                    $paginator->count(),
+                    $paginator->countPages(),
+                ];
+            };
 
-            $totalItems = $paginator->count();
-            $totalPages = $paginator->countPages();
+            try {
+                [$rows, $totalItems, $totalPages] = $runQuery($content);
+            } catch (\Throwable $e) {
+                $isSqlError = $e instanceof \PDOException || str_contains((string) $e->getMessage(), 'SQLSTATE');
+
+                if (!$isSqlError || !$this->sortColumn) {
+                    throw $e;
+                }
+
+                logs()->warning('Admin Table sort fallback: ' . $e->getMessage(), [
+                    'sortColumn' => $this->sortColumn,
+                    'querySortColumn' => $this->querySortColumn,
+                    'target' => $this->target,
+                ]);
+
+                // Rebuild content without sort
+                $this->sortColumn = '';
+                $this->querySortColumn = '';
+                $content = $repository->getContent($this->target);
+                if ($this->isSearchable() && $this->searchQuery) {
+                    $content = $this->applySearch($content);
+                }
+                [$rows, $totalItems, $totalPages] = $runQuery($content);
+            }
         } else {
             $collection = $this->getCollectionFromContent($content);
             $totalItems = $collection->count();
@@ -585,7 +619,12 @@ abstract class Table extends Layout
 
         return collect($this->columns())
             ->filter(static fn(TD $TD) => $TD->isSearchable())
-            ->map(static fn(TD $TD) => $TD->getName())
+            ->flatMap(static function (TD $TD) {
+                $searchFields = $TD->getAttribute('searchFields', []);
+
+                return !empty($searchFields) && is_array($searchFields) ? $searchFields : [$TD->getName()];
+            })
+            ->filter()
             ->toArray();
     }
 
@@ -674,7 +713,7 @@ abstract class Table extends Layout
     {
         $direction = $this->sortDirection === 'desc' ? 'DESC' : 'ASC';
 
-        return $select->orderBy($this->sortColumn, $direction);
+        return $select->orderBy($this->querySortColumn ?: $this->sortColumn, $direction);
     }
 
     /**

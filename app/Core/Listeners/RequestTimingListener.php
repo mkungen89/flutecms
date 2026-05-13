@@ -22,6 +22,11 @@ class RequestTimingListener
             return;
         }
 
+        $req = request();
+        if (method_exists($req, 'isPrefetch') && $req->isPrefetch()) {
+            return;
+        }
+
         $now = microtime(true);
         $start = defined('FLUTE_ROUTER_START') ? (float) FLUTE_ROUTER_START : $now - 0.0;
         $total = max(0.0, $now - $start);
@@ -39,7 +44,6 @@ class RequestTimingListener
         $mem = memory_get_peak_usage(true);
         $memMb = round($mem / ( 1024 * 1024 ), 1);
 
-        $req = request();
         $path = $req->getRequestUri();
         $method = $req->getMethod();
         $ip = $req->getClientIp();

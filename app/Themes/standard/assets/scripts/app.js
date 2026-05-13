@@ -58,9 +58,74 @@ class FluteApp {
 
     initEvents() {
         this.setupHtmxEvents();
+        this.setupProfileMainSwapGuard();
 
         $(document).ready(() => {
             this.forms.initInputHandlers();
+        });
+    }
+
+    setupProfileMainSwapGuard() {
+        const isProfileHref = (href) => {
+            if (!href || href.startsWith('#') || href.startsWith('javascript:')) {
+                return false;
+            }
+
+            try {
+                const url = new URL(href, window.location.origin);
+                return url.origin === window.location.origin && url.pathname.startsWith('/profile/');
+            } catch (_) {
+                return false;
+            }
+        };
+
+        const ensureMainSelect = (link) => {
+            if (!link || link.tagName?.toLowerCase() !== 'a') {
+                return;
+            }
+
+            const href = link.getAttribute('href') || '';
+            if (!isProfileHref(href)) {
+                return;
+            }
+
+            const ownTarget = link.getAttribute('hx-target');
+            const inheritedTarget = link.closest('[hx-target]')?.getAttribute('hx-target') || null;
+            const effectiveTarget = ownTarget || inheritedTarget;
+
+            const ownBoost = link.getAttribute('hx-boost');
+            const inheritedBoost = link.closest('[hx-boost]')?.getAttribute('hx-boost') || null;
+            const boostValue = ownBoost || inheritedBoost;
+            const isBoosted = boostValue === '' || boostValue === 'true';
+
+            if (effectiveTarget === '#main' && isBoosted && !link.getAttribute('hx-select')) {
+                link.setAttribute('hx-select', '#main');
+            }
+        };
+
+        const scan = (root = document) => {
+            if (!root) {
+                return;
+            }
+
+            if (root.matches?.('a[href]')) {
+                ensureMainSelect(root);
+            }
+
+            root.querySelectorAll?.('a[href]').forEach(ensureMainSelect);
+        };
+
+        scan(document);
+
+        document.addEventListener('click', (event) => {
+            const link = event.target.closest('a[href]');
+            if (link) {
+                ensureMainSelect(link);
+            }
+        }, true);
+
+        document.body?.addEventListener('htmx:load', (event) => {
+            scan(event.detail?.elt || event.target);
         });
     }
 
@@ -1502,11 +1567,9 @@ class TooltipManager {
             this.hideAllTooltips();
         });
 
-        // Close all portaled dropdowns/popups on page swap to prevent orphaned elements
         htmx.on("htmx:beforeSwap", (event) => {
             if (event.detail.target && event.detail.target.tagName && event.detail.target.tagName.toLowerCase() === "main") {
-                // Close data-dropdown elements (DropdownManager)
-                this.dropdowns.closeAllDropdowns(true);
+                if (app && app.dropdowns) app.dropdowns.closeAllDropdowns(true);
 
                 // Close profile dropdown (ProfileDropdownManager)
                 if (typeof profileDropdown !== "undefined" && profileDropdown) {
@@ -2706,6 +2769,8 @@ class ConfirmationManager {
                 });
 
                 xhr.onload = () => {
+                    const liveComponent = document.querySelector(targetSelector) || yoyoComponent;
+
                     if (xhr.status >= 200 && xhr.status < 300) {
                         const newCsrfToken = xhr.getResponseHeader("X-CSRF-Token");
                         if (newCsrfToken) {
@@ -2716,7 +2781,7 @@ class ConfirmationManager {
                         }
 
                         htmx.trigger(document.body, "htmx:afterRequest", {
-                            target: yoyoComponent,
+                            target: liveComponent,
                             xhr: xhr,
                         });
 
@@ -2747,7 +2812,7 @@ class ConfirmationManager {
 
                         const emitHeader = xhr.getResponseHeader("yoyo-emit");
                         if (emitHeader) {
-                            Yoyo.processEmitEvents(yoyoComponent, emitHeader);
+                            Yoyo.processEmitEvents(liveComponent, emitHeader);
                         }
 
                         const browserEventsHeader =
@@ -2758,16 +2823,16 @@ class ConfirmationManager {
 
                         if (xhr.responseText.trim() !== "") {
                             const temp = document.createElement("div");
-                            temp.innerHTML = xhr.responseText;
-
-                            const responseEl = temp.firstElementChild;
+                            temp.textContent = "";
+                            const parsed = new DOMParser().parseFromString(xhr.responseText, "text/html");
+                            const responseEl = parsed.body.firstElementChild;
 
                             if (responseEl) {
                                 const activeElement =
                                     document.activeElement;
                                 const shouldRestoreFocus =
                                     activeElement &&
-                                    yoyoComponent.contains(activeElement);
+                                    liveComponent.contains(activeElement);
                                 let restoreState = null;
 
                                 if (
@@ -2807,18 +2872,34 @@ class ConfirmationManager {
                                     }
                                 }
 
-                                yoyoComponent.outerHTML = responseEl.outerHTML;
-                                htmx.process(
-                                    document.querySelector(targetSelector)
-                                );
+                                liveComponent.outerHTML = responseEl.outerHTML;
+                                const processedEl = document.querySelector(targetSelector);
+                                htmx.process(processedEl);
+                                htmx.trigger(processedEl || document.body, "htmx:afterSettle", {
+                                    target: processedEl,
+                                    elt: processedEl,
+                                });
                             }
                         } else {
-                            YoyoEngine.trigger(yoyoComponent, action);
+                            YoyoEngine.trigger(liveComponent, action);
                             htmx.trigger(document.body, "htmx:afterSwap", {
-                                target: yoyoComponent,
+                                target: liveComponent,
                             });
                         }
+                    } else {
+                        htmx.trigger(document.body, "htmx:responseError", {
+                            target: liveComponent,
+                            xhr: xhr,
+                        });
                     }
+                };
+
+                xhr.onerror = () => {
+                    const liveComponent = document.querySelector(targetSelector) || yoyoComponent;
+                    htmx.trigger(document.body, "htmx:sendError", {
+                        target: liveComponent,
+                        xhr: xhr,
+                    });
                 };
 
                 xhr.send(formData);
@@ -3444,6 +3525,32 @@ class NavbarPriorityPlus {
     }
 
     checkOverflow() {
+        const navStyle = document.documentElement.getAttribute('data-nav-style') || '';
+        const isFitPill = navStyle === 'pill' || navStyle === 'pill-transparent';
+
+        if (isFitPill) {
+            const navbarEl = this.navbar.closest('.navbar');
+            if (navbarEl) {
+                const contentEl = navbarEl.querySelector('.navbar__content');
+                if (contentEl) {
+                    let totalWidth = 0;
+                    for (const child of contentEl.children) {
+                        if (child.offsetParent !== null) {
+                            totalWidth += child.getBoundingClientRect().width;
+                        }
+                    }
+                    const style = getComputedStyle(contentEl);
+                    const gap = parseFloat(style.gap) || parseFloat(style.columnGap) || 0;
+                    const visibleChildren = Array.from(contentEl.children).filter(c => c.offsetParent !== null).length;
+                    totalWidth += gap * Math.max(0, visibleChildren - 1);
+
+                    const padding = parseFloat(getComputedStyle(navbarEl).paddingLeft) + parseFloat(getComputedStyle(navbarEl).paddingRight);
+                    const maxAvailable = window.innerWidth - 48;
+                    return (totalWidth + padding) > maxAvailable;
+                }
+            }
+        }
+
         const itemsRight = this.itemsContainer.getBoundingClientRect().right;
         const actionsLeft = this.actionsEl.getBoundingClientRect().left;
         return (actionsLeft - itemsRight) < 24;

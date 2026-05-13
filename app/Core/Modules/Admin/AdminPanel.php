@@ -125,7 +125,7 @@ class AdminPanel
         $cacheKey = 'admin_components_cache';
         $this->componentsCache = !is_debug() ? cache()->get($cacheKey) : null;
 
-        if ($this->componentsCache !== null) {
+        if ($this->componentsCache !== null && isset($this->componentsCache['popover'])) {
             foreach ($this->componentsCache as $alias => $componentView) {
                 template()->getBlade()->compiler()->component($componentView, $alias);
             }

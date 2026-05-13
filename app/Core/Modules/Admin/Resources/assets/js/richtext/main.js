@@ -62,6 +62,20 @@ class FluteRichTextEditor {
             return !self.instances[textarea.id];
         });
 
+        if (editorsToInit.length > 0 && !window.TipTapBundle) {
+            if (window.AdminAssetLoader && typeof window.AdminAssetLoader.ensure === 'function') {
+                window.AdminAssetLoader.ensure('tiptap', function () {
+                    self.initialize(editorsToInit.filter(function (textarea) {
+                        return document.body.contains(textarea);
+                    }));
+                }, target instanceof Element ? target : document);
+            } else {
+                console.error('TipTapBundle not loaded');
+            }
+
+            return;
+        }
+
         editorsToInit.forEach(function (t) {
             self._initEditor(t);
         });
@@ -211,6 +225,21 @@ class FluteRichTextEditor {
                     }, 10);
                 });
             });
+
+        // Bind toolbar color pickers (Pickr-based, lazy init on first open)
+        toolbarEl
+            .querySelectorAll('.toolbar-color-picker')
+            .forEach(function (picker) {
+                window.FluteRichText.bindColorPicker(picker, editor);
+            });
+
+        // Close color dropdowns on outside click
+        var outsideClick = function (e) {
+            toolbarEl.querySelectorAll('.toolbar-color-picker.is-open').forEach(function (p) {
+                if (!p.contains(e.target)) p.classList.remove('is-open');
+            });
+        };
+        document.addEventListener('mousedown', outsideClick);
 
         this.instances[id] = {
             editor: editor,

@@ -212,7 +212,7 @@ class LogViewerService
             throw new Exception('Log file not found');
         }
 
-        $content = file_get_contents($logPath);
+        $content = $this->sanitizeLogContentForExport((string) file_get_contents($logPath));
         $systemInfo = $this->getSystemInfo();
 
         $exportContent = "# System Information\n";
@@ -317,7 +317,7 @@ class LogViewerService
         $realPath = realpath($filePath);
         $basePath = realpath(BASE_PATH);
 
-        if (!$realPath || !$basePath || strpos($realPath, $basePath) !== 0) {
+        if (!$realPath || !$basePath || !str_starts_with($realPath, $basePath)) {
             return false;
         }
 
@@ -332,7 +332,7 @@ class LogViewerService
         ];
 
         foreach ($excludePatterns as $pattern) {
-            if (strpos($realPath, $pattern) !== false) {
+            if (str_contains($realPath, $pattern)) {
                 return false;
             }
         }
@@ -348,7 +348,7 @@ class LogViewerService
         $basePath = realpath(BASE_PATH);
         $realPath = realpath($filePath);
 
-        if ($basePath && $realPath && strpos($realPath, $basePath) === 0) {
+        if ($basePath && $realPath && str_starts_with($realPath, $basePath)) {
             return ltrim(substr($realPath, strlen($basePath)), '/\\');
         }
 
@@ -454,6 +454,21 @@ class LogViewerService
         $message = str_replace("\n", '<br>', $message);
 
         return $message;
+    }
+
+    /**
+     * Redact high-risk values from exported logs while keeping timestamps and diagnostics.
+     */
+    protected function sanitizeLogContentForExport(string $content): string
+    {
+        $patterns = [
+            '/(\?|&)accessKey=([^&\s]+)/i' => '$1accessKey=***',
+            '/password["\']?\s*[:=]\s*["\']?([^"\'\s,}]+)/i' => 'password="***"',
+            '/token["\']?\s*[:=]\s*["\']?([^"\'\s,}]+)/i' => 'token="***"',
+            '/("content_preview"\s*:\s*)"[^"]*"/i' => '$1"***"',
+        ];
+
+        return (string) preg_replace(array_keys($patterns), array_values($patterns), $content);
     }
 
     /**
@@ -718,7 +733,7 @@ class LogViewerService
     protected function clearLogCache(string $logFile): void
     {
         foreach ($this->logCache as $key => $data) {
-            if (strpos($key, $logFile) !== false) {
+            if (str_contains($key, $logFile)) {
                 unset($this->logCache[$key]);
             }
         }

@@ -13,6 +13,7 @@ use Flute\Core\Modules\Installer\Services\InstallerView;
 use Flute\Core\Modules\Installer\Services\SystemRequirements;
 use Flute\Core\Router\Annotations\Route;
 use Flute\Core\Services\ConfigurationService;
+use Flute\Core\Services\CsrfTokenService;
 use Flute\Core\Support\BaseController;
 use Flute\Core\Support\FluteRequest;
 use Flute\Core\SystemHealth\Migrations\CheckPermissionsMigration;
@@ -49,10 +50,14 @@ class InstallerController extends BaseController
      * Display the installer welcome page
      */
     #[Route('/install', name: 'installer.welcome', methods: ['GET'])]
-    public function welcome(): mixed
+    public function welcome(FluteRequest $request): mixed
     {
         if ($this->installerConfig->isInstalled()) {
             return response()->redirect('/');
+        }
+
+        if ($denied = $this->guardInstallerAccess($request)) {
+            return $denied;
         }
 
         $welcomeData = [
@@ -78,6 +83,10 @@ class InstallerController extends BaseController
     {
         if ($this->installerConfig->isInstalled()) {
             return response()->redirect('/');
+        }
+
+        if ($denied = $this->guardInstallerAccess($request)) {
+            return $denied;
         }
 
         $action = $request->input('action', '');
@@ -156,6 +165,9 @@ class InstallerController extends BaseController
             $keyValid = true;
         }
 
+        $this->installerConfig->setCurrentStep(1);
+        config()->save();
+
         return response()->redirect(route('installer.step', ['id' => 1]));
     }
 
@@ -169,11 +181,15 @@ class InstallerController extends BaseController
             return response()->redirect('/');
         }
 
+        if ($denied = $this->guardInstallerAccess($request)) {
+            return $denied;
+        }
+
         if ($id < 1 || $id > $this->installerConfig->getTotalSteps()) {
             return response()->error(404, 'Installer step not found');
         }
 
-        return $this->renderStep($id);
+        return $this->renderStep($id, [], false);
     }
 
     /**
@@ -184,6 +200,10 @@ class InstallerController extends BaseController
     {
         if ($this->installerConfig->isInstalled()) {
             return response()->redirect('/');
+        }
+
+        if ($denied = $this->guardInstallerAccess($request)) {
+            return $denied;
         }
 
         $driver = $request->input('driver', 'mysql');
@@ -210,6 +230,10 @@ class InstallerController extends BaseController
     {
         if ($this->installerConfig->isInstalled()) {
             return response()->redirect('/');
+        }
+
+        if ($denied = $this->guardInstallerAccess($request)) {
+            return $denied;
         }
 
         $driver = $request->input('driver', 'mysql');
@@ -340,8 +364,7 @@ class InstallerController extends BaseController
                         "CREATE DATABASE IF NOT EXISTS `{$safeDbName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
                     );
                 } elseif ($driver === 'pgsql') {
-                    $quoted = $pdo->quote($safeDbName);
-                    $pdo->exec("CREATE DATABASE {$quoted}");
+                    $pdo->exec('CREATE DATABASE ' . $this->quotePostgresIdentifier($safeDbName));
                 }
             }
 
@@ -360,11 +383,13 @@ class InstallerController extends BaseController
                 $this->saveDatabaseConfig($driver, $host, $port, $database, $username, $password, $prefix);
                 $isConnected = true;
             } catch (Throwable $e) {
-                $errorMessage = __('install.database.error_migration') . ': ' . $e->getMessage();
+                logs('installer')->warning('Installer database migration failed: ' . $e->getMessage());
+                $errorMessage = __('install.database.error_migration');
                 $isConnected = false;
             }
         } catch (Throwable $e) {
-            $errorMessage = $e->getMessage();
+            logs('installer')->warning('Installer database step failed: ' . $e->getMessage());
+            $errorMessage = __('install.database.error_migration');
             $isConnected = false;
         }
 
@@ -379,6 +404,10 @@ class InstallerController extends BaseController
     {
         if ($this->installerConfig->isInstalled()) {
             return response()->redirect('/');
+        }
+
+        if ($denied = $this->guardInstallerAccess($request)) {
+            return $denied;
         }
 
         // Check if database is already connected from the test
@@ -402,6 +431,10 @@ class InstallerController extends BaseController
     {
         if ($this->installerConfig->isInstalled()) {
             return response()->redirect('/');
+        }
+
+        if ($denied = $this->guardInstallerAccess($request)) {
+            return $denied;
         }
 
         $errorMessage = null;
@@ -468,7 +501,7 @@ class InstallerController extends BaseController
             $siteRules = [
                 'siteName' => 'required|max-str-len:100',
                 'siteUrl' => 'required|url',
-                'timezone' => 'required',
+                'timezone' => 'required|timezone',
             ];
 
             $validatedSite = $this->validate($siteData, $siteRules);
@@ -495,7 +528,9 @@ class InstallerController extends BaseController
             try {
                 $existingUser = User::findOne(['login' => $login]);
             } catch (Throwable $e) {
-                // Table might not exist yet
+                logs('installer')->debug('Installer user lookup skipped before schema is ready', [
+                    'message' => $e->getMessage(),
+                ]);
             }
 
             if ($existingUser) {
@@ -571,6 +606,10 @@ class InstallerController extends BaseController
             return response()->redirect('/');
         }
 
+        if ($denied = $this->guardInstallerAccess($request)) {
+            return $denied;
+        }
+
         try {
             $languages = $request->input('languages', []);
             $languages = array_values(array_unique(array_filter($languages)));
@@ -606,6 +645,10 @@ class InstallerController extends BaseController
             return response()->redirect('/');
         }
 
+        if ($denied = $this->guardInstallerAccess($request)) {
+            return $denied;
+        }
+
         try {
             $modules = $request->input('modules', []);
             $modules = array_values(array_filter($modules));
@@ -630,6 +673,10 @@ class InstallerController extends BaseController
     {
         if ($this->installerConfig->isInstalled()) {
             return response()->redirect('/');
+        }
+
+        if ($denied = $this->guardInstallerAccess($request)) {
+            return $denied;
         }
 
         $errorMessage = null;
@@ -664,8 +711,6 @@ class InstallerController extends BaseController
                 ]);
             }
 
-            auth()->authenticateById($user->id);
-
             $this->installerConfig->markAsInstalled();
 
             return $this->installerView->render([
@@ -684,7 +729,74 @@ class InstallerController extends BaseController
     /**
      * Render a step view with default data for the step
      */
-    protected function renderStep(int $id, array $extraData = []): mixed
+    private function guardInstallerAccess(FluteRequest $request): mixed
+    {
+        if (!$this->isInstallerRequestAllowed($request)) {
+            logs('installer')->warning('Denied installer access from non-local request.', [
+                'ip' => $request->getClientIp(),
+                'path' => $request->getPathInfo(),
+            ]);
+
+            return response()->error(403, 'Installer access denied');
+        }
+
+        if ($request->isMethod('GET') || $request->isMethod('HEAD') || $request->isMethod('OPTIONS')) {
+            return null;
+        }
+
+        $token =
+            $request->input('_csrf_token') ?? $request->input('x-csrf-token') ?? $request->headers->get(
+                'X-CSRF-Token',
+            ) ?? $request->headers->get('x-csrf-token');
+
+        if (!is_string($token) || !app(CsrfTokenService::class)->validateToken($token)) {
+            return response()->error(403, __('def.csrf_expired'));
+        }
+
+        return null;
+    }
+
+    private function isInstallerRequestAllowed(FluteRequest $request): bool
+    {
+        if ($this->isLocalInstallerRequest($request)) {
+            return true;
+        }
+
+        if (session('installer.setup_authorized') === true) {
+            return true;
+        }
+
+        $expectedToken = (string) ( getenv('FLUTE_INSTALLER_SETUP_TOKEN') ?: config('installer.setup_token', '') );
+        if ($expectedToken === '') {
+            return false;
+        }
+
+        $providedToken = $request->input('setup_token') ?? $request->headers->get('X-Setup-Token');
+
+        if (!is_string($providedToken) || !hash_equals($expectedToken, $providedToken)) {
+            return false;
+        }
+
+        session()->set('installer.setup_authorized', true);
+
+        return true;
+    }
+
+    private function isLocalInstallerRequest(FluteRequest $request): bool
+    {
+        $clientIp = $request->getClientIp();
+        if (!in_array($clientIp, ['127.0.0.1', '::1'], true)) {
+            return false;
+        }
+
+        return (
+            !$request->headers->has('Forwarded')
+            && !$request->headers->has('X-Forwarded-For')
+            && !$request->headers->has('X-Real-IP')
+        );
+    }
+
+    protected function renderStep(int $id, array $extraData = [], bool $allowAdvance = true): mixed
     {
         $currentStep = $this->installerConfig->getCurrentStep();
 
@@ -693,7 +805,7 @@ class InstallerController extends BaseController
             $id = $currentStep > 0 ? $currentStep : 1;
         }
 
-        if ($id > $currentStep && $id === ( $currentStep + 1 )) {
+        if ($allowAdvance && $id > $currentStep && $id === ( $currentStep + 1 )) {
             $this->installerConfig->setCurrentStep($id);
             config()->save();
         }
@@ -788,7 +900,9 @@ class InstallerController extends BaseController
                 }
             }
         } catch (Throwable $e) {
-            // Not yet configured
+            logs('installer')->debug('Installer database status check skipped before configuration is ready', [
+                'message' => $e->getMessage(),
+            ]);
         }
 
         return [
@@ -1032,7 +1146,7 @@ class InstallerController extends BaseController
                         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                         PDO::ATTR_CASE => PDO::CASE_NATURAL,
                         PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4',
-                        PDO::ATTR_PERSISTENT => true,
+                        PDO::ATTR_PERSISTENT => false,
                         PDO::ATTR_TIMEOUT => 5,
                     ],
                     'port' => (int) $port,
@@ -1120,6 +1234,15 @@ class InstallerController extends BaseController
 
         app(DatabaseConnection::class)->recompileOrmSchema(false);
         $this->createNecessaryRolesAndPermissions();
+    }
+
+    protected function quotePostgresIdentifier(string $identifier): string
+    {
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $identifier)) {
+            throw new \InvalidArgumentException('Invalid PostgreSQL database name');
+        }
+
+        return '"' . str_replace('"', '""', $identifier) . '"';
     }
 
     /**

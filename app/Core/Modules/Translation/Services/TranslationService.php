@@ -62,6 +62,8 @@ class TranslationService
      */
     protected array $latestDiscoveredFilesByLocale = [];
 
+    protected bool $knownTranslationDirectoriesRegistered = false;
+
     /**
      * Primary fallback locale used when key is missing in current locale.
      */
@@ -244,7 +246,8 @@ class TranslationService
      */
     public function registerResource(string $file, string $locale, string $domain): void
     {
-        if (!file_exists($file)) {
+        $file = $this->normalizeTranslationPath($file);
+        if ($file === null) {
             return;
         }
 
@@ -476,6 +479,11 @@ class TranslationService
             self::CACHE_TIME,
         );
 
+        $dirs = array_values(array_filter(array_map(
+            fn($dir): ?string => $this->normalizeTranslationDirectory((string) $dir),
+            (array) $dirs,
+        )));
+
         if ($currentRootsMtime !== $cachedRootsMtime) {
             cache()->set($knownDirsMtimeKey, $currentRootsMtime, self::CACHE_TIME);
         }
@@ -524,6 +532,8 @@ class TranslationService
                 }
             }
         }
+
+        $this->knownTranslationDirectoriesRegistered = true;
     }
 
     protected function globSafe(string $pattern, int $flags = 0): array
@@ -578,9 +588,7 @@ class TranslationService
         );
 
         foreach ($domains as $domainInfo) {
-            $translator->addResource('file', $domainInfo['path'], $locale, $domainInfo['domain']);
-            $this->loadedDomains[$locale][$domainInfo['domain']] = true;
-            $this->domainFileIndex[$locale][$domainInfo['domain']] = $domainInfo['path'];
+            $this->registerResource($domainInfo['path'], $locale, $domainInfo['domain']);
         }
     }
 
@@ -611,8 +619,7 @@ class TranslationService
         );
 
         foreach ($files as $file) {
-            $translator->addResource('file', $file['path'], $file['locale'], $file['domain']);
-            $this->loadedDomains[$file['locale']][$file['domain']] = true;
+            $this->registerResource($file['path'], $file['locale'], $file['domain']);
         }
     }
 
@@ -649,9 +656,7 @@ class TranslationService
             return;
         }
 
-        $this->translator->addResource('file', $file, $locale, $domain);
-
-        $this->loadedDomains[$locale][$domain] = true;
+        $this->registerResource($file, $locale, $domain);
     }
 
     /**
@@ -674,9 +679,24 @@ class TranslationService
     protected function resolveDomainFile(string $locale, string $domain): ?string
     {
         if (isset($this->domainFileIndex[$locale][$domain])) {
-            $cached = $this->domainFileIndex[$locale][$domain];
+            $cachedPath = $this->domainFileIndex[$locale][$domain];
+            if ($cachedPath === '') {
+                return null;
+            }
 
-            return $cached !== '' ? $cached : null;
+            $cached = $this->normalizeTranslationPath($cachedPath);
+
+            if ($cached !== null) {
+                return $this->domainFileIndex[$locale][$domain] = $cached;
+            }
+
+            unset($this->domainFileIndex[$locale][$domain]);
+        }
+
+        if ($this->knownTranslationDirectoriesRegistered) {
+            $this->domainFileIndex[$locale][$domain] = '';
+
+            return null;
         }
 
         $corePath = path('i18n/' . $locale . '/' . $domain . '.php');
@@ -694,6 +714,44 @@ class TranslationService
                 . '.php';
             if (file_exists($candidate)) {
                 return $this->domainFileIndex[$locale][$domain] = $candidate;
+            }
+        }
+
+        $this->domainFileIndex[$locale][$domain] = '';
+
+        return null;
+    }
+
+    protected function normalizeTranslationPath(string $file): ?string
+    {
+        $normalized = str_replace('\\', '/', $file);
+
+        if (is_file($normalized)) {
+            return realpath($normalized) ?: $normalized;
+        }
+
+        if (PHP_OS_FAMILY !== 'Windows' && preg_match('#^([A-Za-z]):/(.*)$#', $normalized, $matches)) {
+            $wslPath = '/mnt/' . strtolower($matches[1]) . '/' . $matches[2];
+            if (is_file($wslPath)) {
+                return realpath($wslPath) ?: $wslPath;
+            }
+        }
+
+        return null;
+    }
+
+    protected function normalizeTranslationDirectory(string $directory): ?string
+    {
+        $normalized = rtrim(str_replace('\\', '/', $directory), '/');
+
+        if (is_dir($normalized)) {
+            return realpath($normalized) ?: $normalized;
+        }
+
+        if (PHP_OS_FAMILY !== 'Windows' && preg_match('#^([A-Za-z]):/(.*)$#', $normalized, $matches)) {
+            $wslPath = '/mnt/' . strtolower($matches[1]) . '/' . $matches[2];
+            if (is_dir($wslPath)) {
+                return realpath($wslPath) ?: $wslPath;
             }
         }
 

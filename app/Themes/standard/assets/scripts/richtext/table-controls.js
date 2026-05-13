@@ -1,12 +1,6 @@
 window.FluteRichText = window.FluteRichText || {};
 
 /**
- * Notion-like table controls — overlay-based.
- *
- * Overlay appears when:
- *  1. Editor cursor is inside a table cell (selection-based)
- *  2. Mouse hovers over a table (hover-based)
- *
  * Features:
  *  - Column grip handles (top) — click opens dropdown menu
  *  - Row grip handles (left) — click opens dropdown menu

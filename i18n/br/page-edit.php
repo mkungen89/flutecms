@@ -120,6 +120,7 @@ return [
     'sidebar_position' => 'Posição dos Itens',
     'sidebar_position_top' => 'Itens alinhados ao topo',
     'sidebar_position_center' => 'Itens centralizados verticalmente',
+    'sidebar_mini_show_labels' => 'Mostrar rótulos abaixo dos ícones',
     'position_top' => 'Topo',
     'position_center' => 'Centro',
     'nav_fixed' => 'Navegação Fixa',

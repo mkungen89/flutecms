@@ -71,7 +71,8 @@
     </div>
 @else
     @if ($type === 'file' && $filePond)
-        <input type="hidden" name="{{ $name }}_clear" value="0" data-filepond-clear="{{ $name }}" />
+        @php $clearKey = str_replace('[]', '', $name); @endphp
+        <input type="hidden" name="{{ $clearKey }}_clear" value="0" data-filepond-clear="{{ $name }}" />
     @endif
     <div class="input-wrapper">
         <div id="input-{{ $inputId }}" @class([
@@ -84,12 +85,27 @@
             @endif
 
             @if ($type === 'file' && $filePond)
-                <input type="file" name="{{ $name }}" id="{{ $inputId }}" class="filepond input__field"
-                    data-default-file="{{ $defaultFile }}" data-input-mask="{{ $mask ?? '' }}"
-                    data-file-pond-options='@json($filePondOptions)'
-                    data-accept="{{ $attributes->get('accept', '') }}" @readonly($readOnly)
-                    {{ $hasError ? 'aria-invalid=true' : '' }} @if ($multiple) multiple @endif
-                    {{ $attributes->merge(['class' => 'filepond input__field']) }} />
+                @php
+                    $defaultFilesAttr = null;
+                    if (!empty($filePondOptions['files']) && is_array($filePondOptions['files'])) {
+                        $urls = array_values(array_filter(array_map(
+                            fn($f) => is_array($f) ? ($f['source'] ?? null) : (is_string($f) ? $f : null),
+                            $filePondOptions['files']
+                        )));
+                        if ($urls) $defaultFilesAttr = json_encode($urls, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                    }
+                @endphp
+                <input type="file" name="{{ $name }}" id="{{ $inputId }}"
+                    data-upload
+                    data-default-file="{{ $defaultFile }}"
+                    @if ($defaultFilesAttr) data-default-files='{{ $defaultFilesAttr }}' @endif
+                    @if ($attributes->get('max-size')) data-max-size="{{ $attributes->get('max-size') }}" @endif
+                    @if ($attributes->get('min-size')) data-min-size="{{ $attributes->get('min-size') }}" @endif
+                    @if ($attributes->get('max-files')) data-max-files="{{ $attributes->get('max-files') }}" @endif
+                    {{ $hasError ? 'aria-invalid=true' : '' }}
+                    @if ($multiple) multiple @endif
+                    @readonly($readOnly)
+                    {{ $attributes->except(['max-size', 'min-size', 'max-files'])->merge(['class' => 'input__field']) }} />
             @elseif ($type === 'color')
                 <div class="color-inline-header">
                     <div class="color-inline-swatch" data-input-id="{{ $inputId }}"

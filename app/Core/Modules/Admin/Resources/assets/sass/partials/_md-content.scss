@@ -1,4 +1,4 @@
-.md-content {
+﻿.md-content {
 	line-height: 1.55;
 	color: var(--text-100);
 	font-size: var(--p-small);
@@ -54,8 +54,7 @@
 		margin: 0;
 	}
 
-	/* nested lists and variants */
-	ul ul {
+ul ul {
 		list-style: circle;
 		margin-top: 0.2rem;
 	}
@@ -73,8 +72,7 @@
 		margin-left: 1rem;
 	}
 
-	/* task lists */
-	li input[type="checkbox"] {
+li input[type="checkbox"] {
 		margin-right: 0.5rem;
 		vertical-align: middle;
 	}
@@ -210,8 +208,7 @@
 		}
 	}
 
-	/* images and figures */
-	img {
+img {
 		max-width: 100%;
 		height: auto;
 		border-radius: var(--border05);
@@ -230,8 +227,7 @@
 		margin-top: 0.25rem;
 	}
 
-	/* description list */
-	dl {
+dl {
 		margin: 0.5rem 0;
 	}
 	dt {
@@ -242,8 +238,7 @@
 		margin: 0.25rem 0 0.5rem 0.75rem;
 	}
 
-	/* details/summary */
-	details {
+details {
 		background: var(--transp-05);
 		border: 1px solid var(--transp-1);
 		border-radius: var(--border05);

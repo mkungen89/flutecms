@@ -1,4 +1,4 @@
-// Footer type variations
+﻿
 html[data-footer-type="minimal"] {
     #footer {
         margin-top: 4rem;
@@ -92,10 +92,6 @@ html[data-footer-type="hidden"] {
         display: none !important;
     }
 }
-
-// ========================================
-// GLASS FOOTER - Floating bar style
-// ========================================
 
 html[data-footer-type="glass"] {
     #footer {
@@ -200,8 +196,7 @@ html[data-footer-type="glass"] {
         display: none;
     }
 
-    // Light theme adjustments
-    &[data-theme="light"] .footer {
+&[data-theme="light"] .footer {
         background: rgba(255, 255, 255, 0.9);
         box-shadow:
             0 4px 24px rgba(0, 0, 0, 0.06),
@@ -209,8 +204,7 @@ html[data-footer-type="glass"] {
             inset 0 1px 0 rgba(255, 255, 255, 0.8);
     }
 
-    // Mobile responsive
-    @include media(tablet) {
+@include media(tablet) {
         .footer {
             padding: var(--space-md);
             border-radius: var(--border1);
@@ -234,10 +228,6 @@ html[data-footer-type="glass"] {
         }
     }
 }
-
-// ========================================
-// CENTERED FOOTER - Clean centered layout
-// ========================================
 
 html[data-footer-type="centered"] {
     #footer {

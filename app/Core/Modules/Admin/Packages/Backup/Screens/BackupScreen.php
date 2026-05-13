@@ -20,7 +20,7 @@ class BackupScreen extends Screen
 
     public ?string $description = null;
 
-    public ?string $permission = 'admin.system';
+    public ?string $permission = 'admin.boss';
 
     public array $backups = [];
 
@@ -254,7 +254,7 @@ class BackupScreen extends Screen
             $this->flashMessage(__('admin-backup.messages.backup_created', ['filename' => $filename]), 'success');
             $this->closeModal();
         } catch (Throwable $e) {
-            $this->flashMessage(__('admin-backup.messages.backup_error', ['message' => $e->getMessage()]), 'error');
+            $this->flashOperationError('admin-backup.messages.backup_error', $e);
         }
 
         $this->loadBackups();
@@ -267,7 +267,7 @@ class BackupScreen extends Screen
             $this->flashMessage(__('admin-backup.messages.backup_created', ['filename' => $filename]), 'success');
             $this->closeModal();
         } catch (Throwable $e) {
-            $this->flashMessage(__('admin-backup.messages.backup_error', ['message' => $e->getMessage()]), 'error');
+            $this->flashOperationError('admin-backup.messages.backup_error', $e);
         }
 
         $this->loadBackups();
@@ -279,7 +279,7 @@ class BackupScreen extends Screen
             $filename = $this->backupService->backupAllModules();
             $this->flashMessage(__('admin-backup.messages.backup_created', ['filename' => $filename]), 'success');
         } catch (Throwable $e) {
-            $this->flashMessage(__('admin-backup.messages.backup_error', ['message' => $e->getMessage()]), 'error');
+            $this->flashOperationError('admin-backup.messages.backup_error', $e);
         }
 
         $this->loadBackups();
@@ -291,7 +291,7 @@ class BackupScreen extends Screen
             $filename = $this->backupService->backupAllThemes();
             $this->flashMessage(__('admin-backup.messages.backup_created', ['filename' => $filename]), 'success');
         } catch (Throwable $e) {
-            $this->flashMessage(__('admin-backup.messages.backup_error', ['message' => $e->getMessage()]), 'error');
+            $this->flashOperationError('admin-backup.messages.backup_error', $e);
         }
 
         $this->loadBackups();
@@ -303,7 +303,7 @@ class BackupScreen extends Screen
             $filename = $this->backupService->backupCms();
             $this->flashMessage(__('admin-backup.messages.backup_created', ['filename' => $filename]), 'success');
         } catch (Throwable $e) {
-            $this->flashMessage(__('admin-backup.messages.backup_error', ['message' => $e->getMessage()]), 'error');
+            $this->flashOperationError('admin-backup.messages.backup_error', $e);
         }
 
         $this->loadBackups();
@@ -315,7 +315,7 @@ class BackupScreen extends Screen
             $filename = $this->backupService->backupFull();
             $this->flashMessage(__('admin-backup.messages.backup_created', ['filename' => $filename]), 'success');
         } catch (Throwable $e) {
-            $this->flashMessage(__('admin-backup.messages.backup_error', ['message' => $e->getMessage()]), 'error');
+            $this->flashOperationError('admin-backup.messages.backup_error', $e);
         }
 
         $this->loadBackups();
@@ -330,7 +330,7 @@ class BackupScreen extends Screen
             $this->backupService->restoreBackup($filename, $isDirectory);
             $this->flashMessage(__('admin-backup.messages.restore_success'), 'success');
         } catch (Throwable $e) {
-            $this->flashMessage(__('admin-backup.messages.restore_error', ['message' => $e->getMessage()]), 'error');
+            $this->flashOperationError('admin-backup.messages.restore_error', $e);
         }
 
         $this->loadBackups();
@@ -345,7 +345,7 @@ class BackupScreen extends Screen
             $this->backupService->deleteBackup($filename, $isDirectory);
             $this->flashMessage(__('admin-backup.messages.backup_deleted'), 'success');
         } catch (Throwable $e) {
-            $this->flashMessage(__('admin-backup.messages.delete_error', ['message' => $e->getMessage()]), 'error');
+            $this->flashOperationError('admin-backup.messages.delete_error', $e);
         }
 
         $this->loadBackups();
@@ -387,6 +387,12 @@ class BackupScreen extends Screen
     {
         $this->loadBackups();
         $this->flashMessage(__('admin-backup.messages.list_refreshed'), 'success');
+    }
+
+    private function flashOperationError(string $messageKey, Throwable $e): void
+    {
+        logs('backup')->error('Backup operation failed: ' . $e->getMessage(), ['exception' => $e]);
+        $this->flashMessage(__($messageKey, ['message' => __('def.internal_server_error')]), 'error');
     }
 
     protected function loadBackups(): void

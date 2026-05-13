@@ -286,4 +286,5 @@ return [
     'created' => 'Skapad',
     'deleted' => 'Raderad',
     'auth_required' => 'Inloggning krävs',
+    'more' => 'Mer',
 ];

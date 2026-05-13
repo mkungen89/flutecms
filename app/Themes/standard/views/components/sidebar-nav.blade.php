@@ -24,7 +24,22 @@
 
     <nav class="sidebar-nav__nav">
         @guest
-            @if (config('auth.only_modal'))
+            @if (config('auth.only_social', false) && sizeof(social()->getAll()) === 1)
+                @php
+                    $item = social()->toDisplay();
+                    $key = key($item);
+                @endphp
+
+                <a class="sidebar-nav__guest" href="{{ url('social/' . $key) }}" hx-boost="false"
+                    data-tooltip="@t('auth.social.auth_via', [':social' => $key])" data-tooltip-placement="right"
+                    data-sidebar-tooltip>
+                    <x-icon path="ph.regular.sign-in" class="sidebar-nav__guest-icon" />
+                    <span class="sidebar-nav__guest-content">
+                        <span class="sidebar-nav__guest-text">{{ __('def.not_logged_in') }}</span>
+                        <span class="sidebar-nav__guest-link">@t('auth.social.auth_via', [':social' => $key])</span>
+                    </span>
+                </a>
+            @elseif (config('auth.only_modal'))
                 <a class="sidebar-nav__guest" href="#" data-modal-open="auth-modal"
                     data-tooltip="{{ __('def.login') }}" data-tooltip-placement="right" data-sidebar-tooltip>
                     <x-icon path="ph.regular.sign-in" class="sidebar-nav__guest-icon" />

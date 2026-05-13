@@ -39,6 +39,8 @@ class PageManager
 
     protected const GLOBAL_LAYOUT_CACHE_TIME = 3600;
 
+    protected const RENDERED_PAGE_CACHE_TIME = 60;
+
     protected RouterInterface $router;
 
     protected bool $disabled = false;
@@ -46,6 +48,10 @@ class PageManager
     private bool $globalContentRendered = false;
 
     private static bool $pagesLoaded = false;
+
+    private bool $pagesDatabaseUnavailable = false;
+
+    private bool $pagesDatabaseFailureLogged = false;
 
     private array $permissions = [];
 
@@ -86,26 +92,34 @@ class PageManager
      */
     public function loadCurrentPage(): void
     {
+        if ($this->pagesDatabaseUnavailable) {
+            return;
+        }
+
         if (!is_cli() && !is_admin_path()) {
-            $routePath = $this->request->getPathInfo();
-            $cacheKey = 'flute.page.route.' . md5($routePath);
+            try {
+                $routePath = $this->request->getPathInfo();
+                $cacheKey = 'flute.page.route.' . md5($routePath);
 
-            $pageId = cache()->callback(
-                $cacheKey,
-                static function () use ($routePath) {
-                    $page = Page::findOne(['route' => $routePath]);
+                $pageId = cache()->callback(
+                    $cacheKey,
+                    static function () use ($routePath) {
+                        $page = Page::findOne(['route' => $routePath]);
 
-                    return $page ? $page->id : null;
-                },
-                is_performance() ? self::PAGE_CACHE_TIME : 30,
-            );
+                        return $page ? $page->id : null;
+                    },
+                    is_performance() ? self::PAGE_CACHE_TIME : 30,
+                );
 
-            $this->currentPage = $pageId ? Page::findByPK($pageId) : Page::findOne(['route' => $routePath]);
+                $this->currentPage = $pageId ? Page::findByPK($pageId) : Page::findOne(['route' => $routePath]);
 
-            if ($this->currentPage) {
-                $this->loadPermissions();
+                if ($this->currentPage) {
+                    $this->loadPermissions();
 
-                template()->addGlobal('page', $this->currentPage);
+                    template()->addGlobal('page', $this->currentPage);
+                }
+            } catch (Throwable $e) {
+                $this->handlePagesDatabaseFailure($e, 'current page lookup');
             }
         }
     }
@@ -278,11 +292,21 @@ class PageManager
             return '';
         }
 
+        if ($this->canUseRenderedPageCache()) {
+            $cached = $this->readRenderedPageCache();
+            if ($cached !== null) {
+                return $cached;
+            }
+        }
+
         $globalBlocks = $this->getGlobalBlocks();
 
         // If there are global blocks, render global layout with local content inside Content widget
         if (!empty($globalBlocks)) {
-            return $this->renderGlobalLayout($globalBlocks);
+            $content = $this->renderGlobalLayout($globalBlocks);
+            $this->writeRenderedPageCache($content);
+
+            return $content;
         }
 
         // Fallback to local-only rendering if no global layout exists
@@ -290,7 +314,109 @@ class PageManager
             return '';
         }
 
-        return $this->renderBlocksAsGrid($this->currentPage->getBlocks(), false);
+        $content = $this->renderBlocksAsGrid($this->currentPage->getBlocks(), false);
+        $this->writeRenderedPageCache($content);
+
+        return $content;
+    }
+
+    private function canUseRenderedPageCache(): bool
+    {
+        return (
+            !is_cli()
+            && !is_admin_path()
+            && $this->currentPage !== null
+            && !$this->request->query->has('editMode')
+            && !$this->userService->isLoggedIn()
+        );
+    }
+
+    private function readRenderedPageCache(): ?string
+    {
+        $file = $this->getRenderedPageCacheFile();
+        if (!is_file($file)) {
+            return null;
+        }
+
+        $ttl = (int) ( config('page.rendered_cache_ttl') ?? self::RENDERED_PAGE_CACHE_TIME );
+        if ($ttl <= 0 || ( time() - ( @filemtime($file) ?: 0 ) ) > $ttl) {
+            return null;
+        }
+
+        $content = @file_get_contents($file);
+
+        if ($content === false) {
+            return null;
+        }
+
+        $metaFile = $file . '.meta.php';
+        $meta = is_file($metaFile) ? @include $metaFile : [];
+        if ((bool) ( is_array($meta) ? $meta['global_content_rendered'] ?? false : false )) {
+            $this->globalContentRendered = true;
+        } elseif (str_contains($content, '<!-- __FLUTE_GLOBAL_CONTENT__ -->')) {
+            $this->globalContentRendered = true;
+        }
+
+        return $content;
+    }
+
+    private function writeRenderedPageCache(string $content): void
+    {
+        if (!$this->canUseRenderedPageCache() || $content === '') {
+            return;
+        }
+
+        $file = $this->getRenderedPageCacheFile();
+        $dir = dirname($file);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0o775, true);
+        }
+
+        @file_put_contents($file, $content, LOCK_EX);
+        @file_put_contents(
+            $file . '.meta.php',
+            '<?php return '
+            . var_export([
+                'global_content_rendered' => $this->globalContentRendered,
+            ], true)
+            . ';',
+            LOCK_EX,
+        );
+    }
+
+    private function getRenderedPageCacheFile(): string
+    {
+        $device = $this->getRequestDeviceSegment();
+        $pageId = $this->currentPage?->id ?? 'none';
+        $route = $this->currentPage?->route ?? $this->request->getPathInfo();
+        $key = sha1(implode('|', [
+            app()->getLang(),
+            $device,
+            (string) $pageId,
+            (string) $route,
+        ]));
+
+        return storage_path("app/cache/page-rendered/{$key}.html");
+    }
+
+    private function getRequestDeviceSegment(): string
+    {
+        $userAgent = $this->request->headers->get('User-Agent', '');
+        $isMobile = (bool) preg_match('/Mobile|Android.*Mobile|iPhone|iPod/i', $userAgent);
+        if ($isMobile) {
+            return 'mobile';
+        }
+
+        $isTablet = (bool) preg_match('/iPad|Android|Tablet/i', $userAgent);
+
+        return $isTablet ? 'tablet' : 'desktop';
+    }
+
+    private function clearRenderedPageCache(): void
+    {
+        foreach (glob(storage_path('app/cache/page-rendered/*')) ?: [] as $file) {
+            @unlink($file);
+        }
     }
 
     /**
@@ -438,6 +564,7 @@ class PageManager
         }
 
         cache()->delete(self::GLOBAL_LAYOUT_CACHE_KEY);
+        $this->clearRenderedPageCache();
     }
 
     /**
@@ -549,6 +676,7 @@ class PageManager
         }
 
         $page->saveOrFail();
+        $this->clearRenderedPageCache();
     }
 
     /**
@@ -984,41 +1112,19 @@ class PageManager
             return;
         }
 
-        $pageRoutes = cache()->callback(
-            self::PAGES_CACHE_KEY,
-            static function () {
-                $pages = Page::query()->load('permissions')->fetchAll();
+        try {
+            $pageRoutes = cache()->callback(
+                self::PAGES_CACHE_KEY,
+                static function () {
+                    $pages = Page::query()->load('permissions')->fetchAll();
 
-                return array_map(static function ($page) {
-                    $perms = $page->permissions ?? [];
-
-                    if (is_object($perms) && method_exists($perms, 'toArray')) {
-                        $perms = $perms->toArray();
-                    } elseif (!is_array($perms)) {
-                        $perms = [];
-                    }
-
-                    $permissions = array_map(static function ($p) {
-                        if (is_object($p)) {
-                            return $p->permission?->name ?? $p->name ?? null;
-                        }
-
-                        if (is_array($p)) {
-                            return $p['permission']['name'] ?? $p['name'] ?? null;
-                        }
-
-                        return null;
-                    }, $perms);
-
-                    return [
-                        'id' => $page->id,
-                        'route' => $page->route,
-                        'permissions' => array_filter($permissions),
-                    ];
-                }, $pages);
-            },
-            is_performance() ? self::PAGES_CACHE_TIME : 30,
-        );
+                    return self::mapPagesToRoutes($pages);
+                },
+                is_performance() ? self::PAGES_CACHE_TIME : 30,
+            );
+        } catch (Throwable $e) {
+            $pageRoutes = $this->useCachedPageRoutes($e, 'page route lookup');
+        }
 
         $this->registerPageRoutesFromCache($pageRoutes);
 
@@ -1031,8 +1137,12 @@ class PageManager
     protected function registerPageRoutesFromCache(array $pageRoutes): void
     {
         foreach ($pageRoutes as $pageData) {
-            $route = $pageData['route'];
-            $permissions = array_filter($pageData['permissions']);
+            $route = $pageData['route'] ?? null;
+            $permissions = array_filter($pageData['permissions'] ?? []);
+
+            if (!$route) {
+                continue;
+            }
 
             if ($this->router->hasRoute($route, 'GET')) {
                 continue;
@@ -1145,9 +1255,69 @@ class PageManager
      */
     protected function loadPermissions(): void
     {
-        foreach ($this->currentPage->getPermissions() as $permission) {
-            $this->permissions[] = $permission;
+        try {
+            foreach ($this->currentPage->getPermissions() as $permission) {
+                $this->permissions[] = $permission;
+            }
+        } catch (Throwable $e) {
+            $this->handlePagesDatabaseFailure($e, 'page permission lookup');
         }
+    }
+
+    protected static function mapPagesToRoutes(array $pages): array
+    {
+        return array_map(static function ($page) {
+            $perms = $page->permissions ?? [];
+
+            if (is_object($perms) && method_exists($perms, 'toArray')) {
+                $perms = $perms->toArray();
+            } elseif (!is_array($perms)) {
+                $perms = [];
+            }
+
+            $permissions = array_map(static function ($p) {
+                if (is_object($p)) {
+                    return $p->permission?->name ?? $p->name ?? null;
+                }
+
+                if (is_array($p)) {
+                    return $p['permission']['name'] ?? $p['name'] ?? null;
+                }
+
+                return null;
+            }, $perms);
+
+            return [
+                'id' => $page->id,
+                'route' => $page->route,
+                'permissions' => array_filter($permissions),
+            ];
+        }, $pages);
+    }
+
+    protected function useCachedPageRoutes(Throwable $e, string $context): array
+    {
+        $this->handlePagesDatabaseFailure($e, $context);
+
+        try {
+            $cachedRoutes = cache()->get(self::PAGES_CACHE_KEY, []);
+        } catch (Throwable) {
+            $cachedRoutes = [];
+        }
+
+        return is_array($cachedRoutes) ? $cachedRoutes : [];
+    }
+
+    protected function handlePagesDatabaseFailure(Throwable $e, string $context): void
+    {
+        $this->pagesDatabaseUnavailable = true;
+
+        if ($this->pagesDatabaseFailureLogged) {
+            return;
+        }
+
+        $this->logger->warning("Page database {$context} failed, using degraded page state: " . $e->getMessage());
+        $this->pagesDatabaseFailureLogged = true;
     }
 
     /**

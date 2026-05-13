@@ -1,20 +1,40 @@
-// ========================================
-// NAVBAR MORPH DROPDOWN
-// ========================================
+﻿
 
 .navbar-dropdown {
     position: relative;
     display: flex;
     align-items: center;
     margin: 0 auto;
+    min-width: 0;
+    flex: 1 1 auto;
 
     &__items {
         display: flex;
         align-items: center;
         gap: var(--space-2xs);
+        min-width: 0;
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x proximity;
+        padding: 2px 0;
+
+        &::-webkit-scrollbar {
+            display: none;
+            width: 0;
+            height: 0;
+        }
+
+        > * {
+            scroll-snap-align: start;
+            flex-shrink: 0;
+        }
     }
 
     &__item {
+        position: relative;
         display: flex;
         align-items: center;
         gap: var(--space-xs);
@@ -26,15 +46,25 @@
         border: none;
         border-radius: 9999px;
         cursor: pointer;
-        transition: color 0.2s ease, background-color 0.2s ease;
+        transition: color 0.2s ease,
+                    background-color 0.2s ease,
+                    transform 0.18s ease;
         white-space: nowrap;
         text-decoration: none;
         line-height: 1.5;
 
-        &:hover,
-        &.active {
+        &:hover {
             color: var(--text);
             background-color: var(--transp-05);
+        }
+
+        &.active {
+            color: var(--accent);
+            background-color: var(--transp-1);
+        }
+
+        &:active {
+            transform: scale(0.97);
         }
 
         &-icon {
@@ -201,8 +231,7 @@
         margin-top: 4px;
     }
 
-
-    &__menu-header {
+&__menu-header {
         display: flex;
         align-items: center;
         gap: var(--space-sm);
@@ -219,8 +248,7 @@
         }
     }
 
-    // 3rd level — section with label + child items
-    &__menu-section {
+&__menu-section {
         display: flex;
         flex-direction: column;
         grid-column: 1 / -1;
@@ -251,8 +279,7 @@
         padding: var(--space-2xs) var(--space-sm);
     }
 
-    // Legacy 3rd level links (kept for dropdown.blade.php)
-    &__sublinks {
+&__sublinks {
         display: flex;
         flex-wrap: wrap;
         gap: var(--space-2xs) var(--space-xs);
@@ -272,7 +299,6 @@
     }
 }
 
-// Priority+ overflow
 .navbar-dropdown__overflow {
     position: relative;
     display: flex;
@@ -296,7 +322,6 @@
     }
 }
 
-// Overflow menu portal (lives in body for backdrop-filter)
 .navbar-dropdown__overflow-menu {
     position: fixed;
     min-width: 180px;
@@ -438,7 +463,6 @@
     }
 }
 
-// Tabbar modal styles
 .tabbar__modal {
     &-item {
         line-height: 1.5;
@@ -460,7 +484,6 @@
     }
 }
 
-// Mobile: hide navbar items, use sidebar instead
 @include media(mobile) {
     .navbar-dropdown {
         display: none !important;

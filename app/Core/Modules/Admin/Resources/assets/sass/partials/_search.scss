@@ -1,4 +1,4 @@
-// Search Dialog - Monochrome Minimal Design
+﻿
 #search-dialog {
     .modal__container {
         height: auto;
@@ -42,8 +42,7 @@
         flex-direction: column;
     }
 
-    // Header
-    .search-dialog__header {
+.search-dialog__header {
         display: flex;
         align-items: center;
         gap: 0.625rem;
@@ -125,8 +124,7 @@
         }
     }
 
-    // Body
-    .search-dialog__body {
+.search-dialog__body {
         max-height: 360px;
         overflow-y: auto;
 
@@ -144,8 +142,7 @@
         }
     }
 
-    // Footer
-    .search-dialog__footer {
+.search-dialog__footer {
         display: flex;
         align-items: center;
         justify-content: flex-start;
@@ -189,23 +186,19 @@
         }
     }
 
-    // Sections
-    .search-section--hidden {
+.search-section--hidden {
         display: none;
     }
 
-    // Results
-    .search-results {
+.search-results {
         padding: 0.375rem;
     }
 
-    // Commands
-    .search-commands {
+.search-commands {
         padding: 0.375rem;
     }
 }
 
-// Empty state
 .search-empty {
     padding: var(--space-xs);
 
@@ -253,7 +246,7 @@
             transform: translateY(-50%);
             width: 1rem;
             height: 1rem;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E");
+            background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><path fill="%23888" d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg>');
             background-size: contain;
             background-repeat: no-repeat;
             opacity: 0;
@@ -286,7 +279,6 @@
     }
 }
 
-// No results
 .search-no-results {
     display: flex;
     flex-direction: column;
@@ -316,7 +308,6 @@
     }
 }
 
-// Search groups
 .search-group {
     &:not(:last-child) {
         margin-bottom: 0.5rem;
@@ -355,7 +346,6 @@
     }
 }
 
-// Search result item
 .search-result-item {
     &.search-result-item--focused {
         a {
@@ -461,7 +451,6 @@
     }
 }
 
-// Commands list
 .search-commands__header {
     padding: 0.375rem 0.5rem;
     margin-bottom: 0.125rem;
@@ -482,7 +471,6 @@
     gap: 0;
 }
 
-// Command item
 .search-command-item {
     display: flex;
     align-items: center;
@@ -554,7 +542,6 @@
     }
 }
 
-// Global loading overlay for search
 .search-loading-overlay {
     position: absolute;
     inset: 0;
@@ -572,14 +559,12 @@
     }
 }
 
-// Error state
 .search-error {
     svg {
         color: var(--danger, #ef4444) !important;
     }
 }
 
-// Animation
 @keyframes search-spin {
     to {
         transform: rotate(360deg);
@@ -602,7 +587,6 @@
     animation: search-fade-in 0.15s ease forwards;
 }
 
-// Highlight matched text
 .search-highlight {
     background-color: rgba(250, 204, 21, 0.35);
     border-radius: 0.125rem;

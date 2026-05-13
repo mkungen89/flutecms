@@ -10,12 +10,17 @@
     $_sidebarPosition = $_themeColors['--sidebar-position'] ?? 'top';
     $_sidebarCollapsed = cookie()->get('sidebar_collapsed', 'false');
     $_sidebarContained = $_themeColors['--sidebar-contained'] ?? 'false';
+    $_sidebarMiniLabels = $_themeColors['--sidebar-mini-labels'] ?? 'text';
     $_designPreset = $_themeColors['--design-preset'] ?? 'default';
+    $_tabbarLimit = 4;
+    $_mobileNavMode = navbar()->mobileNavMode($_tabbarLimit);
 @endphp
 <html lang="{{ strtolower(app()->getLang()) }}" data-theme="{{ $_currentThemeMode }}" data-nav-style="{{ $_navStyle }}"
     data-sidebar-style="{{ $_sidebarStyle }}" data-sidebar-mode="{{ $_sidebarMode }}"
     data-sidebar-position="{{ $_sidebarPosition }}" data-sidebar-collapsed="{{ $_sidebarCollapsed }}"
-    data-sidebar-contained="{{ $_sidebarContained }}" data-design-preset="{{ $_designPreset }}">
+    data-sidebar-contained="{{ $_sidebarContained }}" data-sidebar-mini-labels="{{ $_sidebarMiniLabels }}"
+    data-design-preset="{{ $_designPreset }}"
+    data-mobile-nav-mode="{{ $_mobileNavMode }}">
 
 <head hx-head="append">
     @php
@@ -184,6 +189,7 @@
         <link rel="preload" href="@asset('assets/fonts/manrope/Manrope-Medium.woff2')" as="font" type="font/woff2" crossorigin>
         <link rel="preload" href="@asset('assets/js/htmx/core.js')" as="script">
         <link rel="preload" href="@asset('assets/js/app.js')" as="script">
+        <link rel="preload" href="@at('Core/Template/Resources/js/prefetch.js', true)" as="script">
 
         @at(tt('assets/sass/app.scss'))
 
@@ -231,6 +237,18 @@
     @endif
 
     @include('flute::partials.colors')
+
+    <script>
+        window.u = window.u || function(path) {
+            var base = @json((string) url('/'));
+            if (!path) return base;
+            path = String(path);
+            if (/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(path) || path.charAt(0) === '#') {
+                return path;
+            }
+            return base.replace(/\/+$/, '') + '/' + path.replace(/^\/+/, '');
+        };
+    </script>
 
     <script>
         (function() {
@@ -412,6 +430,21 @@
         <script src="@asset('assets/js/libs/floating.js')" defer></script>
         <script src="@asset('jquery')" defer></script>
         <script src="@asset('assets/js/app.js')" defer></script>
+        <script>
+            window.FlutePrefetchConfig = window.FlutePrefetchConfig || [];
+            window.FlutePrefetchConfig.push({
+                root: 'body',
+                target: 'main',
+                swap: 'outerHTML transition:true',
+                maxEntries: 48,
+                maxConcurrent: 2,
+                hoverDelay: 30,
+                ttl: 180000,
+                visibleLimit: 3,
+                visibleDelay: 350
+            });
+        </script>
+        @at('Core/Template/Resources/js/prefetch.js')
         <script src="@asset('assets/js/libs/notyf.js')" defer fetchpriority="low"></script>
         <script src="@asset('assets/js/libs/nprogress.js')" defer></script>
         <script src="@asset('assets/js/libs/flute-select.js')" defer fetchpriority="low"></script>
@@ -472,19 +505,61 @@
                             window.fluteRichTextEditor.initialize();
                         }
                     }
+                },
+                pickr: {
+                    match: '[data-pickr-never-match]',
+                    srcs: ["@asset('assets/js/libs/pickr.js')"],
+                    init: function () {}
                 }
             };
+
+            function ensure(key, cb, root) {
+                var lib = libs[key];
+                if (!lib) {
+                    if (cb) cb();
+                    return;
+                }
+
+                if (lib.done) {
+                    if (lib.init) lib.init(root);
+                    if (cb) cb();
+                    return;
+                }
+
+                if (lib.loading) {
+                    lib.callbacks.push({ cb: cb, root: root });
+                    return;
+                }
+
+                lib.loading = true;
+                lib.callbacks = [{ cb: cb, root: root }];
+                load(lib.srcs, function() {
+                    lib.done = true;
+                    lib.loading = false;
+                    var callbacks = lib.callbacks || [];
+                    lib.callbacks = [];
+                    callbacks.forEach(function(item) {
+                        if (lib.init) lib.init(item.root);
+                        if (item.cb) item.cb();
+                    });
+                });
+            }
 
             function scan(root) {
                 Object.keys(libs).forEach(function(key) {
                     var lib = libs[key];
                     if (lib.done) return;
                     if (matches(root, lib.match)) {
-                        lib.done = true;
-                        load(lib.srcs, lib.init || null);
+                        ensure(key, null, root);
                     }
                 });
             }
+
+            window.ThemeAssetLoader = {
+                ensure: ensure,
+                loadScripts: load,
+                scan: scan
+            };
 
             document.addEventListener('DOMContentLoaded', function() { scan(); });
             document.body.addEventListener('htmx:load', function(e) { scan(e.detail.elt); });
@@ -562,6 +637,8 @@
         {{-- Always load sidebar-nav script, it handles visibility check internally --}}
         @at(tt(path: 'assets/scripts/sidebar-nav.js'))
 
+        @at(tt('assets/scripts/tabbar.js'))
+
         @at(tt('assets/scripts/app.js'))
 
         @include('flute::partials.toasts')
@@ -572,52 +649,6 @@
             {!! $sections['scripts'] !!}
         @endif
 
-        <script>
-        (function(){
-            var done = {};
-            var timer = null;
-
-            function getHref(a) {
-                if (a.getAttribute('hx-boost') === 'false' || a.closest('[hx-boost=false]')) return null;
-                if (!a.closest('[hx-boost=true]') && !a.hasAttribute('hx-boost')) return null;
-                var href = a.getAttribute('href');
-                if (!href || href.charAt(0) === '#' || href.startsWith('javascript') ||
-                    a.hasAttribute('data-modal-open') || a.hasAttribute('data-dropdown-open') ||
-                    a.hasAttribute('download') || a.getAttribute('target') === '_blank') return null;
-                try { var p = new URL(href, location.origin).pathname; return p !== location.pathname ? p : null; } catch(e) { return null; }
-            }
-
-            function warm(href) {
-                if (done[href]) return;
-                done[href] = 1;
-                fetch(href, {
-                    priority: 'low',
-                    headers: {
-                        'HX-Request': 'true',
-                        'HX-Boosted': 'true',
-                        'HX-Target': 'main',
-                        'HX-Current-URL': location.href
-                    }
-                }).catch(function(){});
-            }
-
-            document.addEventListener('mouseover', function(e) {
-                var a = e.target.closest && e.target.closest('a[href]');
-                if (!a) return;
-                var href = getHref(a);
-                if (!href) return;
-                clearTimeout(timer);
-                timer = setTimeout(function() { warm(href); }, 65);
-            }, true);
-            document.addEventListener('mouseout', function() { clearTimeout(timer); }, true);
-            document.addEventListener('touchstart', function(e) {
-                var a = e.target.closest && e.target.closest('a[href]');
-                if (!a) return;
-                var href = getHref(a);
-                if (href) warm(href);
-            }, {passive: true, capture: true});
-        })();
-        </script>
     @endif
 </body>
 

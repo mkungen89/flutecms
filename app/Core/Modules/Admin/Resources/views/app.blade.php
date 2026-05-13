@@ -45,8 +45,8 @@
     }'>
     <meta name="site_url" content="{{ config('app.url') }}">
 
-    <link rel="dns-prefetch" href="//fonts.googleapis.com">
-    <link rel="dns-prefetch" href="//fonts.gstatic.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
     <link rel="icon" type="image/x-icon" href="@asset('favicon.ico')?v={{ file_exists(public_path('favicon.ico')) ? filemtime(public_path('favicon.ico')) : 1 }}">
     <link rel="stylesheet" href="@asset('assets/css/libs/flute-select.css')" type='text/css' media="print" onload="this.media='all'">
@@ -72,15 +72,15 @@
         <link rel="preload" href="@asset('assets/fonts/manrope/Manrope-Medium.woff2')" as="font" type="font/woff2" crossorigin>
         <link rel="preload" href="@asset('assets/fonts/manrope/manrope.css')" as="style" onload="this.onload=null;this.rel='stylesheet'">
         <noscript><link rel="stylesheet" href="@asset('assets/fonts/manrope/manrope.css')"></noscript>
+        <link rel="preload" href="@asset('assets/js/htmx/core.js')" as="script">
+        <link rel="preload" href="@asset('assets/js/app.js')" as="script">
+        <link rel="preload" href="@at('Core/Template/Resources/js/prefetch.js', true)" as="script">
         <link rel="preload" href="@asset('animate')" as="style" onload="this.onload=null;this.rel='stylesheet'">
         <noscript>
             <link rel="stylesheet" href="@asset('animate')" type='text/css'>
         </noscript>
         <link rel="preload" href="@asset('grid')" as="style" onload="this.onload=null;this.rel='stylesheet'">
         <noscript><link rel="stylesheet" href="@asset('grid')" type='text/css'></noscript>
-        <link rel="stylesheet" href="@asset('assets/css/libs/filepond.min.css')">
-        <link rel="stylesheet" href="@asset('assets/css/libs/filepond-plugin-image-preview.min.css')">
-
         <link rel="stylesheet" href="@asset('assets/css/libs/cropper.min.css')" media="print" onload="this.media='all'">
         {{-- SCSS assets --}}
         @at('Core/Modules/Admin/Resources/assets/sass/admin.scss')
@@ -99,6 +99,18 @@
             });
         </script>
     @endif
+
+    <script>
+        window.u = window.u || function(path) {
+            var base = @json((string) url('/'));
+            if (!path) return base;
+            path = String(path);
+            if (/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(path) || path.charAt(0) === '#') {
+                return path;
+            }
+            return base.replace(/\/+$/, '') + '/' + path.replace(/^\/+/, '');
+        };
+    </script>
 
     <script>
         (function() {
@@ -263,18 +275,137 @@
         <script src="@asset('assets/js/libs/floating.js')" defer></script>
         <script src="@asset('jquery')" defer></script>
         <script src="@asset('assets/js/app.js')" defer></script>
-        <script src="@asset('assets/js/libs/filepond-plugin-image-preview.js')" defer fetchpriority="low"></script>
-        <script src="@asset('assets/js/libs/filepond-plugin-file-validate-type.js')" defer fetchpriority="low"></script>
-        <script src="@asset('assets/js/libs/filepond-plugin-file-validate-size.js')" defer fetchpriority="low"></script>
-        <script src="@asset('assets/js/libs/filepond-plugin-image-exif-orientation.js')" defer fetchpriority="low"></script>
-        <script src="@asset('assets/js/libs/filepond.js')" defer fetchpriority="low"></script>
-        <script src="@asset('assets/js/libs/cropper.js')" defer fetchpriority="low"></script>
+        <script>
+            window.FlutePrefetchConfig = window.FlutePrefetchConfig || [];
+            window.FlutePrefetchConfig.push({
+                root: 'body',
+                target: 'main',
+                swap: 'morph:outerHTML transition:true',
+                pathPrefix: '/admin',
+                maxEntries: 64,
+                maxConcurrent: 3,
+                hoverDelay: 0,
+                ttl: 180000,
+                visibleLimit: 8,
+                visibleDelay: 80,
+                visibleIdle: false
+            });
+        </script>
+        @at('Core/Template/Resources/js/prefetch.js')
+        <script>
+            (function () {
+                var loaded = {};
+                var registry = {};
+
+                function loadScripts(srcs, callback) {
+                    var index = 0;
+
+                    function next() {
+                        if (index >= srcs.length) {
+                            if (callback) callback();
+                            return;
+                        }
+
+                        var src = srcs[index++];
+                        if (loaded[src]) {
+                            next();
+                            return;
+                        }
+
+                        loaded[src] = true;
+                        var script = document.createElement('script');
+                        script.src = src;
+                        script.defer = true;
+                        script.onload = next;
+                        script.onerror = next;
+                        document.head.appendChild(script);
+                    }
+
+                    next();
+                }
+
+                function matches(root, selector) {
+                    if (!root) return !!document.querySelector(selector);
+                    if (root.matches && root.matches(selector)) return true;
+                    return !!(root.querySelector && root.querySelector(selector));
+                }
+
+                registry.tiptap = {
+                    match: '[data-editor="richtext"]',
+                    srcs: ["@asset('assets/js/libs/tiptap-editor.js')"],
+                    init: function (root) {
+                        if (window.fluteRichTextEditor) {
+                            window.fluteRichTextEditor.initialize(root || document);
+                        }
+                    }
+                };
+
+                registry.pickr = {
+                    match: '[data-pickr-never-match]',
+                    srcs: ["@asset('assets/js/libs/pickr.js')"],
+                    init: function () {}
+                };
+
+                function ensure(key, callback, root) {
+                    var lib = registry[key];
+                    if (!lib) {
+                        if (callback) callback();
+                        return;
+                    }
+
+                    if (lib.done) {
+                        if (callback) callback();
+                        if (lib.init) lib.init(root);
+                        return;
+                    }
+
+                    if (lib.loading) {
+                        lib.callbacks.push({ callback: callback, root: root });
+                        return;
+                    }
+
+                    lib.loading = true;
+                    lib.callbacks = [{ callback: callback, root: root }];
+                    loadScripts(lib.srcs, function () {
+                        lib.done = true;
+                        lib.loading = false;
+                        var callbacks = lib.callbacks || [];
+                        lib.callbacks = [];
+                        callbacks.forEach(function (item) {
+                            if (lib.init) lib.init(item.root);
+                            if (item.callback) item.callback();
+                        });
+                    });
+                }
+
+                function scan(root) {
+                    Object.keys(registry).forEach(function (key) {
+                        var lib = registry[key];
+                        if (!lib.done && matches(root, lib.match)) {
+                            ensure(key, null, root);
+                        }
+                    });
+                }
+
+                window.AdminAssetLoader = {
+                    ensure: ensure,
+                    loadScripts: loadScripts,
+                    scan: scan
+                };
+
+                document.addEventListener('DOMContentLoaded', function () {
+                    scan(document);
+                });
+
+                document.body.addEventListener('htmx:afterSettle', function (event) {
+                    scan(event.detail && event.detail.target ? event.detail.target : event.target);
+                });
+            })();
+        </script>
         <script src="@asset('assets/js/libs/notyf.js')" defer fetchpriority="low"></script>
         <script src="@asset('assets/js/libs/nprogress.js')" defer></script>
         <script src="@asset('assets/js/libs/sortable.js')" defer fetchpriority="low"></script>
-        <script src="@asset('assets/js/libs/confetti.js')" defer fetchpriority="low"></script>
         <script src="@asset('assets/js/libs/flute-select.js')" defer fetchpriority="low"></script>
-        <script src="@asset('assets/js/libs/tiptap-editor.js')" defer fetchpriority="low"></script>
         <script src="@asset('assets/js/libs/flatpickr.js')" defer fetchpriority="low"></script>
         <script src="@asset('assets/js/libs/flatpickr-l10n.js')" defer fetchpriority="low"></script>
         <script src="@asset('assets/js/libs/pickr.js')" defer fetchpriority="low"></script>
@@ -312,6 +443,7 @@
         @at('Core/Modules/Admin/Resources/assets/js/secret.js')
         @at('Core/Modules/Admin/Resources/assets/js/scrollup.js')
         @at('Core/Modules/Admin/Resources/assets/js/select.js')
+        @at('Core/Modules/Admin/Resources/assets/js/file-upload.js')
         @at('Core/Modules/Admin/Resources/assets/js/table-search.js')
         {{-- Richtext editor (TipTap) --}}
         @at('Core/Modules/Admin/Resources/assets/js/richtext/icons.js')

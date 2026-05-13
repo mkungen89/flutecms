@@ -1,4 +1,4 @@
-.tabs-container {
+﻿.tabs-container {
     position: relative;
 
     .tabs-nav-scroll {
@@ -224,8 +224,7 @@
         }
     }
 
-    // Bordered style - clean card-like tabs
-    &.bordered {
+&.bordered {
         .tabs-nav {
             gap: 0.5rem;
             border-bottom: none;
@@ -274,8 +273,7 @@
         }
     }
 
-    // Minimal style - ultra clean
-    &.minimal {
+&.minimal {
         .tabs-nav {
             gap: 1.5rem;
             border-bottom: none;
@@ -325,8 +323,7 @@
         }
     }
 
-    // Vertical tabs
-    &.vertical {
+&.vertical {
         display: flex;
         gap: 1.5rem;
 

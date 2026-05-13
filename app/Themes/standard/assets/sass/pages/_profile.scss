@@ -1,4 +1,4 @@
-.profile {
+﻿.profile {
     --profile-header-height: 280px;
     --avatar-size: 72px;
     --sidebar-width: 300px;
@@ -13,8 +13,7 @@
         --avatar-size: 56px;
     }
 
-    // ── Banner ──
-    &__banner {
+&__banner {
         width: 100%;
         height: var(--profile-header-height);
         object-fit: cover;
@@ -435,10 +434,10 @@
 
         &-extra {
             margin-top: var(--space-xs);
-            padding-left: calc(16px + var(--space-sm)); // icon width + gap
+            padding-left: calc(16px + var(--space-sm));
         }
     }
-    
+
     &__discord-role {
         display: inline-flex;
         align-items: center;

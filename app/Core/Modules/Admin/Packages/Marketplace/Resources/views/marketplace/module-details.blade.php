@@ -119,7 +119,10 @@
                     {{-- Actions --}}
                     <div class="mp-product-actions">
                         @if(! empty($module['slug']))
-                            <a href="{{ config('app.flute_market_url') }}/product/{{ $module['slug'] }}" 
+                            @php
+                                $marketplaceUrl = rtrim((string) config('app.flute_market_url'), '/') . '/en/market/' . rawurlencode((string) $module['slug']);
+                            @endphp
+                            <a href="{{ $marketplaceUrl }}" 
                                target="_blank" 
                                rel="noopener noreferrer"
                                class="mp-btn mp-btn-secondary">

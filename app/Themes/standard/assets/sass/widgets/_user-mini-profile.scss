@@ -1,5 +1,4 @@
-// User Mini Profile Widget — Minimal Design
-// ==========================================
+﻿
 
 .user-mini-profile {
     --profile-radius: 1.25rem;
@@ -15,8 +14,7 @@
         flex-direction: column;
     }
 
-    // Main Section with Cover
-    &-main {
+&-main {
         position: relative;
     }
 
@@ -46,8 +44,7 @@
         display: none;
     }
 
-    // Body Content
-    &-body {
+&-body {
         display: flex;
         flex-direction: column;
         gap: var(--space-md);
@@ -64,8 +61,7 @@
         gap: var(--space-sm);
     }
 
-    // Avatar
-    &-avatar-wrapper {
+&-avatar-wrapper {
         position: relative;
         flex-shrink: 0;
     }
@@ -110,8 +106,7 @@
         }
     }
 
-    // Rank Badge (right side)
-    &-rank {
+&-rank {
         display: flex;
         flex-direction: column;
         align-items: flex-end;
@@ -150,8 +145,7 @@
         }
     }
 
-    // User Info
-    &-info {
+&-info {
         display: flex;
         flex-direction: column;
         gap: 2px;
@@ -199,8 +193,7 @@
         }
     }
 
-    // Roles
-    &-roles {
+&-roles {
         display: flex;
         flex-wrap: wrap;
         gap: var(--space-2xs);
@@ -225,8 +218,7 @@
         }
     }
 
-    // Balance Card — Simplified
-    &-balance-card {
+&-balance-card {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -292,8 +284,7 @@
         }
     }
 
-    // Actions Menu
-    &-actions {
+&-actions {
         display: flex;
         flex-direction: column;
         padding: var(--space-sm) var(--space-md) var(--space-md);
@@ -379,9 +370,6 @@
         }
     }
 }
-
-// Guest Profile — Minimal Design
-// ================================
 
 .guest-profile {
     padding: var(--space-lg);

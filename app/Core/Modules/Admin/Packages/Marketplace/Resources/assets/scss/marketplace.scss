@@ -1,9 +1,5 @@
-$radius-pill: 999px;
+﻿$radius-pill: 999px;
 $card-radius: var(--border1);
-
-// ==========================================
-// LIGHT MODE OVERRIDES
-// ==========================================
 
 :root[data-theme="light"] {
 	.mp-card {
@@ -40,10 +36,6 @@ $card-radius: var(--border1);
 	}
 }
 
-// ==========================================
-// SPLIT LAYOUT
-// ==========================================
-
 .mp-layout {
 	display: grid;
 	grid-template-columns: 260px 1fr;
@@ -54,10 +46,6 @@ $card-radius: var(--border1);
 		grid-template-columns: 1fr;
 	}
 }
-
-// ==========================================
-// SIDEBAR
-// ==========================================
 
 .mp-sidebar {
 	display: flex;
@@ -236,10 +224,6 @@ $card-radius: var(--border1);
 	}
 }
 
-// ==========================================
-// TOP BAR
-// ==========================================
-
 .mp-top-bar {
 	display: flex;
 	align-items: center;
@@ -293,7 +277,7 @@ $card-radius: var(--border1);
 	font-size: 12px;
 	color: var(--text-300);
 	cursor: pointer;
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%23999' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+	background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><path fill="%23888" d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg>');
 	background-repeat: no-repeat;
 	background-position: right 8px center;
 
@@ -336,10 +320,6 @@ $card-radius: var(--border1);
 		color: var(--accent);
 	}
 }
-
-// ==========================================
-// MODULE GRID
-// ==========================================
 
 .marketplace-grid {
 	display: grid;
@@ -559,7 +539,6 @@ $card-radius: var(--border1);
 	}
 }
 
-// List view mode
 .marketplace-grid.view-list {
 	grid-template-columns: 1fr;
 	gap: 6px;
@@ -661,8 +640,7 @@ $card-radius: var(--border1);
 			}
 		}
 
-		// Status indicator for installed/update instead of cover flag
-		&[data-installed="1"] {
+&[data-installed="1"] {
 			.cover {
 				box-shadow: 0 0 0 2px var(--success);
 			}
@@ -731,10 +709,6 @@ $card-radius: var(--border1);
 	}
 }
 
-// ==========================================
-// EMPTY STATE
-// ==========================================
-
 .mp-empty-state {
 	display: flex;
 	flex-direction: column;
@@ -759,10 +733,6 @@ $card-radius: var(--border1);
 		font-size: 14px;
 	}
 }
-
-// ==========================================
-// PRODUCT DETAILS PAGE
-// ==========================================
 
 .mp-product {
 	display: grid;
@@ -997,10 +967,6 @@ $card-radius: var(--border1);
 	padding-top: 16px;
 }
 
-// ==========================================
-// BUTTONS
-// ==========================================
-
 .mp-btn {
 	display: inline-flex;
 	align-items: center;
@@ -1077,10 +1043,6 @@ $card-radius: var(--border1);
 	}
 }
 
-// ==========================================
-// GALLERY
-// ==========================================
-
 .mp-gallery {
 	padding: var(--space-md);
 	border-radius: $card-radius;
@@ -1143,10 +1105,6 @@ $card-radius: var(--border1);
 		}
 	}
 }
-
-// ==========================================
-// LIGHTBOX
-// ==========================================
 
 .mp-lightbox {
 	position: fixed;
@@ -1238,10 +1196,6 @@ $card-radius: var(--border1);
 		border-radius: var(--border1);
 	}
 }
-
-// ==========================================
-// CONTENT TABS
-// ==========================================
 
 .mp-content {
 	padding: var(--space-md);
@@ -1378,10 +1332,6 @@ $card-radius: var(--border1);
 	img { max-width: 100%; border-radius: var(--border1); }
 }
 
-// ==========================================
-// VERSIONS LIST
-// ==========================================
-
 .mp-versions-list {
 	display: flex;
 	flex-direction: column;
@@ -1432,10 +1382,6 @@ $card-radius: var(--border1);
 	p { margin: 0 0 8px; &:last-child { margin-bottom: 0; } }
 }
 
-// ==========================================
-// LOADING STATE
-// ==========================================
-
 .mp-loading-overlay {
 	position: fixed;
 	inset: 0;
@@ -1464,10 +1410,6 @@ $card-radius: var(--border1);
 	to { transform: rotate(360deg); }
 }
 
-// ==========================================
-// SKELETON
-// ==========================================
-
 .mp-card.skeleton {
 	.cover, .line {
 		background: linear-gradient(90deg, var(--transp-1) 25%, var(--transp-2) 50%, var(--transp-1) 75%);
@@ -1490,10 +1432,6 @@ $card-radius: var(--border1);
 	0% { background-position: -200% 0; }
 	100% { background-position: 200% 0; }
 }
-
-// ==========================================
-// LEGACY SUPPORT
-// ==========================================
 
 .markdown-content {
 	@extend .mp-description;

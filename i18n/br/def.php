@@ -286,4 +286,5 @@ return [
     'created' => 'Criado',
     'deleted' => 'Excluído',
     'auth_required' => 'Autenticação necessária',
+    'more' => 'Mais',
 ];

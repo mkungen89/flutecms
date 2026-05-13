@@ -4,6 +4,7 @@ namespace Flute\Core\Services;
 
 use Noodlehaus\Config;
 use RuntimeException;
+use Symfony\Component\Finder\Finder;
 use Throwable;
 
 class ConfigurationService
@@ -133,7 +134,7 @@ class ConfigurationService
 
     protected function scanConfigFiles(): array
     {
-        $finder = finder();
+        $finder = new Finder();
         $finder->files()->in($this->configsPath)->name('*.php');
 
         $configFiles = [];

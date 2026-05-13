@@ -1,4 +1,4 @@
-.button-group {
+﻿.button-group {
     display: inline-flex;
     flex-wrap: wrap;
     gap: 0.125rem;
@@ -41,8 +41,7 @@
         }
     }
 
-    // Icon only variant
-    &--icons {
+&--icons {
         .button-group__item {
             padding: var(--space-xs);
 
@@ -52,8 +51,7 @@
         }
     }
 
-    // Compact variant
-    &--compact {
+&--compact {
         gap: 0.0625rem;
 
         .button-group__item {

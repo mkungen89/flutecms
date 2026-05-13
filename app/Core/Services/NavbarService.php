@@ -61,8 +61,13 @@ class NavbarService
             . app()->getLang();
 
         $cacheTime = is_development() ? 30 : self::CACHE_TIME;
-        cache()->tagKey(self::CACHE_TAG, $cacheKey);
-        $this->cachedNavbarItems = cache()->callback($cacheKey, fn() => $this->getDefaultNavbarItems(), $cacheTime);
+        try {
+            cache()->tagKey(self::CACHE_TAG, $cacheKey);
+            $this->cachedNavbarItems = cache()->callback($cacheKey, fn() => $this->getDefaultNavbarItems(), $cacheTime);
+        } catch (\Throwable $e) {
+            logs('database')->warning('Navbar items lookup failed: ' . $e->getMessage());
+            $this->cachedNavbarItems = [];
+        }
 
         return $this->cachedNavbarItems;
     }
@@ -90,7 +95,43 @@ class NavbarService
      */
     public function all(bool $ignoreAuth = false): array
     {
-        return $ignoreAuth ? $this->getDefaultNavbarItems(true) : $this->loadItems();
+        if (!$ignoreAuth) {
+            return $this->loadItems();
+        }
+
+        try {
+            return $this->getDefaultNavbarItems(true);
+        } catch (\Throwable $e) {
+            logs('database')->warning('Navbar items lookup failed: ' . $e->getMessage());
+
+            return [];
+        }
+    }
+
+    public function count(bool $ignoreAuth = false): int
+    {
+        return count($this->all($ignoreAuth));
+    }
+
+    public function topLevel(int $limit = 4, bool $ignoreAuth = false): array
+    {
+        return array_slice($this->all($ignoreAuth), 0, max(0, $limit));
+    }
+
+    public function overflow(int $limit = 4, bool $ignoreAuth = false): array
+    {
+        return array_slice($this->all($ignoreAuth), max(0, $limit));
+    }
+
+    public function mobileNavMode(int $limit = 4, bool $ignoreAuth = false): string
+    {
+        $count = $this->count($ignoreAuth);
+
+        if ($count === 0) {
+            return 'empty';
+        }
+
+        return $count <= $limit ? 'tabbar' : 'hybrid';
     }
 
     /**

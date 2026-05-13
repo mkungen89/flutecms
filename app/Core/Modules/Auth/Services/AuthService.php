@@ -179,7 +179,7 @@ class AuthService
             ->fetchOne(['token' => hash('sha256', $token)]);
 
         if (!$rememberToken) {
-            throw new Exception("No token found with value {$token}");
+            throw new Exception('No remember token found for supplied cookie');
         }
 
         return $rememberToken;

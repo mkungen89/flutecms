@@ -13,6 +13,7 @@ return [
         'maintenance_mode' => 'Underhållsläge',
         'site_status' => 'Webbplatsstatus',
         'maintenance_message' => 'Underhållslägesmeddelande',
+        'maintenance_allowed_roles' => 'Roles Allowed During Maintenance',
         'is_performance' => 'Prestandaläge',
         'cron_mode' => 'CRON-läge',
         'auto_update' => 'Automatiska uppdateringar (kräver CRON)',
@@ -95,6 +96,7 @@ return [
         'steam_api' => 'Ange Steam API-nyckel',
         'footer_description' => 'Ange sidfotsbeskrivning',
         'maintenance_message' => 'Ange underhållslägesmeddelande',
+        'maintenance_allowed_roles' => 'Select roles',
         'flute_key' => 'Ange Flute-nyckel från marketplace',
         'keywords' => 'Ange nyckelord',
         'description' => 'Ange beskrivning',
@@ -150,6 +152,7 @@ return [
     ],
 
     'popovers' => [
+        'maintenance_allowed_roles' => 'Users with selected roles will be able to access the site during maintenance.',
         'lk_only_modal' => 'Replaces user dashboard with a modal.',
         'lk_step_mode' => 'Splits the payment form into sequential steps: amount → payment method → confirmation.',
         'yandex_client_key' => 'Get your client key from <a target="_blank" href="https://console.yandex.cloud/folders?section=service-smartcaptcha">Yandex Cloud Console</a>.',

@@ -30,12 +30,14 @@ class BanCheckMiddleware extends BaseMiddleware
 
     protected function shouldBlockUser(FluteRequest $request): bool
     {
-        if (user()->can('admin.boss')) {
-            return false;
-        }
+        if ($request->hasAuthenticationCookie()) {
+            if (user()->can('admin.boss')) {
+                return false;
+            }
 
-        if (user()->isLoggedIn() && user()->isBlocked()) {
-            return true;
+            if (user()->isLoggedIn() && user()->isBlocked()) {
+                return true;
+            }
         }
 
         $ipAddress = $request->getClientIp();
@@ -50,7 +52,7 @@ class BanCheckMiddleware extends BaseMiddleware
 
     protected function getBlockReason(FluteRequest $request): string
     {
-        if (user()->isLoggedIn() && user()->isBlocked()) {
+        if ($request->hasAuthenticationCookie() && user()->isLoggedIn() && user()->isBlocked()) {
             $blockInfo = user()->getCurrentUser()->getBlockInfo();
 
             return $blockInfo['reason'] ?? __('def.unknown_reason');
@@ -74,30 +76,36 @@ class BanCheckMiddleware extends BaseMiddleware
     {
         $cacheKey = 'flute.ip_block_info.' . md5($ipAddress);
 
-        return cache()->callback(
-            $cacheKey,
-            static function () use ($ipAddress) {
-                $userDevice = UserDevice::query()
-                    ->where('ip', $ipAddress)
-                    ->load(['user', 'user.blocksReceived'])
-                    ->fetchOne();
+        try {
+            return cache()->callback(
+                $cacheKey,
+                static function () use ($ipAddress) {
+                    $userDevice = UserDevice::query()
+                        ->where('ip', $ipAddress)
+                        ->load(['user', 'user.blocksReceived'])
+                        ->fetchOne();
 
-                if (!$userDevice) {
+                    if (!$userDevice) {
+                        return ['blocked' => false, 'reason' => null];
+                    }
+
+                    if ($userDevice->user->isBlocked()) {
+                        $info = $userDevice->user->getBlockInfo();
+
+                        return [
+                            'blocked' => true,
+                            'reason' => $info['reason'] ?? null,
+                        ];
+                    }
+
                     return ['blocked' => false, 'reason' => null];
-                }
+                },
+                self::CACHE_TIME,
+            );
+        } catch (\Throwable $e) {
+            logs('database')->warning('IP block lookup failed: ' . $e->getMessage());
 
-                if ($userDevice->user->isBlocked()) {
-                    $info = $userDevice->user->getBlockInfo();
-
-                    return [
-                        'blocked' => true,
-                        'reason' => $info['reason'] ?? null,
-                    ];
-                }
-
-                return ['blocked' => false, 'reason' => null];
-            },
-            self::CACHE_TIME,
-        );
+            return ['blocked' => true, 'reason' => __('def.unknown_reason')];
+        }
     }
 }

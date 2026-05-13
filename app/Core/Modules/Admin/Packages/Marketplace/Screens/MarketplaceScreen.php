@@ -10,6 +10,7 @@ use Flute\Admin\Platform\Actions\Button;
 use Flute\Admin\Platform\Layouts\LayoutFactory;
 use Flute\Admin\Platform\Screen;
 use Flute\Core\ModulesManager\ModuleManager;
+use Throwable;
 
 class MarketplaceScreen extends Screen
 {
@@ -122,10 +123,10 @@ class MarketplaceScreen extends Screen
         $this->categoryService = app(ModuleCategoryService::class);
 
         $req = request();
-        $this->searchQuery = (string) $req->input('q', '');
+        $this->searchQuery = (string) $req->input('searchQuery', $req->input('q', ''));
         $this->selectedCategory = (string) $req->input('category', '');
-        $this->priceFilter = (string) $req->input('price', '');
-        $this->statusFilter = (string) $req->input('status', '');
+        $this->priceFilter = (string) $req->input('priceFilter', $req->input('price', ''));
+        $this->statusFilter = (string) $req->input('statusFilter', $req->input('status', ''));
         $this->categoryFilter = (string) $req->input('categoryFilter', '');
         $this->sortBy = (string) $req->input('sortBy', 'featured');
         $this->viewMode = (string) session()->get('mp_view_mode', 'grid');
@@ -170,10 +171,10 @@ class MarketplaceScreen extends Screen
     public function handleFilters(): void
     {
         $req = request();
-        $this->searchQuery = (string) $req->input('q', '');
+        $this->searchQuery = (string) $req->input('searchQuery', $req->input('q', ''));
         $this->selectedCategory = (string) $req->input('category', '');
-        $this->priceFilter = (string) $req->input('price', '');
-        $this->statusFilter = (string) $req->input('status', '');
+        $this->priceFilter = (string) $req->input('priceFilter', $req->input('price', ''));
+        $this->statusFilter = (string) $req->input('statusFilter', $req->input('status', ''));
         $this->categoryFilter = (string) $req->input('categoryFilter', '');
         $this->sortBy = (string) $req->input('sortBy', 'featured');
 
@@ -230,7 +231,7 @@ class MarketplaceScreen extends Screen
             $this->applyLocalFilters();
         } catch (Throwable $e) {
             logs()->error($e);
-            $this->flashMessage($e->getMessage(), 'error');
+            $this->flashMessage(__('def.internal_server_error'), 'error');
         }
 
         $this->isLoading = false;
@@ -296,7 +297,7 @@ class MarketplaceScreen extends Screen
                         $download = $moduleInstaller->downloadModule($module);
                     } catch (Throwable $e2) {
                         logs()->error($e2);
-                        $this->flashMessage($e2->getMessage(), 'error');
+                        $this->flashMessage(__('def.internal_server_error'), 'error');
                         $this->isLoading = false;
 
                         return;
@@ -366,7 +367,7 @@ class MarketplaceScreen extends Screen
             $this->loadModules();
         } catch (Throwable $e) {
             logs()->error($e);
-            $this->flashMessage($e->getMessage(), 'error');
+            $this->flashMessage(__('def.internal_server_error'), 'error');
         } finally {
             if (isset($moduleInstaller)) {
                 $moduleInstaller->finishInstallation();
@@ -544,7 +545,8 @@ class MarketplaceScreen extends Screen
             if ($translationFiles) {
                 $filesystem->remove($translationFiles);
             }
-        } catch (\Throwable) {
+        } catch (Throwable $e) {
+            logs('marketplace')->warning('Marketplace asset invalidation failed: ' . $e->getMessage());
         }
     }
 

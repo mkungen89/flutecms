@@ -120,6 +120,7 @@ return [
     'sidebar_position' => 'Pozice položek',
     'sidebar_position_top' => 'Položky zarovnané nahoru',
     'sidebar_position_center' => 'Položky vycentrované vertikálně',
+    'sidebar_mini_show_labels' => 'Zobrazit popisky pod ikonami',
     'position_top' => 'Nahoře',
     'position_center' => 'Uprostřed',
     'nav_fixed' => 'Pevná navigace',

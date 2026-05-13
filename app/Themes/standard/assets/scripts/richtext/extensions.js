@@ -2,7 +2,11 @@ window.FluteRichText = window.FluteRichText || {};
 
 window.FluteRichText.createExtensions = function (textarea, T) {
     return [
-        T.StarterKit.configure({ heading: { levels: [1, 2, 3, 4, 5, 6] } }),
+        T.StarterKit.configure({
+            heading: { levels: [1, 2, 3, 4, 5, 6] },
+            link: false,
+            underline: false,
+        }),
         T.Underline,
         T.Superscript,
         T.Subscript,

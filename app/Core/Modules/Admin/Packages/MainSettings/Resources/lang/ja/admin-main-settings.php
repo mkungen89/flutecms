@@ -13,6 +13,7 @@ return [
         'maintenance_mode' => 'メンテナンスモード',
         'site_status' => 'サイトステータス',
         'maintenance_message' => 'メンテナンスモードメッセージ',
+        'maintenance_allowed_roles' => 'Roles Allowed During Maintenance',
         'is_performance' => 'パフォーマンスモード',
         'cron_mode' => 'CRONモード',
         'auto_update' => '自動更新（CRONが必要）',
@@ -95,6 +96,7 @@ return [
         'steam_api' => 'Steam APIキーを入力',
         'footer_description' => 'フッター説明を入力',
         'maintenance_message' => 'メンテナンスモードメッセージを入力',
+        'maintenance_allowed_roles' => 'Select roles',
         'flute_key' => 'MarketplaceからFluteキーを入力',
         'keywords' => 'キーワードを入力',
         'description' => '説明を入力',
@@ -150,6 +152,7 @@ return [
     ],
 
     'popovers' => [
+        'maintenance_allowed_roles' => 'Users with selected roles will be able to access the site during maintenance.',
         'lk_only_modal' => 'Replaces user dashboard with a modal.',
         'lk_step_mode' => 'Splits the payment form into sequential steps: amount → payment method → confirmation.',
         'yandex_client_key' => 'Get your client key from <a target="_blank" href="https://console.yandex.cloud/folders?section=service-smartcaptcha">Yandex Cloud Console</a>.',

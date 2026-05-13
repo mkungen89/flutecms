@@ -3,7 +3,6 @@
 namespace Flute\Core\Router\Middlewares;
 
 use Closure;
-use DateTimeImmutable;
 use Flute\Core\Database\Entities\ApiKey;
 use Flute\Core\Database\Entities\Role;
 use Flute\Core\Database\Entities\User;
@@ -15,19 +14,19 @@ class TokenMiddleware extends BaseMiddleware
     public function handle(FluteRequest $request, Closure $next, ...$args): \Symfony\Component\HttpFoundation\Response
     {
         $token = $request->getAuthorizationBearerToken();
+        $optional = isset($args[0]) && $args[0] === 'optional';
 
         if (!$token) {
-            return $next($request);
+            return $optional ? $next($request) : $this->error()->unauthorized();
         }
 
-        $findToken = ApiKey::findOne(['key' => $token]);
+        $findToken = ApiKey::findByPlainKey($token, true);
 
         if (!$findToken) {
             return $this->error()->badRequest();
         }
 
-        $findToken->lastUsedAt = new DateTimeImmutable();
-        $findToken->save();
+        $findToken->updateLastUsed();
 
         $apiUser = new User();
         $apiUser->name = 'API REQUEST';

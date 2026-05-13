@@ -1,4 +1,4 @@
-.filters {
+﻿.filters {
     @extend .blur-bg;
     display: flex;
     flex-direction: column;
@@ -181,7 +181,6 @@
     }
 }
 
-// Responsive
 @media (max-width: 768px) {
     .filters {
         padding: 0.625rem;

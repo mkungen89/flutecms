@@ -1,7 +1,7 @@
 <?php
 
 /**
- * @author Flames <xenozf@gmail.com>
+ * @author Flames <flamesworkk@gmail.com>
  *
  * @copyright 2026 Flute
  */
@@ -48,7 +48,7 @@ final class App
     /**
      * @var string
      */
-    public const VERSION = '1.0.4';
+    public const VERSION = '1.0.5';
 
     /**
      * Set the base path of the application
@@ -239,11 +239,7 @@ final class App
                 throw $e;
             }
 
-            if (function_exists('logs')) {
-                logs()->error($e);
-            }
-
-            \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'provider.register']);
+            \Flute\Core\Support\ExceptionReporter::report($e, 'provider.register');
         }
 
         return $this;
@@ -276,11 +272,7 @@ final class App
                     throw $e;
                 }
 
-                if (function_exists('logs')) {
-                    logs()->error($e);
-                }
-
-                \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'provider.boot']);
+                \Flute\Core\Support\ExceptionReporter::report($e, 'provider.boot');
             }
         }
 
@@ -313,6 +305,11 @@ final class App
     public function getVersion(): string
     {
         return self::VERSION;
+    }
+
+    public function isBooted(): bool
+    {
+        return $this->isBooted;
     }
 
     /**
@@ -554,13 +551,9 @@ final class App
                                 throw $e;
                             }
 
-                            if (function_exists('logs')) {
-                                logs()->error("Event listener {$listener} failed: " . $e->getMessage(), [
-                                    'exception' => $e,
-                                ]);
-                            }
-
-                            \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'event.listener']);
+                            \Flute\Core\Support\ExceptionReporter::report($e, 'event.listener', [
+                                'listener' => $listener,
+                            ]);
 
                             return null;
                         }
@@ -629,7 +622,7 @@ final class App
             if ($compressed !== false && strlen($compressed) < strlen($content)) {
                 $response->setContent($compressed);
                 $response->headers->set('Content-Encoding', 'gzip');
-                $response->headers->set('Vary', 'Accept-Encoding');
+                $this->addVaryHeader($response, 'Accept-Encoding');
                 $response->headers->remove('Content-Length');
             }
         } elseif (str_contains($acceptEncoding, 'deflate') && function_exists('gzdeflate')) {
@@ -637,10 +630,28 @@ final class App
             if ($compressed !== false && strlen($compressed) < strlen($content)) {
                 $response->setContent($compressed);
                 $response->headers->set('Content-Encoding', 'deflate');
-                $response->headers->set('Vary', 'Accept-Encoding');
+                $this->addVaryHeader($response, 'Accept-Encoding');
                 $response->headers->remove('Content-Length');
             }
         }
+    }
+
+    private function addVaryHeader(Response $response, string $header): void
+    {
+        $vary = [];
+        foreach (array_merge($response->getVary(), [$header]) as $value) {
+            foreach (explode(',', (string) $value) as $part) {
+                $part = trim($part);
+                if ($part === '') {
+                    continue;
+                }
+
+                $vary[strtolower($part)] = $part;
+            }
+        }
+
+        $response->headers->remove('Vary');
+        $response->setVary(array_values($vary), false);
     }
 
     protected function getPageCacheKey(FluteRequest $request): ?string
@@ -653,11 +664,7 @@ final class App
             return null;
         }
 
-        if ($request->htmx()->isHtmxRequest()) {
-            return null;
-        }
-
-        if (user()->isLoggedIn()) {
+        if ($request->hasAuthenticationCookie()) {
             return null;
         }
 
@@ -667,7 +674,22 @@ final class App
             return null;
         }
 
-        return 'page_cache.' . app()->getLang() . '.' . md5($uri);
+        $query = $request->query->all();
+        ksort($query);
+        $queryHash = $query ? '?' . http_build_query($query) : '';
+
+        $variant = 'full';
+        if ($request->htmx()->isHtmxRequest()) {
+            if ($request->isPrefetch()) {
+                return null;
+            }
+
+            $target = (string) $request->htmx()->getTarget();
+            $target = preg_replace('/[^A-Za-z0-9_.:-]/', '', $target) ?: 'default';
+            $variant = 'htmx.' . ( $request->htmx()->isBoosted() ? 'boosted' : 'fragment' ) . '.' . $target;
+        }
+
+        return 'page_cache.' . app()->getLang() . '.' . $variant . '.' . md5($uri . $queryHash);
     }
 
     protected function tryServePageCache(FluteRequest $request): ?Response
@@ -702,7 +724,7 @@ final class App
             'must_revalidate' => true,
         ]);
         $response->headers->set('X-Page-Cache', 'HIT');
-        $response->setVary(['HX-Request', 'HX-Boosted'], false);
+        $response->setVary(['HX-Request', 'HX-Boosted', 'HX-Preloaded', 'X-Flute-Prefetch'], false);
 
         return $response;
     }
@@ -718,8 +740,12 @@ final class App
             return;
         }
 
+        if ($response->headers->has('Set-Cookie')) {
+            return;
+        }
+
         $content = $response->getContent();
-        if ($content === false || strlen($content) < 100) {
+        if ($content === false || strlen($content) < 100 || strlen($content) > ( 1024 * 1024 )) {
             return;
         }
 

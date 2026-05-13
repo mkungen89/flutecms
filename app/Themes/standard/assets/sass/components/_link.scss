@@ -1,4 +1,4 @@
-a.link {
+﻿a.link {
     transition: all var(--transition) ease;
 
     background-position-y: -0%;
@@ -14,11 +14,11 @@ a.link {
         color: var(--accent);
         @include transition(all);
     }
-    
+
     &:focus {
         outline: none;
     }
-    
+
     &:focus-visible {
         outline: 2px solid var(--primary);
         outline-offset: 2px;
@@ -33,7 +33,7 @@ a.link {
             background-image: linear-gradient(180deg, transparent 50%, var(--primary) 50%) !important;
             color: var(--primary);
         }
-        
+
         &:focus-visible {
             outline-color: var(--primary);
         }
@@ -47,7 +47,7 @@ a.link {
             background-image: linear-gradient(180deg, transparent 50%, var(--accent) 50%) !important;
             color: var(--accent);
         }
-        
+
         &:focus-visible {
             outline-color: var(--accent);
         }

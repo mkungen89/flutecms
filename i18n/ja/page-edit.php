@@ -110,6 +110,7 @@ return [
     'sidebar_position' => 'アイテムの位置',
     'sidebar_position_top' => 'アイテムを上部に配置',
     'sidebar_position_center' => 'アイテムを垂直方向に中央配置',
+    'sidebar_mini_show_labels' => 'アイコンの下にラベルを表示',
     'position_top' => '上部',
     'position_center' => '中央',
     'nav_fixed' => '固定ナビゲーション',

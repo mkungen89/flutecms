@@ -24,7 +24,13 @@ class FileSystemService extends Filesystem
             return;
         }
 
-        $this->mkdir($cacheDir);
+        try {
+            $this->mkdir($cacheDir);
+        } catch (Throwable) {
+            $this->loadHelpersDirectly($helpersPath);
+
+            return;
+        }
 
         // Use FileLockService for concurrent access protection
         $handle = FileLockService::acquireLockWithWait($lockFile, 2.0);
@@ -35,8 +41,12 @@ class FileSystemService extends Filesystem
                 return;
             }
 
-            $this->generateHelpersCache($helpersPath, $cacheFile);
-            $this->writeHelpersCacheMeta($helpersPath, $metaFile);
+            try {
+                $this->generateHelpersCache($helpersPath, $cacheFile);
+                $this->writeHelpersCacheMeta($helpersPath, $metaFile);
+            } catch (Throwable) {
+                $this->loadHelpersDirectly($helpersPath);
+            }
 
             return;
         }
@@ -48,6 +58,8 @@ class FileSystemService extends Filesystem
 
             $this->generateHelpersCache($helpersPath, $cacheFile);
             $this->writeHelpersCacheMeta($helpersPath, $metaFile);
+        } catch (Throwable) {
+            $this->loadHelpersDirectly($helpersPath);
         } finally {
             FileLockService::releaseLock($handle);
         }
@@ -279,5 +291,15 @@ class FileSystemService extends Filesystem
         }
 
         return hash('sha256', implode("\n", $parts));
+    }
+
+    private function loadHelpersDirectly(string $helpersDir): void
+    {
+        $finder = new Finder();
+        $finder->files()->ignoreDotFiles(true)->in($helpersDir)->name('*.php')->sortByName();
+
+        foreach ($finder as $file) {
+            require_once $file->getRealPath();
+        }
     }
 }

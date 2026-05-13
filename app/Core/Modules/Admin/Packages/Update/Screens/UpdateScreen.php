@@ -28,6 +28,11 @@ class UpdateScreen extends Screen
      */
     protected UpdateService $updateService;
 
+    /**
+     * @var resource|null
+     */
+    protected $updateLockHandle = null;
+
     public function mount(): void
     {
         breadcrumb()->add(__('def.admin_panel'), url('/admin'))->add(__('admin-update.title'));
@@ -115,6 +120,15 @@ class UpdateScreen extends Screen
             @ignore_user_abort(true);
         }
 
+        if (!$this->acquireUpdateLock()) {
+            logs()->warning('Admin update skipped because another update is already running.');
+            $this->flashMessage(__('admin-update.update_failed'), 'error');
+
+            return;
+        }
+
+        $packageFile = null;
+
         try {
             $data = request()->all();
 
@@ -173,6 +187,11 @@ class UpdateScreen extends Screen
             }
             logs()->error('Update error: ' . $e->getMessage());
             $this->flashMessage(__('admin-update.update_error', ['message' => $e->getMessage()]), 'error');
+        } finally {
+            if (is_string($packageFile) && file_exists($packageFile)) {
+                @unlink($packageFile);
+            }
+            $this->releaseUpdateLock();
         }
     }
 
@@ -188,6 +207,13 @@ class UpdateScreen extends Screen
             @ignore_user_abort(true);
         }
 
+        if (!$this->acquireUpdateLock()) {
+            logs()->warning('Admin bulk update skipped because another update is already running.');
+            $this->flashMessage(__('admin-update.update_failed'), 'error');
+
+            return;
+        }
+
         try {
             $this->flashMessage(__('admin-update.update_all_preparing'));
 
@@ -199,6 +225,7 @@ class UpdateScreen extends Screen
 
             if (!empty($updates['cms'])) {
                 $totalUpdates++;
+                $packageFile = null;
 
                 try {
                     $this->flashMessage(__('admin-update.update_downloading') . ' (CMS)');
@@ -218,12 +245,17 @@ class UpdateScreen extends Screen
                     }
                 } catch (Throwable $e) {
                     logs()->error('CMS update error: ' . $e->getMessage());
+                } finally {
+                    if (is_string($packageFile) && file_exists($packageFile)) {
+                        @unlink($packageFile);
+                    }
                 }
             }
 
             if (!empty($updates['modules'])) {
                 foreach ($updates['modules'] as $moduleId => $moduleUpdate) {
                     $totalUpdates++;
+                    $packageFile = null;
 
                     try {
                         $this->flashMessage(__('admin-update.update_downloading') . " ({$moduleUpdate['name']})");
@@ -247,6 +279,10 @@ class UpdateScreen extends Screen
                         }
                     } catch (Throwable $e) {
                         logs()->error("Module {$moduleId} update error: " . $e->getMessage());
+                    } finally {
+                        if (is_string($packageFile) && file_exists($packageFile)) {
+                            @unlink($packageFile);
+                        }
                     }
                 }
             }
@@ -254,6 +290,7 @@ class UpdateScreen extends Screen
             if (!empty($updates['themes'])) {
                 foreach ($updates['themes'] as $themeId => $themeUpdate) {
                     $totalUpdates++;
+                    $packageFile = null;
 
                     try {
                         $this->flashMessage(__('admin-update.update_downloading') . " ({$themeUpdate['name']})");
@@ -273,6 +310,10 @@ class UpdateScreen extends Screen
                         }
                     } catch (Throwable $e) {
                         logs()->error("Theme {$themeId} update error: " . $e->getMessage());
+                    } finally {
+                        if (is_string($packageFile) && file_exists($packageFile)) {
+                            @unlink($packageFile);
+                        }
                     }
                 }
             }
@@ -299,6 +340,8 @@ class UpdateScreen extends Screen
             }
             logs()->error('Bulk update error: ' . $e->getMessage());
             $this->flashMessage(__('admin-update.update_error', ['message' => $e->getMessage()]), 'error');
+        } finally {
+            $this->releaseUpdateLock();
         }
     }
 
@@ -313,6 +356,15 @@ class UpdateScreen extends Screen
         if (function_exists('ignore_user_abort')) {
             @ignore_user_abort(true);
         }
+
+        if (!$this->acquireUpdateLock()) {
+            logs()->warning('Admin version install skipped because another update is already running.');
+            $this->flashMessage(__('admin-update.update_failed'), 'error');
+
+            return;
+        }
+
+        $packageFile = null;
 
         try {
             $data = request()->all();
@@ -352,6 +404,11 @@ class UpdateScreen extends Screen
             }
             logs()->error('Version install error: ' . $e->getMessage());
             $this->flashMessage(__('admin-update.update_error', ['message' => $e->getMessage()]), 'error');
+        } finally {
+            if (is_string($packageFile) && file_exists($packageFile)) {
+                @unlink($packageFile);
+            }
+            $this->releaseUpdateLock();
         }
     }
 
@@ -388,5 +445,43 @@ class UpdateScreen extends Screen
     protected function triggerSidebarRefresh(): void
     {
         $this->dispatchBrowserEvent('sidebar-refresh');
+    }
+
+    protected function acquireUpdateLock(): bool
+    {
+        if ($this->updateLockHandle !== null) {
+            return true;
+        }
+
+        $lockDir = storage_path('app/temp/updates');
+        if (!is_dir($lockDir) && !@mkdir($lockDir, 0o755, true) && !is_dir($lockDir)) {
+            return false;
+        }
+
+        $handle = @fopen($lockDir . '/.admin-update.lock', 'cb');
+        if ($handle === false) {
+            return false;
+        }
+
+        if (!flock($handle, LOCK_EX | LOCK_NB)) {
+            fclose($handle);
+
+            return false;
+        }
+
+        $this->updateLockHandle = $handle;
+
+        return true;
+    }
+
+    protected function releaseUpdateLock(): void
+    {
+        if ($this->updateLockHandle === null) {
+            return;
+        }
+
+        flock($this->updateLockHandle, LOCK_UN);
+        fclose($this->updateLockHandle);
+        $this->updateLockHandle = null;
     }
 }

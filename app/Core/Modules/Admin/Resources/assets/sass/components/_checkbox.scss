@@ -1,4 +1,4 @@
-$checkbox-size: 22px;
+﻿$checkbox-size: 22px;
 
 .checkbox {
     &--compact {
@@ -22,8 +22,7 @@ $checkbox-size: 22px;
         position: absolute;
         opacity: 0;
 
-        // Text
-        &+label {
+&+label {
             display: inline-block;
             position: relative;
             cursor: pointer;
@@ -34,8 +33,7 @@ $checkbox-size: 22px;
             user-select: none;
             min-height: 15px;
 
-            // Checkbox
-            &:before {
+&:before {
                 position: absolute;
                 display: block;
                 left: 0;
@@ -112,8 +110,7 @@ $checkbox-size: 22px;
             }
         }
 
-        // Disabled Checked
-        &:checked:disabled {
+&:checked:disabled {
             &+label {
                 opacity: .5;
             }

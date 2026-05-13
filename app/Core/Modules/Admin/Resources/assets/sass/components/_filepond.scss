@@ -1,6 +1,5 @@
-// Reserve layout space while FilePond is initialising so there is no
-// height-jump after the JS runs. The inner field container is hidden
-// immediately so the raw <input type="file"> never flashes.
+﻿
+
 .input-wrapper:has(input.filepond) {
     min-height: 80px;
 }
@@ -52,13 +51,9 @@
     background-color: color-mix(in srgb, var(--accent) 5%, transparent) !important;
 }
 
-// ── Drip (click ripple) — remove ─────────────────────────────────────────────
-
 .filepond--drip {
     display: none !important;
 }
-
-// ── Drop label ────────────────────────────────────────────────────────────────
 
 .filepond--drop-label {
     min-height: 100px !important;
@@ -81,7 +76,6 @@
     }
 }
 
-// Upload icon inside the label
 .filepond--icon-upload {
     color: var(--text-400);
     opacity: 0.7;
@@ -116,15 +110,11 @@
     }
 }
 
-// ── File items ────────────────────────────────────────────────────────────────
-
 .filepond--item {
     border-radius: 9px;
     width: 100% !important;
 }
 
-// Item background panels — use same three-panel approach, no border-radius
-// needed since the item element itself clips.
 .filepond--item-panel {
     background-color: var(--transp-05) !important;
     border-radius: 0 !important;
@@ -136,7 +126,6 @@
     }
 }
 
-// The item <li> acts as the visual card; add border via outline.
 .filepond--item > .filepond--panel {
     outline: 1px solid var(--transp-1);
     outline-offset: -1px;
@@ -144,7 +133,6 @@
     overflow: hidden;
 }
 
-// Processing / success
 .filepond--item[data-filepond-item-state='processing-complete'] .filepond--item-panel {
     background-color: var(--success-light) !important;
 }
@@ -153,7 +141,6 @@
     outline-color: rgba(48, 209, 88, 0.2);
 }
 
-// Error / invalid
 .filepond--item[data-filepond-item-state*='error'] .filepond--item-panel,
 .filepond--item[data-filepond-item-state*='invalid'] .filepond--item-panel {
     background-color: var(--error-light) !important;
@@ -163,8 +150,6 @@
 .filepond--item[data-filepond-item-state*='invalid'] > .filepond--panel {
     outline-color: rgba(255, 59, 48, 0.25);
 }
-
-// ── File info text ────────────────────────────────────────────────────────────
 
 .filepond--file-info {
     padding: 6px 8px 6px 10px !important;
@@ -188,8 +173,6 @@
     transition: none !important;
 }
 
-// ── Status text ───────────────────────────────────────────────────────────────
-
 .filepond--file-status-main {
     font-size: 12px !important;
     font-weight: 500 !important;
@@ -201,8 +184,6 @@
     color: var(--text-500) !important;
     opacity: 1 !important;
 }
-
-// ── Action buttons ────────────────────────────────────────────────────────────
 
 .filepond--file-action-button {
     background-color: transparent !important;
@@ -222,13 +203,9 @@
     }
 }
 
-// ── Progress indicator ────────────────────────────────────────────────────────
-
 .filepond--progress-indicator {
     color: var(--accent) !important;
 }
-
-// ── Image preview (FilePond image-preview plugin) ─────────────────────────────
 
 .filepond--image-preview-wrapper {
     border-radius: 0 !important;
@@ -239,14 +216,11 @@
     background-color: var(--transp-05) !important;
 }
 
-// Remove gradient overlays — minimal look
 .filepond--image-preview-overlay-idle,
 .filepond--image-preview-overlay-success,
 .filepond--image-preview-overlay-failure {
     display: none !important;
 }
-
-// ── List scrollbar ────────────────────────────────────────────────────────────
 
 .filepond--list-scroller {
     scrollbar-width: thin;

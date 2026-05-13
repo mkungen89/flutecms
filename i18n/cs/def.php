@@ -286,4 +286,5 @@ return [
     'created' => 'Vytvořeno',
     'deleted' => 'Smazáno',
     'auth_required' => 'Vyžadováno přihlášení',
+    'more' => 'Více',
 ];

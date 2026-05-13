@@ -9,6 +9,7 @@ return [
         'steam_api' => 'Chave API STEAM',
         'maintenance_mode' => 'Modo de Manutenção',
         'maintenance_message' => 'Mensagem de Manutenção',
+        'maintenance_allowed_roles' => 'Roles Allowed During Maintenance',
         'cron_mode' => 'Modo CRON',
         'csrf_enabled' => 'Tokens CSRF',
         'convert_to_webp' => 'Converter Imagens para WebP',
@@ -51,6 +52,7 @@ return [
     ],
 
     'placeholders' => [
+        'maintenance_allowed_roles' => 'Select roles',
         'username' => 'Nome de usuário SMTP',
         'password' => 'Senha SMTP',
         'db_driver' => 'Selecionar driver do banco de dados',
@@ -92,6 +94,7 @@ return [
     ],
 
     'popovers' => [
+        'maintenance_allowed_roles' => 'Users with selected roles will be able to access the site during maintenance.',
         'cron_mode' => 'Isto usa CRON em vez de solicitações normais. Veja <a target="_blank" href="https://docs.flute-cms.com">aqui</a>.',
         'reset_password' => 'Habilitar recuperação de senha do usuário.',
         'only_social' => 'Autenticação padrão por login/senha será desativado.',

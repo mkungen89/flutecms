@@ -26,7 +26,7 @@ class SiteModeMiddleware extends BaseMiddleware
         $configKey = 'app.' . $feature . '_enabled';
 
         if (!config($configKey, true)) {
-            if (user()->isLoggedIn() && user()->can('admin')) {
+            if ($request->hasAuthenticationCookie() && user()->isLoggedIn() && user()->can('admin')) {
                 return $next($request);
             }
 

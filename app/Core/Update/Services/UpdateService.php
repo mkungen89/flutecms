@@ -6,6 +6,7 @@ use Flute\Core\App;
 use Flute\Core\Markdown\Parser;
 use Flute\Core\ModulesManager\ModuleManager;
 use Flute\Core\Services\FluteApiClient;
+use Flute\Core\Support\FileUploader;
 use Flute\Core\Theme\ThemeManager;
 use Flute\Core\Update\Updaters\ModuleUpdater;
 use Flute\Core\Update\Updaters\ThemeUpdater;
@@ -23,6 +24,13 @@ class UpdateService
      * Cache duration in minutes
      */
     private const CACHE_DURATION = 1440; // 1 day
+
+    private const TRUSTED_FLUTE_DOWNLOAD_HOSTS = [
+        'flute-cms.com',
+        'api.flute-cms.com',
+        'market.flute-cms.com',
+        'mirror.flute-cms.com',
+    ];
 
     /**
      */
@@ -105,13 +113,7 @@ class UpdateService
         $channel = in_array($channel, ['stable', 'early'], true) ? $channel : 'stable';
         $cacheKey = self::CACHE_KEY . '_catalog_' . $channel;
 
-        return cache()->callback(
-            $cacheKey,
-            function () use ($channel) {
-                return $this->fetchVersionCatalog($channel);
-            },
-            self::CACHE_DURATION,
-        );
+        return cache()->callback($cacheKey, fn() => $this->fetchVersionCatalog($channel), self::CACHE_DURATION);
     }
 
     private function fetchVersionCatalog(string $channel): array
@@ -270,8 +272,8 @@ class UpdateService
         cache()->delete(self::CACHE_KEY . '_' . $this->channel . '_mock');
         cache()->delete(self::CACHE_KEY . '_catalog_stable');
         cache()->delete(self::CACHE_KEY . '_catalog_early');
-
-        $this->getAvailableUpdates(true);
+        $this->freshUpdatesCache = null;
+        $this->freshUpdatesFetchedAt = null;
 
         // if (function_exists('opcache_reset')) {
         //     opcache_reset();
@@ -320,7 +322,13 @@ class UpdateService
                 mkdir($tempDir, 0o755, true);
             }
 
-            $fileName = $tempDir . '/' . ( $identifier ?? 'cms' ) . '-' . ( $version ?? $latestVersion ) . '.zip';
+            $fileName =
+                $tempDir
+                . '/'
+                . $this->sanitizeDownloadPart($identifier ?? 'cms')
+                . '-'
+                . $this->sanitizeDownloadPart($version ?? $latestVersion ?? 'latest')
+                . '.zip';
 
             $api = new FluteApiClient(timeout: 120, connectTimeout: 10);
 
@@ -340,12 +348,23 @@ class UpdateService
                 $fullUrl = rtrim($api->getActiveBaseUrl(), '/') . '/' . ltrim($path, '/');
             }
 
+            $this->assertDownloadUrlAllowed($fullUrl);
+
             $guzzleOptions = [
                 'headers' => [
                     'User-Agent' => 'Flute-CMS/' . App::VERSION,
                 ],
                 'sink' => $fileName,
                 'http_errors' => false,
+                'allow_redirects' => [
+                    'max' => 5,
+                    'strict' => false,
+                    'referer' => false,
+                    'track_redirects' => true,
+                    'on_redirect' => function ($request, $response, $uri): void {
+                        $this->assertDownloadUrlAllowed((string) $uri);
+                    },
+                ],
             ];
 
             if (!$isAbsoluteUrl) {
@@ -372,7 +391,7 @@ class UpdateService
                 return null;
             }
 
-            if (!$this->isValidZipArchive($fileName)) {
+            if (!$this->isSafeUpdateZipArchive($fileName, $type)) {
                 $contentType = $response->getHeaderLine('Content-Type');
                 logs()->error("Downloaded file is not a valid ZIP archive: {$fileName} (Content-Type: {$contentType})");
                 @unlink($fileName);
@@ -447,6 +466,8 @@ class UpdateService
                 $fullUrl = rtrim($api->getActiveBaseUrl(), '/') . '/' . ltrim($path, '/');
             }
 
+            $this->assertDownloadUrlAllowed($fullUrl);
+
             $tempDir = storage_path('app/temp/updates');
             if (!is_dir($tempDir)) {
                 mkdir($tempDir, 0o755, true);
@@ -461,6 +482,15 @@ class UpdateService
                 ],
                 'sink' => $fileName,
                 'http_errors' => false,
+                'allow_redirects' => [
+                    'max' => 5,
+                    'strict' => false,
+                    'referer' => false,
+                    'track_redirects' => true,
+                    'on_redirect' => function ($request, $response, $uri): void {
+                        $this->assertDownloadUrlAllowed((string) $uri);
+                    },
+                ],
             ];
 
             if (!$isAbsoluteUrl) {
@@ -489,7 +519,7 @@ class UpdateService
                 return null;
             }
 
-            if (!$this->isValidZipArchive($fileName)) {
+            if (!$this->isSafeUpdateZipArchive($fileName, 'cms')) {
                 $contentType = $response->getHeaderLine('Content-Type');
                 logs()->error("Downloaded catalog file is not a valid ZIP: {$fileName} (Content-Type: {$contentType})");
                 @unlink($fileName);
@@ -840,5 +870,103 @@ class UpdateService
         fclose($handle);
 
         return in_array($signature, ["PK\x03\x04", "PK\x05\x06", "PK\x07\x08"], true);
+    }
+
+    private function isSafeUpdateZipArchive(string $fileName, string $type): bool
+    {
+        if (!$this->isValidZipArchive($fileName)) {
+            return false;
+        }
+
+        $maxTotalSize = match ($type) {
+            'cms' => 350 * 1024 * 1024,
+            'module', 'theme' => 150 * 1024 * 1024,
+            default => 250 * 1024 * 1024,
+        };
+
+        try {
+            app(FileUploader::class)->inspectZipArchive($fileName, [
+                'max_entries' => 12000,
+                'max_total_size' => $maxTotalSize,
+                'min_compression_ratio' => 0.001,
+            ]);
+
+            return true;
+        } catch (Throwable $e) {
+            logs()->error('Downloaded update ZIP failed safety inspection: ' . $e->getMessage(), [
+                'file' => $fileName,
+                'type' => $type,
+            ]);
+
+            return false;
+        }
+    }
+
+    private function sanitizeDownloadPart(?string $value): string
+    {
+        $value = trim((string) $value);
+        $value = preg_replace('/[^a-zA-Z0-9._\-]/', '_', $value) ?? '';
+
+        return $value !== '' ? $value : 'package';
+    }
+
+    private function assertDownloadUrlAllowed(string $url): void
+    {
+        $parts = parse_url($url);
+        if (!is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
+            throw new \RuntimeException('Update download URL is not allowed.');
+        }
+
+        $scheme = strtolower((string) $parts['scheme']);
+        $host = strtolower((string) $parts['host']);
+        $allowHttp = function_exists('is_debug') && is_debug() || (bool) config('app.development_mode', false);
+
+        if ($scheme !== 'https' && !( $scheme === 'http' && $allowHttp )) {
+            throw new \RuntimeException('Update download URL is not allowed.');
+        }
+
+        $trustedHosts = $this->getTrustedDownloadHosts();
+        if (!isset($trustedHosts[$host])) {
+            throw new \RuntimeException('Update download URL is not allowed.');
+        }
+    }
+
+    /**
+     * @return array<string,bool>
+     */
+    private function getTrustedDownloadHosts(): array
+    {
+        $hosts = [];
+        $sources = [
+            config('app.flute_market_url', 'https://flute-cms.com'),
+            ...( is_array(config('app.flute_market_mirrors', [])) ? config('app.flute_market_mirrors', []) : [] ),
+            ...(
+                is_array(config('app.flute_market_download_hosts', []))
+                    ? config('app.flute_market_download_hosts', [])
+                    : []
+            ),
+        ];
+
+        foreach ($sources as $source) {
+            if (!is_string($source) || $source === '') {
+                continue;
+            }
+
+            $host = $source;
+            if (str_contains($source, '://')) {
+                $parsed = parse_url($source);
+                $host = is_array($parsed) && !empty($parsed['host']) ? (string) $parsed['host'] : '';
+            }
+
+            if ($host !== '') {
+                $hosts[strtolower($host)] = true;
+            }
+        }
+
+        foreach (self::TRUSTED_FLUTE_DOWNLOAD_HOSTS as $host) {
+            $hosts[strtolower($host)] = true;
+        }
+
+        return $hosts;
     }
 }

@@ -11,6 +11,9 @@ use Flute\Core\ModulesManager\ModuleManager;
 use Flute\Core\Support\FileUploader;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\UriInterface;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use Symfony\Component\Finder\Exception\DirectoryNotFoundException;
@@ -145,6 +148,19 @@ class ModuleInstallerService
 
             $response = $this->client->get($requestUrl, [
                 'sink' => $this->moduleArchivePath,
+                'allow_redirects' => [
+                    'max' => 5,
+                    'strict' => false,
+                    'referer' => false,
+                    'track_redirects' => true,
+                    'on_redirect' => function (
+                        RequestInterface $request,
+                        ResponseInterface $response,
+                        UriInterface $uri,
+                    ): void {
+                        $this->assertDownloadUrlAllowed((string) $uri);
+                    },
+                ],
             ]);
 
             if ($response->getStatusCode() === 401) {
@@ -167,6 +183,9 @@ class ModuleInstallerService
         } catch (GuzzleException $e) {
             $this->cleanupFailedDownloadArtifact();
             throw new Exception(__('admin-marketplace.messages.download_failed') . ': ' . $e->getMessage());
+        } catch (Throwable $e) {
+            $this->cleanupFailedDownloadArtifact();
+            throw $e;
         }
     }
 
@@ -840,6 +859,12 @@ class ModuleInstallerService
             @unlink($path);
             throw new Exception(__('admin-marketplace.messages.invalid_zip'));
         }
+
+        app(FileUploader::class)->inspectZipArchive($path, [
+            'max_entries' => 5000,
+            'max_total_size' => 100 * 1024 * 1024,
+            'min_compression_ratio' => 0.001,
+        ]);
     }
 
     /**

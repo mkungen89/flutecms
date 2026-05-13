@@ -1,4 +1,4 @@
-html[data-theme="light"] {
+﻿html[data-theme="light"] {
     .sidebar-nav__logo-img--dark {
         display: none;
     }
@@ -61,7 +61,6 @@ html[data-nav-blur="false"][data-nav-style="sidebar"] {
     }
 }
 
-// Hide sidebar socials when disabled
 html[data-nav-socials="false"][data-nav-style="sidebar"] {
     .sidebar-nav__socials {
         display: none !important;

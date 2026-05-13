@@ -35,8 +35,13 @@ class FooterService
             return $this->cachedItems;
         }
 
-        cache()->tagKey(self::CACHE_TAG, self::CACHE_KEY);
-        $this->cachedItems = cache()->callback(self::CACHE_KEY, fn() => $this->getDefaultItems(), self::CACHE_TIME);
+        try {
+            cache()->tagKey(self::CACHE_TAG, self::CACHE_KEY);
+            $this->cachedItems = cache()->callback(self::CACHE_KEY, fn() => $this->getDefaultItems(), self::CACHE_TIME);
+        } catch (\Throwable $e) {
+            logs('database')->warning('Footer items lookup failed: ' . $e->getMessage());
+            $this->cachedItems = [];
+        }
 
         return $this->cachedItems;
     }

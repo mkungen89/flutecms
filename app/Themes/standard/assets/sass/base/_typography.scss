@@ -1,4 +1,4 @@
-:root {
+﻿:root {
     --font: 'Manrope', 'Manrope Fallback', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     --font-header: 'Manrope', 'Manrope Fallback', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     --font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
@@ -116,8 +116,6 @@ table {
     margin: 0;
 }
 
-
-/* text styles */
 h1 {
     font-size: var(--h1);
     font-weight: 700;
@@ -160,7 +158,6 @@ p {
     letter-spacing: normal;
     text-align: left;
 }
-
 
 ::selection {
     background-color: var(--transp-4);

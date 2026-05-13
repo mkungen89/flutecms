@@ -50,23 +50,7 @@ class Icon extends HtmlString implements Stringable
             return $this;
         }
 
-        // 2. Persistent cache (survives between requests)
-        try {
-            if (function_exists('cache')) {
-                $cached = cache()->get($cacheKey);
-                if ($cached !== null) {
-                    self::$renderCache[$cacheKey] = $cached;
-                    $this->html = $cached;
-
-                    return $this;
-                }
-            }
-
-            // @mago-expect no-empty-catch-clause -- cache unavailable during early boot
-        } catch (\Throwable) {
-        }
-
-        // 3. Build from scratch
+        // 2. Build from scratch
         $dom = new DOMDocument();
         $dom->loadXML($this->html);
 
@@ -79,16 +63,6 @@ class Icon extends HtmlString implements Stringable
 
         $this->html = $dom->saveHTML();
         self::$renderCache[$cacheKey] = $this->html;
-
-        // Persist for 24h
-        try {
-            if (function_exists('cache')) {
-                cache()->set($cacheKey, $this->html, 86400);
-            }
-
-            // @mago-expect no-empty-catch-clause -- cache unavailable during early boot
-        } catch (\Throwable) {
-        }
 
         return $this;
     }

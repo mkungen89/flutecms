@@ -56,6 +56,8 @@ class TemplateAssets
 
     protected int $remoteAssetTimeout = 5;
 
+    protected int $remoteAssetMaxBytes = 5242880;
+
     /**
      * Safety threshold to skip autoprefixing very large stylesheets (bytes).
      */
@@ -94,6 +96,11 @@ class TemplateAssets
         $this->appUrl = config('app.url');
         $timeout = (int) ( config('assets.remote_asset_timeout') ?? 5 );
         $this->remoteAssetTimeout = $timeout > 0 ? $timeout : 5;
+        $maxBytes = (int) ( config('assets.remote_asset_max_bytes') ?? 0 );
+        if ($maxBytes > 0) {
+            $this->remoteAssetMaxBytes = $maxBytes;
+        }
+
         $limit = (int) ( config('assets.autoprefix_max_bytes') ?? 0 );
 
         if ($limit > 0) {
@@ -123,7 +130,7 @@ class TemplateAssets
         $this->context = $context;
 
         $this->template->addDirective('at', static function ($expression) {
-            if (strpos($expression, ',') !== false) {
+            if (str_contains($expression, ',')) {
                 return "<?php echo app('Flute\\Core\\Template\\TemplateAssets')->assetFunction({$expression}); ?>";
             }
 
@@ -298,6 +305,18 @@ class TemplateAssets
         return "assets/{$type}/cache_stale/{$this->context}/";
     }
 
+    private function assetCacheIdentity(string $path): string
+    {
+        $normalized = str_replace('\\', '/', $path);
+        $basePath = rtrim(str_replace('\\', '/', BASE_PATH), '/') . '/';
+
+        if (str_starts_with($normalized, $basePath)) {
+            return substr($normalized, strlen($basePath));
+        }
+
+        return $normalized;
+    }
+
     /**
      * Gather SCSS contents with fallback support.
      */
@@ -353,13 +372,15 @@ class TemplateAssets
      */
     protected function generateTag(string $url, string $type): string
     {
+        $escapedUrl = htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
         switch ($type) {
             case 'css':
-                return "<link href=\"{$url}\" rel=\"stylesheet\">";
+                return "<link href=\"{$escapedUrl}\" rel=\"stylesheet\">";
             case 'js':
-                return "<script src=\"{$url}\" defer></script>";
+                return "<script src=\"{$escapedUrl}\" defer></script>";
             case 'img':
-                return "<img src=\"{$url}\" alt=\"\" loading=\"lazy\" decoding=\"async\">";
+                return "<img src=\"{$escapedUrl}\" alt=\"\" loading=\"lazy\" decoding=\"async\">";
             default:
                 return '';
         }
@@ -405,13 +426,8 @@ class TemplateAssets
         $fullLocalPath = BASE_PATH . 'public/' . $localPath;
 
         if (!file_exists($fullLocalPath)) {
-            $context = stream_context_create([
-                'http' => ['timeout' => $this->remoteAssetTimeout],
-                'https' => ['timeout' => $this->remoteAssetTimeout],
-            ]);
-
-            $content = @file_get_contents($normalizedUrl, false, $context);
-            if ($content === false) {
+            $content = $this->fetchRemoteAsset($normalizedUrl);
+            if ($content === null) {
                 logs('templates')->warning('Failed to fetch remote asset: ' . $normalizedUrl);
 
                 return '';
@@ -427,7 +443,7 @@ class TemplateAssets
     /**
      * Prepare allowed remote host list from configuration.
      */
-    // Whitelist intentionally removed by request; keeping only basic checks above.
+    // Optional allowlist is configured by assets.remote_asset_hosts.
 
     /**
      * Saves asset content to a specified path, with optional minification.
@@ -509,7 +525,7 @@ class TemplateAssets
                                 ));
                             }
                         } catch (Throwable $e) {
-                            logs()->error('Autoprefixer failed: ' . $e->getMessage());
+                            logs()->warning('Autoprefixer skipped: ' . $e->getMessage());
                             $content = $originalContent;
                         }
                     }
@@ -727,17 +743,17 @@ class TemplateAssets
      */
     private function resolveFilePath(string $expression): string
     {
-        if (strpos($expression, BASE_PATH) !== false) {
+        if (str_contains($expression, BASE_PATH)) {
             return $expression;
         }
 
         // Support expressions that already start with 'app/...'
-        if (strpos($expression, 'app/') === 0) {
+        if (str_starts_with($expression, 'app/')) {
             return path($expression);
         }
 
         // Try to find with fallback for theme assets
-        if (strpos($expression, 'Themes/') === 0) {
+        if (str_starts_with($expression, 'Themes/')) {
             $pathParts = explode('/', $expression);
             if (count($pathParts) >= 4) {
                 $theme = $pathParts[1];
@@ -850,10 +866,17 @@ class TemplateAssets
             }
         }
 
-        $sortedScssFiles = $this->additionalScssFiles[$this->context];
+        $additionalFiles = $this->additionalScssFiles[$this->context] ?? [];
+        $sortedScssFiles = $additionalFiles;
+        $sortedScssFiles = array_map(fn($path): string => $this->assetCacheIdentity($path), $sortedScssFiles);
         sort($sortedScssFiles);
+        $partials = array_map(fn($path): string => $this->assetCacheIdentity($path), $this->additionalPartials);
         $cacheKey = sha1(
-            $scssPath . implode(',', $sortedScssFiles) . implode(',', $this->additionalPartials) . $this->context,
+            'scss-v3|'
+            . $this->assetCacheIdentity($scssPath)
+            . implode(',', $sortedScssFiles)
+            . implode(',', $partials)
+            . $this->context,
         );
 
         $cssCacheDir = $this->getCacheDir('css');
@@ -868,52 +891,64 @@ class TemplateAssets
 
         $cssMtime = file_exists($cssFullPath) ? filemtime($cssFullPath) : 0;
         $cssStaleMtime = file_exists($cssStaleFullPath) ? filemtime($cssStaleFullPath) : 0;
-        $scssMtime = filemtime($scssPath) ?: 0;
+        $manifestFullPath = $this->getScssManifestFile($cacheKey);
+        $sourceRoots = $this->getScssSourceRoots($scssPath, $additionalFiles);
+        $sourceFiles = $this->readScssManifest($manifestFullPath, $sourceRoots);
 
-        $latestSourceMtime = max($scssMtime, $this->getScssDependenciesMaxMtime($scssPath));
-
-        foreach ($this->additionalScssFiles[$this->context] as $additionalFile) {
-            if (file_exists($additionalFile)) {
-                $latestSourceMtime = max($latestSourceMtime, filemtime($additionalFile) ?: 0);
-                $latestSourceMtime = max($latestSourceMtime, $this->getScssDependenciesMaxMtime($additionalFile));
-            }
+        if ($sourceFiles === null) {
+            $sourceFiles = $this->resolveScssSourceFiles($scssPath, $additionalFiles);
+            $this->writeScssManifest($manifestFullPath, $sourceRoots, $sourceFiles);
         }
 
-        foreach ($this->additionalPartials as $partial) {
-            $partialPath = path($partial);
-            if (file_exists($partialPath)) {
-                $latestSourceMtime = max($latestSourceMtime, filemtime($partialPath) ?: 0);
-            }
-        }
-
-        $needsRecompile = $cssMtime === 0 || $latestSourceMtime >= $cssMtime;
+        $latestSourceMtime = $this->getFilesMaxMtime($sourceFiles);
+        $needsRecompile = $cssMtime === 0 || $latestSourceMtime > $cssMtime;
 
         if ($needsRecompile) {
             $lockFile = $cssFullPath . '.lock';
 
-            if ($this->debugMode) {
-                $this->withFileLock($lockFile, function () use ($scssPath, $cssFullPath): void {
+            if ($cssMtime === 0 && $cssStaleMtime === 0) {
+                $this->withFileLock($lockFile, function () use (
+                    $scssPath,
+                    $additionalFiles,
+                    $cssFullPath,
+                    $manifestFullPath,
+                    $sourceRoots,
+                ): void {
                     $this->compileScssToCacheFile($scssPath, $cssFullPath);
+                    $this->refreshScssManifest($manifestFullPath, $sourceRoots, $scssPath, $additionalFiles);
                 });
 
                 if (!file_exists($cssFullPath)) {
                     $this->compileScssToCacheFile($scssPath, $cssFullPath);
+                    $this->refreshScssManifest($manifestFullPath, $sourceRoots, $scssPath, $additionalFiles);
                 }
             } else {
-                // SWR: serve existing (or stale) CSS and revalidate after response.
+                // SWR: serve existing (or stale) CSS and revalidate after response,
+                // including development mode for large contextual admin styles.
                 SWRQueue::queue('assets.scss.' . $cacheKey, function () use (
                     $lockFile,
                     $scssPath,
+                    $additionalFiles,
                     $cssFullPath,
                     $latestSourceMtime,
+                    $manifestFullPath,
+                    $sourceRoots,
                 ): void {
-                    $this->withFileLock($lockFile, function () use ($scssPath, $cssFullPath, $latestSourceMtime): void {
+                    $this->withFileLock($lockFile, function () use (
+                        $scssPath,
+                        $additionalFiles,
+                        $cssFullPath,
+                        $latestSourceMtime,
+                        $manifestFullPath,
+                        $sourceRoots,
+                    ): void {
                         $cssMtime = file_exists($cssFullPath) ? filemtime($cssFullPath) : 0;
-                        if ($cssMtime !== 0 && $latestSourceMtime < $cssMtime) {
+                        if ($cssMtime !== 0 && $latestSourceMtime <= $cssMtime) {
                             return;
                         }
 
                         $this->compileScssToCacheFile($scssPath, $cssFullPath);
+                        $this->refreshScssManifest($manifestFullPath, $sourceRoots, $scssPath, $additionalFiles);
                     });
                 });
             }
@@ -935,6 +970,7 @@ class TemplateAssets
         // If nothing exists to serve, compile synchronously as a last resort.
         if ($servedVersion === 0) {
             $this->compileScssToCacheFile($scssPath, $cssFullPath);
+            $this->refreshScssManifest($manifestFullPath, $sourceRoots, $scssPath, $additionalFiles);
             $cssMtime = file_exists($cssFullPath) ? filemtime($cssFullPath) : 0;
             $servedPath = $cssPath;
             $servedVersion = $cssMtime ?: time();
@@ -942,24 +978,7 @@ class TemplateAssets
 
         $url = url($servedPath) . "?v={$servedVersion}";
 
-        $additionalFiles = $this->additionalScssFiles[$this->context] ?? [];
-        $modulesTag = '';
-        if (!empty($additionalFiles)) {
-            $modulesPath = str_replace('.css', '.modules.css', $servedPath);
-            $modulesFullPath = BASE_PATH . 'public/' . $modulesPath;
-            if (file_exists($modulesFullPath)) {
-                $modulesVersion = filemtime($modulesFullPath) ?: $servedVersion;
-                $modulesUrl = url($modulesPath) . "?v={$modulesVersion}";
-                $modulesTag =
-                    "\n<link rel=\"preload\" href=\"{$modulesUrl}\" as=\"style\">"
-                    . "\n<link href=\"{$modulesUrl}\" rel=\"stylesheet\">";
-            }
-        }
-
-        $result =
-            "<link rel=\"preload\" href=\"{$url}\" as=\"style\">"
-            . "\n<link href=\"{$url}\" rel=\"stylesheet\">"
-            . $modulesTag;
+        $result = "<link rel=\"preload\" href=\"{$url}\" as=\"style\">" . "\n<link href=\"{$url}\" rel=\"stylesheet\">";
 
         if (!$needsRecompile) {
             $this->compilationCache[$cacheKey] = $result;
@@ -975,6 +994,11 @@ class TemplateAssets
             $partialPath = path($partial);
             if (file_exists($partialPath)) {
                 $importPaths[] = dirname($partialPath);
+            }
+        }
+        foreach ($this->additionalScssFiles[$this->context] ?? [] as $additionalFile) {
+            if (file_exists($additionalFile)) {
+                $importPaths[] = dirname($additionalFile);
             }
         }
         $importPaths[] = rtrim(str_replace('\\', '/', BASE_PATH . 'app'), '/');
@@ -993,68 +1017,130 @@ class TemplateAssets
         $masterScss = $partialsContent . "\n";
         $masterScss .= '@import "' . str_replace('\\', '/', $scssPath) . '";' . "\n";
 
-        $additionalFiles = $this->additionalScssFiles[$this->context] ?? [];
-
-        if (!empty($additionalFiles)) {
-            $modulesCacheKey = str_replace('.css', '.modules.css', $cssFullPath);
-
-            $modulesScss = $partialsContent . "\n";
-            $modulesScss .= '@import "' . str_replace('\\', '/', $scssPath) . '";' . "\n";
-            foreach ($additionalFiles as $additionalFile) {
-                if (file_exists($additionalFile)) {
-                    $modulesScss .= '@import "' . str_replace('\\', '/', $additionalFile) . '";' . "\n";
-                }
-            }
-
-            $modulesCss = $this->compileScss($modulesScss);
-            if ($modulesCss !== '') {
-                $this->saveAsset($modulesCacheKey, $modulesCss);
+        foreach ($this->additionalScssFiles[$this->context] ?? [] as $additionalFile) {
+            if (file_exists($additionalFile)) {
+                $masterScss .= '@import "' . str_replace('\\', '/', $additionalFile) . '";' . "\n";
             }
         }
 
-        $coreCss = $this->compileScss($masterScss);
+        $css = $this->compileScss($masterScss);
 
-        if ($coreCss !== '') {
-            $this->saveAsset($cssFullPath, $coreCss);
+        if ($css !== '') {
+            $this->saveAsset($cssFullPath, $css);
         }
     }
 
-    /**
-     * Return max mtime among an SCSS file and its imports.
-     * Caches the dependency list keyed by the root SCSS file path.
-     */
-    private function getScssDependenciesMaxMtime(string $scssPath): int
+    private function getScssManifestFile(string $cacheKey): string
     {
-        $depsCacheKey = 'scss_deps_' . md5($scssPath);
+        return storage_path("app/cache/scss-manifest/{$cacheKey}.php");
+    }
 
-        if (isset($this->compilationCache[$depsCacheKey])) {
-            $paths = $this->compilationCache[$depsCacheKey];
-        } else {
-            $visited = [];
-            $paths = $this->collectScssDependencies($scssPath, $visited);
-            $this->compilationCache[$depsCacheKey] = $paths;
-        }
+    private function getScssSourceRoots(string $scssPath, array $additionalFiles): array
+    {
+        $roots = [$this->assetCacheIdentity($scssPath)];
 
-        $mtimeCacheKey = 'scss_mtime_' . md5($scssPath);
-
-        if (!is_debug()) {
-            $cached = cache()->get($mtimeCacheKey);
-            if ($cached !== null) {
-                return (int) $cached;
+        foreach ($this->additionalPartials as $partial) {
+            $partialPath = path($partial);
+            if (file_exists($partialPath)) {
+                $roots[] = $this->assetCacheIdentity($partialPath);
             }
         }
 
+        foreach ($additionalFiles as $additionalFile) {
+            if (file_exists($additionalFile)) {
+                $roots[] = $this->assetCacheIdentity($additionalFile);
+            }
+        }
+
+        $roots = array_values(array_unique($roots));
+        sort($roots);
+
+        return $roots;
+    }
+
+    private function readScssManifest(string $manifestPath, array $sourceRoots): ?array
+    {
+        if (!is_file($manifestPath)) {
+            return null;
+        }
+
+        $manifest = @include $manifestPath;
+        if (!is_array($manifest)) {
+            return null;
+        }
+
+        $roots = $manifest['roots'] ?? null;
+        $files = $manifest['files'] ?? null;
+        if ($roots !== $sourceRoots || !is_array($files)) {
+            return null;
+        }
+
+        return array_values(array_filter($files, static fn($file) => is_string($file) && $file !== ''));
+    }
+
+    private function writeScssManifest(string $manifestPath, array $sourceRoots, array $sourceFiles): void
+    {
+        $this->ensureDirectoryExists(dirname($manifestPath));
+
+        @file_put_contents(
+            $manifestPath,
+            '<?php return '
+            . var_export([
+                'roots' => $sourceRoots,
+                'files' => array_values(array_unique($sourceFiles)),
+            ], true)
+            . ';',
+            LOCK_EX,
+        );
+    }
+
+    private function resolveScssSourceFiles(string $scssPath, array $additionalFiles): array
+    {
+        $visited = [];
+        $files = $this->collectScssDependencies($scssPath, $visited);
+
+        foreach ($this->additionalPartials as $partial) {
+            $partialPath = path($partial);
+            if (file_exists($partialPath)) {
+                $files = array_merge($files, $this->collectScssDependencies($partialPath, $visited));
+            }
+        }
+
+        foreach ($additionalFiles as $additionalFile) {
+            if (file_exists($additionalFile)) {
+                $files = array_merge($files, $this->collectScssDependencies($additionalFile, $visited));
+            }
+        }
+
+        return array_values(array_unique(array_filter($files, static fn($file) => is_string($file) && $file !== '')));
+    }
+
+    private function refreshScssManifest(
+        string $manifestPath,
+        array $sourceRoots,
+        string $scssPath,
+        array $additionalFiles,
+    ): void {
+        $this->writeScssManifest(
+            $manifestPath,
+            $sourceRoots,
+            $this->resolveScssSourceFiles($scssPath, $additionalFiles),
+        );
+    }
+
+    private function getFilesMaxMtime(array $files): int
+    {
         $maxMtime = 0;
 
-        foreach ($paths as $path) {
-            $mtime = @filemtime($path) ?: 0;
+        foreach ($files as $file) {
+            if (!is_string($file)) {
+                continue;
+            }
+
+            $mtime = @filemtime($file) ?: 0;
             if ($mtime > $maxMtime) {
                 $maxMtime = $mtime;
             }
-        }
-
-        if (!is_debug()) {
-            cache()->set($mtimeCacheKey, $maxMtime, 60);
         }
 
         return $maxMtime;
@@ -1386,22 +1472,105 @@ class TemplateAssets
             return false;
         }
 
+        if (!$this->isRemoteAssetHostAllowed($host)) {
+            return false;
+        }
+
         // Reject raw IP addresses
         if (filter_var($host, FILTER_VALIDATE_IP)) {
             return false;
         }
 
         // Resolve hostname and reject private/reserved IPs
-        $ip = gethostbyname($host);
-        if ($ip === $host) {
+        $ips = gethostbynamel($host);
+        if ($ips === false || $ips === []) {
             return false; // DNS resolution failed
         }
 
-        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
-            return false;
+        foreach ($ips as $ip) {
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                return false;
+            }
         }
 
         return true;
+    }
+
+    private function fetchRemoteAsset(string $url): ?string
+    {
+        $options = [
+            'timeout' => $this->remoteAssetTimeout,
+            'follow_location' => 0,
+            'max_redirects' => 0,
+            'ignore_errors' => false,
+        ];
+
+        $context = stream_context_create([
+            'http' => $options,
+            'https' => $options,
+        ]);
+
+        $handle = @fopen($url, 'rb', false, $context);
+        if ($handle === false) {
+            return null;
+        }
+
+        try {
+            $meta = stream_get_meta_data($handle);
+            $headers = $meta['wrapper_data'] ?? [];
+            if (!$this->remoteAssetResponseIsOk(is_array($headers) ? $headers : [])) {
+                return null;
+            }
+
+            $content = stream_get_contents($handle, $this->remoteAssetMaxBytes + 1);
+            if ($content === false || strlen($content) > $this->remoteAssetMaxBytes) {
+                return null;
+            }
+
+            return $content;
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    private function remoteAssetResponseIsOk(array $headers): bool
+    {
+        foreach ($headers as $header) {
+            if (!is_string($header) || !preg_match('#^HTTP/\S+\s+(\d{3})#i', $header, $matches)) {
+                continue;
+            }
+
+            $status = (int) $matches[1];
+
+            return $status >= 200 && $status < 300;
+        }
+
+        return true;
+    }
+
+    private function isRemoteAssetHostAllowed(string $host): bool
+    {
+        $allowedHosts = config('assets.remote_asset_hosts', []);
+        if (!is_array($allowedHosts) || $allowedHosts === []) {
+            return true;
+        }
+
+        foreach ($allowedHosts as $allowedHost) {
+            if (!is_string($allowedHost) || $allowedHost === '') {
+                continue;
+            }
+
+            if (str_contains($allowedHost, '://')) {
+                $parsed = parse_url($allowedHost);
+                $allowedHost = (string) ( $parsed['host'] ?? '' );
+            }
+
+            if (strtolower($allowedHost) === strtolower($host)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

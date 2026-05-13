@@ -11,6 +11,10 @@ use ZipArchive;
 
 class BackupService
 {
+    private const RESTORE_ZIP_MAX_ENTRIES = 50000;
+
+    private const RESTORE_ZIP_MAX_TOTAL_SIZE = 1024 * 1024 * 1024;
+
     protected string $backupPath;
 
     protected ModuleManager $moduleManager;
@@ -102,6 +106,8 @@ class BackupService
      */
     public function backupModule(string $moduleKey): string
     {
+        $this->assertSafeBackupName($moduleKey);
+
         $module = $this->moduleManager->getModule($moduleKey);
         if (!$module) {
             throw new Exception(__('admin-backup.errors.module_not_found'));
@@ -125,6 +131,8 @@ class BackupService
      */
     public function backupTheme(string $themeKey): string
     {
+        $this->assertSafeBackupName($themeKey);
+
         $themePath = path('app/Themes/' . $themeKey);
         if (!is_dir($themePath)) {
             throw new Exception(__('admin-backup.errors.theme_path_not_found'));
@@ -494,7 +502,7 @@ class BackupService
             mkdir($tempDir, 0o755, true);
             $zip->close();
 
-            app(FileUploader::class)->safeExtractZip($zipPath, $tempDir);
+            app(FileUploader::class)->safeExtractZip($zipPath, $tempDir, $this->restoreZipOptions());
 
             // Find the extracted folder
             $extractedDirs = glob($tempDir . '/*', GLOB_ONLYDIR);
@@ -516,8 +524,17 @@ class BackupService
             // For full/cms/modules/themes - extract with zip-slip protection
             $zip->close();
 
-            app(FileUploader::class)->safeExtractZip($zipPath, $destination);
+            app(FileUploader::class)->safeExtractZip($zipPath, $destination, $this->restoreZipOptions());
         }
+    }
+
+    protected function restoreZipOptions(): array
+    {
+        return [
+            'max_entries' => self::RESTORE_ZIP_MAX_ENTRIES,
+            'max_total_size' => self::RESTORE_ZIP_MAX_TOTAL_SIZE,
+            'min_compression_ratio' => 0.001,
+        ];
     }
 
     protected function generateBackupFilename(string $type, string $name): string
@@ -592,9 +609,7 @@ class BackupService
     {
         $name = $this->extractNameFromDirBackup($dirName);
 
-        if (!preg_match('/^[a-zA-Z0-9_\-]+$/', $name)) {
-            throw new Exception('Invalid backup name: ' . $name);
-        }
+        $this->assertSafeBackupName($name);
 
         return match ($type) {
             'modules' => path('app/Modules/' . $name),
@@ -604,6 +619,13 @@ class BackupService
             'composer' => path(''),
             default => null,
         };
+    }
+
+    protected function assertSafeBackupName(string $name): void
+    {
+        if (!preg_match('/^[a-zA-Z0-9_\-]+$/', $name)) {
+            throw new Exception(__('admin-backup.errors.backup_not_found'));
+        }
     }
 
     protected function createZipFromDirectory(string $sourcePath, string $zipPath): void

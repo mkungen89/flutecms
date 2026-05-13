@@ -29,25 +29,35 @@
                         const textColor = styles.getPropertyValue('--text')?.trim() || (isDark ? '#fff' : '#1a1a1a');
                         const textMuted = styles.getPropertyValue('--text-400')?.trim() || (isDark ? '#888' : '#666');
                         const gridColor = styles.getPropertyValue('--transp-05')?.trim() || (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)');
+                        const chartConfig = options.chart || {};
+                        const animationConfig = chartConfig.animations || {};
                         
-                        const chartType = options.chart?.type || 'line';
+                        const chartType = chartConfig.type || 'line';
                         const isAreaOrLine = ['area', 'line'].includes(chartType);
                         const isDonutOrPie = ['donut', 'pie', 'radialBar'].includes(chartType);
                         
                         const themedOptions = {
                             ...options,
                             chart: {
-                                ...options.chart,
+                                ...chartConfig,
                                 foreColor: textMuted,
                                 fontFamily: '-apple-system, BlinkMacSystemFont, Inter, Manrope, system-ui, sans-serif',
                                 background: 'transparent',
-                                toolbar: { show: false, ...(options.chart?.toolbar || {}) },
+                                toolbar: { show: false, ...(chartConfig.toolbar || {}) },
                                 animations: {
-                                    enabled: true,
-                                    easing: 'easeinout',
-                                    speed: 500,
-                                    animateGradually: { enabled: true, delay: 60 },
-                                    dynamicAnimation: { enabled: true, speed: 250 },
+                                    enabled: animationConfig.enabled === true,
+                                    easing: animationConfig.easing || 'easeinout',
+                                    speed: animationConfig.speed ?? 350,
+                                    animateGradually: {
+                                        enabled: false,
+                                        delay: 0,
+                                        ...(animationConfig.animateGradually || {}),
+                                    },
+                                    dynamicAnimation: {
+                                        enabled: false,
+                                        speed: 150,
+                                        ...(animationConfig.dynamicAnimation || {}),
+                                    },
                                 },
                                 dropShadow: { enabled: false },
                             },

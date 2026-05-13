@@ -1,4 +1,4 @@
-// ─── Rank Pack Select Option ───
+﻿
 .rank-pack-option {
     display: flex;
     align-items: center;
@@ -21,7 +21,6 @@
     }
 }
 
-// ─── Ranks Card ───
 .ranks-card {
     &__header {
         display: flex;
@@ -84,7 +83,6 @@
     }
 }
 
-// ─── Premier Rank Badges (preview) ───
 .ranks-card__preview-inline .premier-rank {
     font-weight: 700;
     padding: 2px 4px 2px 10px;
@@ -186,7 +184,6 @@
     }
 }
 
-// ─── Rank Upload ───
 .rank-upload {
     position: relative;
     border-top: 1px solid var(--transp-1);
@@ -307,7 +304,6 @@
     }
 }
 
-// ─── RCON Console — iOS grouped style ───
 .rcon {
     display: flex;
     flex-direction: column;

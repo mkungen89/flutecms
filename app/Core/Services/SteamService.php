@@ -36,10 +36,14 @@ class SteamService
 
     protected static array $requestCache = [];
 
+    protected static array $invalidSteamIds = [];
+
     // Memory leak prevention limits
     protected static int $maxDeferredRequests = 100;
 
     protected static int $maxRequestCache = 500;
+
+    protected static int $maxInvalidSteamIds = 500;
 
     public function __construct(string $apiKey, CacheManager $cache)
     {
@@ -71,6 +75,7 @@ class SteamService
         self::$deferreds = [];
         self::$collectedSteamIds = [];
         self::$requestCache = [];
+        self::$invalidSteamIds = [];
         self::$isBatchScheduled = false;
     }
 
@@ -80,6 +85,31 @@ class SteamService
     public function steamid(string $steamId): SteamID
     {
         return new SteamID($steamId);
+    }
+
+    public function resolveSteamId(string $value): ?string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        try {
+            return ( new SteamID($value) )->ConvertToUInt64();
+        } catch (Throwable $e) {
+            logs()->debug('Direct Steam ID parse failed: ' . $e->getMessage());
+        }
+
+        try {
+            return SteamID::SetFromURL($value, fn(string $url, int $type): ?string => $this->resolveVanityUrl(
+                $url,
+                $type,
+            ))->ConvertToUInt64();
+        } catch (Throwable $e) {
+            logs()->debug('Steam ID resolve failed: ' . $e->getMessage());
+
+            return null;
+        }
     }
 
     /**
@@ -198,6 +228,10 @@ class SteamService
         $steamIdMap = [];
 
         foreach ($steamIds as $steamId) {
+            if (isset(self::$invalidSteamIds[$steamId])) {
+                continue;
+            }
+
             try {
                 $normalizedId = $this->normalizeSteamId($steamId);
                 $steamIdMap[$normalizedId] = $steamId;
@@ -215,7 +249,7 @@ class SteamService
                     $uncachedIds[$normalizedId] = $steamId;
                 }
             } catch (Throwable $e) {
-                // invalid steam, ignore
+                $this->rememberInvalidSteamId($steamId);
             }
         }
 
@@ -272,6 +306,15 @@ class SteamService
         }
 
         return $result;
+    }
+
+    private function rememberInvalidSteamId(string $steamId): void
+    {
+        if (count(self::$invalidSteamIds) >= self::$maxInvalidSteamIds) {
+            self::$invalidSteamIds = array_slice(self::$invalidSteamIds, -400, null, true);
+        }
+
+        self::$invalidSteamIds[$steamId] = true;
     }
 
     /**
@@ -331,5 +374,46 @@ class SteamService
         $steamID = new SteamID($steamId);
 
         return $steamID->ConvertToUInt64();
+    }
+
+    protected function resolveVanityUrl(string $url, int $type): ?string
+    {
+        if (empty($this->apiKey)) {
+            return null;
+        }
+
+        $cacheKey = 'steam_vanity_' . sha1($type . ':' . strtolower($url));
+        $cached = cache()->get($cacheKey);
+        if ($cached === '__missing__') {
+            return null;
+        }
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        try {
+            $response = $this->httpClient->get('ISteamUser/ResolveVanityURL/v1/', [
+                'query' => [
+                    'key' => $this->apiKey,
+                    'vanityurl' => $url,
+                    'url_type' => $type,
+                ],
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+            $steamId = $data['response']['steamid'] ?? null;
+
+            if (is_string($steamId) && $steamId !== '') {
+                cache()->set($cacheKey, $steamId, $this->cacheDuration);
+
+                return $steamId;
+            }
+
+            cache()->set($cacheKey, '__missing__', 300);
+        } catch (Throwable $e) {
+            logs()->debug('Steam vanity resolve failed: ' . $e->getMessage());
+        }
+
+        return null;
     }
 }

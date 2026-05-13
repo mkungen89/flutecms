@@ -21,8 +21,10 @@ abstract class BaseController
      * @param string|array<string, mixed> $message Error message
      * @param int $status HTTP Status code
      */
-    public function error(string|array $message, int $status = 403): Response
+    public function error(string|array $message, int|string $status = 403): Response
     {
+        $status = (int) $status;
+
         /** @var FluteRequest $request */
         $request = app(FluteRequest::class);
 

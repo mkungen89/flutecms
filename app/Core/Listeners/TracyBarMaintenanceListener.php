@@ -9,12 +9,18 @@ class TracyBarMaintenanceListener
     public function handle(): void
     {
         $shouldHide = false;
+        $debugIps = config('app.debug_ips') ?: [];
+        $globalDebug = (bool) config('app.debug');
+        $isDevelopment = is_development();
 
         if (is_installed() && config('app.maintenance_mode')) {
-            $debugIps = config('app.debug_ips') ?: [];
-            $shouldHide = !user()->isLoggedIn() || !in_array(request()->ip(), $debugIps);
-        } elseif (!empty(config('app.debug_ips'))) {
-            $shouldHide = user()->isLoggedIn() && !in_array(request()->ip(), config('app.debug_ips'));
+            if (!empty($debugIps)) {
+                $shouldHide = !in_array(request()->ip(), $debugIps);
+            } else {
+                $shouldHide = !$globalDebug && !$isDevelopment;
+            }
+        } elseif (!empty($debugIps) && !$globalDebug && !$isDevelopment) {
+            $shouldHide = !in_array(request()->ip(), $debugIps);
         }
 
         if ($shouldHide) {

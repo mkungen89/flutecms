@@ -1,6 +1,6 @@
 <?php
 
-declare(strict_types=1);
+declare(strict_types = 1);
 
 if (!function_exists('flute_register_fatal_handler')) {
     function flute_early_detect_debug(string $basePath): bool
@@ -21,26 +21,21 @@ if (!function_exists('flute_register_fatal_handler')) {
             return true;
         }
 
-        if (empty($config['debug'])) {
-            return false;
-        }
-
+        $debug = !empty($config['debug']);
         $debugIps = $config['debug_ips'] ?? [];
 
-        if (empty($debugIps) || !is_array($debugIps)) {
-            return true;
+        if (!empty($debugIps) && is_array($debugIps)) {
+            $clientIp =
+                $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+
+            if (str_contains($clientIp, ',')) {
+                $clientIp = trim(explode(',', $clientIp)[0]);
+            }
+
+            return in_array($clientIp, $debugIps, true);
         }
 
-        $clientIp = $_SERVER['HTTP_CF_CONNECTING_IP']
-            ?? $_SERVER['HTTP_X_FORWARDED_FOR']
-            ?? $_SERVER['REMOTE_ADDR']
-            ?? '';
-
-        if (str_contains($clientIp, ',')) {
-            $clientIp = trim(explode(',', $clientIp)[0]);
-        }
-
-        return in_array($clientIp, $debugIps, true);
+        return $debug;
     }
 
     function flute_crash_report(array $payload): void
@@ -58,17 +53,18 @@ if (!function_exists('flute_register_fatal_handler')) {
             return;
         }
 
-        $rateLimitDir = rtrim($basePath, "\\/") . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'crash-reports';
+        $rateLimitDir =
+            rtrim($basePath, "\\/") . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'crash-reports';
 
         if (!is_dir($rateLimitDir)) {
-            @mkdir($rateLimitDir, 0755, true);
+            @mkdir($rateLimitDir, 0o755, true);
         }
 
         if (is_dir($rateLimitDir)) {
-            $fp = $payload['fingerprint'] ?? md5(($payload['file'] ?? '') . ':' . ($payload['line'] ?? 0));
+            $fp = $payload['fingerprint'] ?? md5(( $payload['file'] ?? '' ) . ':' . ( $payload['line'] ?? 0 ));
             $fpFile = $rateLimitDir . DIRECTORY_SEPARATOR . 'crash_' . $fp;
 
-            if (is_file($fpFile) && (time() - (int) filemtime($fpFile)) < 300) {
+            if (is_file($fpFile) && ( time() - (int) filemtime($fpFile) ) < 300) {
                 return;
             }
 
@@ -78,14 +74,14 @@ if (!function_exists('flute_register_fatal_handler')) {
             if (is_file($hourlyFile)) {
                 $data = @json_decode((string) @file_get_contents($hourlyFile), true);
 
-                if (is_array($data) && ($data['hour'] ?? '') === date('YmdH') && ($data['count'] ?? 0) >= 10) {
+                if (is_array($data) && ( $data['hour'] ?? '' ) === date('YmdH') && ( $data['count'] ?? 0 ) >= 10) {
                     return;
                 }
             }
 
             @touch($fpFile);
-            $hData = (is_array($data) && ($data['hour'] ?? '') === date('YmdH'))
-                ? ['hour' => date('YmdH'), 'count' => ($data['count'] ?? 0) + 1]
+            $hData = is_array($data) && ( $data['hour'] ?? '' ) === date('YmdH')
+                ? ['hour' => date('YmdH'), 'count' => ( $data['count'] ?? 0 ) + 1]
                 : ['hour' => date('YmdH'), 'count' => 1];
             @file_put_contents($hourlyFile, json_encode($hData));
         }
@@ -114,8 +110,14 @@ if (!function_exists('flute_register_fatal_handler')) {
         @curl_close($ch);
     }
 
-    function flute_build_crash_payload(string $class, string $message, string $file, int $line, int $code = 0, array $trace = []): array
-    {
+    function flute_build_crash_payload(
+        string $class,
+        string $message,
+        string $file,
+        int $line,
+        int $code = 0,
+        array $trace = [],
+    ): array {
         $basePath = defined('BASE_PATH') ? rtrim(BASE_PATH, "\\/") . '/' : '';
         $sensitivePattern = '/(password|secret|token|key|auth|cookie|session|credential|dsn|api_key|authorization)[\s]*[=:]\s*[^\s,;]+/i';
         $message = (string) preg_replace($sensitivePattern, '$1=[REDACTED]', $message);
@@ -182,15 +184,19 @@ if (!function_exists('flute_register_fatal_handler')) {
                 return;
             }
 
-            if (!($error['type'] & (E_ERROR | E_PARSE | E_CORE_ERROR | E_COMPILE_ERROR))) {
+            if (!( $error['type'] & ( E_ERROR | E_PARSE | E_CORE_ERROR | E_COMPILE_ERROR ) )) {
                 return;
             }
 
             if (preg_match('/^Allowed memory size of (\d+) bytes exhausted/', $error['message'], $m)) {
-                @ini_set('memory_limit', (string) ((int) $m[1] + 5 * 1024 * 1024));
+                @ini_set('memory_limit', (string) ( (int) $m[1] + ( 5 * 1024 * 1024 ) ));
             }
 
             if (class_exists(\Flute\Core\Services\CrashReportService::class, false)) {
+                if (class_exists(\Flute\Core\Support\ExceptionReporter::class)) {
+                    \Flute\Core\Support\ExceptionReporter::reportFatal($error);
+                }
+
                 \Flute\Core\Services\CrashReportService::captureFatal($error);
             } else {
                 flute_crash_report(flute_build_crash_payload(
@@ -212,19 +218,16 @@ if (!function_exists('flute_register_fatal_handler')) {
                 return;
             }
 
-            flute_render_emergency_page(
-                500,
-                $error['message'],
-                $error['file'],
-                $error['line'],
-            );
+            flute_render_emergency_page(500, $error['message'], $error['file'], $error['line']);
         });
 
         $previousExceptionHandler = set_exception_handler(null);
         restore_exception_handler();
 
         set_exception_handler(static function (\Throwable $e) use ($previousExceptionHandler): void {
-            if (class_exists(\Flute\Core\Services\CrashReportService::class, false)) {
+            if (class_exists(\Flute\Core\Support\ExceptionReporter::class)) {
+                \Flute\Core\Support\ExceptionReporter::report($e, 'uncaught');
+            } elseif (class_exists(\Flute\Core\Services\CrashReportService::class, false)) {
                 \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'uncaught']);
             } else {
                 flute_crash_report(flute_build_crash_payload(
@@ -244,7 +247,10 @@ if (!function_exists('flute_register_fatal_handler')) {
             }
 
             if (php_sapi_name() === 'cli') {
-                fwrite(STDERR, "\n[UNCAUGHT] " . get_class($e) . ": {$e->getMessage()} in {$e->getFile()}:{$e->getLine()}\n");
+                fwrite(
+                    STDERR,
+                    "\n[UNCAUGHT] " . get_class($e) . ": {$e->getMessage()} in {$e->getFile()}:{$e->getLine()}\n",
+                );
                 exit(1);
             }
 
@@ -289,42 +295,42 @@ if (!function_exists('flute_register_fatal_handler')) {
         }
 
         echo <<<HTML
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Error {$code}</title>
-    <style>
-        :root{color-scheme:dark}
-        *{box-sizing:border-box;margin:0;padding:0}
-        body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0c0c0f;color:#f4f4f5;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-        .card{max-width:540px;width:100%;background:#141419;border:1px solid #2a2a35;border-radius:12px;padding:32px}
-        .code{font-size:64px;font-weight:700;color:#6366f1;line-height:1;margin-bottom:8px}
-        h1{font-size:18px;font-weight:600;margin-bottom:12px}
-        .msg{font-size:13px;color:#a1a1aa;line-height:1.6;word-break:break-word}
-        .detail{font-size:11px;color:#71717a;margin-top:12px;font-family:monospace;word-break:break-all}
-        .actions{margin-top:20px;display:flex;gap:8px}
-        a{display:inline-flex;align-items:center;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:500;text-decoration:none;transition:background .15s}
-        .primary{background:#6366f1;color:#fff}
-        .primary:hover{background:#4f46e5}
-        .secondary{background:#1f1f28;color:#a1a1aa;border:1px solid #2a2a35}
-        .secondary:hover{background:#2a2a35}
-    </style>
-</head>
-<body>
-    <div class="card">
-        <div class="code">{$code}</div>
-        <h1>Something went wrong</h1>
-        <p class="msg">{$safeMessage}</p>
-        {$detail}
-        <div class="actions">
-            <a href="/" class="primary">Go Home</a>
-            <a href="javascript:location.reload()" class="secondary">Retry</a>
-        </div>
-    </div>
-</body>
-</html>
-HTML;
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Error {$code}</title>
+                <style>
+                    :root{color-scheme:dark}
+                    *{box-sizing:border-box;margin:0;padding:0}
+                    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0c0c0f;color:#f4f4f5;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+                    .card{max-width:540px;width:100%;background:#141419;border:1px solid #2a2a35;border-radius:12px;padding:32px}
+                    .code{font-size:64px;font-weight:700;color:#6366f1;line-height:1;margin-bottom:8px}
+                    h1{font-size:18px;font-weight:600;margin-bottom:12px}
+                    .msg{font-size:13px;color:#a1a1aa;line-height:1.6;word-break:break-word}
+                    .detail{font-size:11px;color:#71717a;margin-top:12px;font-family:monospace;word-break:break-all}
+                    .actions{margin-top:20px;display:flex;gap:8px}
+                    a{display:inline-flex;align-items:center;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:500;text-decoration:none;transition:background .15s}
+                    .primary{background:#6366f1;color:#fff}
+                    .primary:hover{background:#4f46e5}
+                    .secondary{background:#1f1f28;color:#a1a1aa;border:1px solid #2a2a35}
+                    .secondary:hover{background:#2a2a35}
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <div class="code">{$code}</div>
+                    <h1>Something went wrong</h1>
+                    <p class="msg">{$safeMessage}</p>
+                    {$detail}
+                    <div class="actions">
+                        <a href="/" class="primary">Go Home</a>
+                        <a href="javascript:location.reload()" class="secondary">Retry</a>
+                    </div>
+                </div>
+            </body>
+            </html>
+            HTML;
     }
 }

@@ -27,6 +27,7 @@ use PDO;
 use RuntimeException;
 use stdClass;
 use Symfony\Component\Filesystem\Exception\IOException;
+use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Throwable;
 
@@ -375,40 +376,37 @@ class MainSettingsPackageScreen extends Screen
             // Remove both cache and stale directories entirely.
             // Unlike SWR rotation, admin expects to see fresh data immediately,
             // so we wipe stale too — no stale fallback after explicit clear.
-            if (is_dir($cacheStaleDir)) {
-                $filesystem->remove($cacheStaleDir);
-            }
-            if (is_dir($cacheDir)) {
-                $filesystem->remove($cacheDir);
-            }
+            $this->forceRemoveDir($filesystem, $cacheStaleDir);
+            $this->forceRemoveDir($filesystem, $cacheDir);
             @mkdir($cacheDir, 0o755, true);
             @mkdir($cacheStaleDir, 0o755, true);
 
             // Same for CSS/JS asset caches
-            if (is_dir($cssCacheStaleDir)) {
-                $filesystem->remove($cssCacheStaleDir);
-            }
-            if (is_dir($cssCacheDir)) {
-                $filesystem->remove($cssCacheDir);
-            }
+            $this->forceRemoveDir($filesystem, $cssCacheStaleDir);
+            $this->forceRemoveDir($filesystem, $cssCacheDir);
             @mkdir($cssCacheDir, 0o755, true);
 
-            if (is_dir($jsCacheStaleDir)) {
-                $filesystem->remove($jsCacheStaleDir);
-            }
-            if (is_dir($jsCacheDir)) {
-                $filesystem->remove($jsCacheDir);
-            }
+            $this->forceRemoveDir($filesystem, $jsCacheStaleDir);
+            $this->forceRemoveDir($filesystem, $jsCacheDir);
             @mkdir($jsCacheDir, 0o755, true);
 
             foreach ($cachePaths as $path) {
                 $files = glob($path);
                 if ($files) {
-                    $filesystem->remove($files);
+                    foreach ($files as $file) {
+                        $this->forceRemoveDir($filesystem, $file);
+                    }
                 }
             }
 
             $this->clearOpcache();
+
+            // Sweep ".!XXXXX" orphans left by previous interrupted clears so they
+            // don't accumulate forever. Only touch dirs older than 1h to avoid
+            // racing a parallel admin clear in another tab.
+            \Flute\Core\Cache\OrphanSweeper::sweep(storage_path('app'), 3600);
+            \Flute\Core\Cache\OrphanSweeper::sweep(public_path('assets/css'), 3600);
+            \Flute\Core\Cache\OrphanSweeper::sweep(public_path('assets/js'), 3600);
 
             $this->flashMessage(__('admin-main-settings.messages.cache_cleared_successfully'));
         } catch (IOException $e) {
@@ -1024,6 +1022,8 @@ class MainSettingsPackageScreen extends Screen
             return;
         }
 
+        $connectionName = $databases[$databaseName]['connection'] ?? $databaseName;
+
         config()->set("database.databases.{$databaseName}.prefix", $data['prefix'] ?? '');
 
         if ($driver === 'mysql') {
@@ -1108,7 +1108,7 @@ class MainSettingsPackageScreen extends Screen
             return;
         }
 
-        config()->set("database.connections.{$databaseName}", $connectionConfig);
+        config()->set("database.connections.{$connectionName}", $connectionConfig);
 
         try {
             config()->save();
@@ -1142,8 +1142,10 @@ class MainSettingsPackageScreen extends Screen
             return;
         }
 
+        $connectionName = $databases[$databaseId]['connection'] ?? $databaseId;
+
         unset($databases[$databaseId]);
-        unset($connections[$databaseId]);
+        unset($connections[$connectionName]);
 
         config()->set('database.databases', $databases);
         config()->set('database.connections', $connections);
@@ -1240,6 +1242,47 @@ class MainSettingsPackageScreen extends Screen
 
         if (function_exists('opcache_reset')) {
             @opcache_reset();
+        }
+    }
+
+    protected function forceRemoveDir(Filesystem $filesystem, string $path): void
+    {
+        if (!file_exists($path)) {
+            return;
+        }
+
+        try {
+            $filesystem->remove($path);
+        } catch (IOException) {
+            $this->chmodRecursive($path);
+            $filesystem->remove($path);
+        }
+    }
+
+    protected function chmodRecursive(string $path): void
+    {
+        if (is_file($path) || is_link($path)) {
+            @chmod($path, 0o666);
+
+            return;
+        }
+
+        if (!is_dir($path)) {
+            return;
+        }
+
+        @chmod($path, 0o777);
+
+        $items = @scandir($path);
+        if ($items === false) {
+            return;
+        }
+
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') {
+                continue;
+            }
+            $this->chmodRecursive($path . '/' . $item);
         }
     }
 
@@ -1575,6 +1618,15 @@ class MainSettingsPackageScreen extends Screen
             )
                 ->label(__('admin-main-settings.labels.maintenance_end_time'))
                 ->small(__('admin-main-settings.small.maintenance_end_time')),
+            LayoutFactory::field(
+                Select::make('maintenance_allowed_roles')
+                    ->fromDatabase('roles', 'name', 'id', ['name', 'id', 'priority'])
+                    ->multiple(true)
+                    ->value(config('app.maintenance_allowed_roles', []))
+                    ->placeholder(__('admin-main-settings.placeholders.maintenance_allowed_roles')),
+            )
+                ->label(__('admin-main-settings.labels.maintenance_allowed_roles'))
+                ->popover(__('admin-main-settings.popovers.maintenance_allowed_roles')),
         ])->title(__('admin-main-settings.blocks.tech_work_settings'))->addClass('mb-2');
     }
 
@@ -2556,7 +2608,7 @@ class MainSettingsPackageScreen extends Screen
                         ->type('file')
                         ->filePond()
                         ->accept('image/png, image/jpeg, image/gif, image/webp')
-                        ->defaultFile(asset(config('app.bg_image'))),
+                        ->defaultFile(config('app.bg_image') ? asset(config('app.bg_image')) : null),
                 )
                     ->label(__('admin-main-settings.labels.bg_image'))
                     ->small(__('admin-main-settings.examples.bg_image')),
@@ -2565,7 +2617,7 @@ class MainSettingsPackageScreen extends Screen
                         ->type('file')
                         ->filePond()
                         ->accept('image/png, image/jpeg, image/gif, image/webp')
-                        ->defaultFile(asset(config('app.bg_image_light', ''))),
+                        ->defaultFile(config('app.bg_image_light') ? asset(config('app.bg_image_light')) : null),
                 )
                     ->label(__('admin-main-settings.labels.bg_image_light'))
                     ->small(__('admin-main-settings.examples.bg_image_light')),
@@ -2576,14 +2628,18 @@ class MainSettingsPackageScreen extends Screen
                         ->type('file')
                         ->filePond()
                         ->accept('image/x-icon, image/vnd.microsoft.icon, .ico')
-                        ->defaultFile(asset('favicon.ico')),
+                        ->defaultFile(file_exists(public_path('favicon.ico')) ? asset('favicon.ico') : null),
                 )->label(__('admin-main-settings.labels.favicon')),
                 LayoutFactory::field(
                     Input::make('social_image')
                         ->type('file')
                         ->filePond()
                         ->accept('image/png')
-                        ->defaultFile(asset('assets/img/social-image.png')),
+                        ->defaultFile(
+                            file_exists(public_path('assets/img/social-image.png'))
+                                ? asset('assets/img/social-image.png')
+                                : null,
+                        ),
                 )->label(__('admin-main-settings.labels.social_image')),
             ]),
             LayoutFactory::rows([

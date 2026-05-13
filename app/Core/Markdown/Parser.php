@@ -145,7 +145,7 @@ class Parser
             'td' => ['colspan', 'rowspan', 'class'],
             'th' => ['colspan', 'rowspan', 'class'],
             'div' => ['class'],
-            'span' => ['class'],
+            'span' => ['class', 'style'],
             'pre' => ['class'],
             'code' => ['class'],
             'blockquote' => ['class'],
@@ -160,7 +160,7 @@ class Parser
             'h5' => ['class'],
             'h6' => ['class'],
             'table' => ['class'],
-            'mark' => ['class'],
+            'mark' => ['class', 'style'],
         ];
 
         $allowedSchemes = ['http', 'https', 'mailto'];
@@ -196,6 +196,43 @@ class Parser
         }
 
         return $output;
+    }
+
+    /**
+     * Allow only color/background-color declarations with safe values
+     * (hex #abc/#aabbcc, rgb()/rgba(), or basic named colors).
+     */
+    private function sanitizeStyleAttribute(string $style): string
+    {
+        $declarations = explode(';', $style);
+        $kept = [];
+        foreach ($declarations as $decl) {
+            $decl = trim($decl);
+            if ($decl === '') {
+                continue;
+            }
+            $parts = explode(':', $decl, 2);
+            if (count($parts) !== 2) {
+                continue;
+            }
+            $prop = strtolower(trim($parts[0]));
+            $value = trim($parts[1]);
+            if (!in_array($prop, ['color', 'background-color'], true)) {
+                continue;
+            }
+            if (preg_match('/[\\\\\\(\\)<>"\\\'`]/', $value) && !preg_match('/^(rgb|rgba|hsl|hsla)\\(/i', $value)) {
+                continue;
+            }
+            $isHex = (bool) preg_match('/^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i', $value);
+            $isFunc = (bool) preg_match('/^(?:rgb|rgba|hsl|hsla)\\(\\s*[0-9.,%\\s\\/]+\\)$/i', $value);
+            $isName = (bool) preg_match('/^[a-z]{3,20}$/i', $value);
+            if (!$isHex && !$isFunc && !$isName) {
+                continue;
+            }
+            $kept[] = $prop . ': ' . $value;
+        }
+
+        return implode('; ', $kept);
     }
 
     /**
@@ -236,18 +273,23 @@ class Parser
                         continue;
                     }
 
-                    // Remove style attribute to prevent CSS-based attacks
-                    if ($attrName === 'style') {
-                        $attrsToRemove[] = $attr->name;
-
-                        continue;
-                    }
-
                     // Check against allowed attributes for this tag
                     $tagAllowed = $allowedAttributes[$tagName] ?? [];
                     if (!in_array($attrName, $tagAllowed, true)) {
                         $attrsToRemove[] = $attr->name;
 
+                        continue;
+                    }
+
+                    // Style: allow only color/background-color with safe values
+                    if ($attrName === 'style') {
+                        $cleanStyle = $this->sanitizeStyleAttribute($attr->value);
+                        if ($cleanStyle === '') {
+                            $attrsToRemove[] = $attr->name;
+
+                            continue;
+                        }
+                        $attr->value = $cleanStyle;
                         continue;
                     }
 

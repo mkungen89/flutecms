@@ -1,4 +1,4 @@
-// Light theme adjustments
+﻿
 html[data-theme="light"] {
     .navbar-dropdown__box::before {
         background: rgba(255, 255, 255, 0.85);
@@ -9,7 +9,6 @@ html[data-theme="light"] {
     }
 }
 
-// Theme variants for logo
 html[data-theme="light"] {
     .navbar__logo-light {
         display: block;

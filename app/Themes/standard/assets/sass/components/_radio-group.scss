@@ -1,4 +1,4 @@
-.radio-group {
+﻿.radio-group {
     border: none;
     padding: 0;
     margin: 0;
@@ -10,15 +10,13 @@
         margin-bottom: var(--space-sm);
     }
 
-    // --- stacked (default): separate cards with gap ---
-    &__items {
+&__items {
         display: flex;
         flex-direction: column;
         gap: var(--space-xs);
     }
 
-    // --- inline button group variant ---
-    &--inline {
+&--inline {
         .radio-group__items {
             flex-direction: row;
             display: inline-flex;
@@ -99,7 +97,6 @@
     }
 }
 
-// --- Radio item (card variant — default) ---
 .radio-item {
     display: flex;
     align-items: flex-start;
@@ -122,8 +119,7 @@
         pointer-events: none;
     }
 
-    // --- hidden native input ---
-    &__input {
+&__input {
         position: absolute;
         opacity: 0;
         width: 0;
@@ -131,8 +127,7 @@
         pointer-events: none;
     }
 
-    // --- radio circle (right side) ---
-    &__control {
+&__control {
         flex-shrink: 0;
         margin-left: auto;
         width: 20px;
@@ -167,14 +162,12 @@
         outline-offset: 2px;
     }
 
-    // --- selected state on the whole card ---
-    &:has(&__input:checked) {
+&:has(&__input:checked) {
         border-color: var(--transp-3);
         background: var(--transp-02);
     }
 
-    // --- content area ---
-    &__content {
+&__content {
         display: flex;
         align-items: flex-start;
         gap: var(--space-md);
@@ -182,8 +175,7 @@
         flex: 1;
     }
 
-    // --- icon box ---
-    &__icon {
+&__icon {
         @extend .flex-center;
         flex-shrink: 0;
         width: 40px;

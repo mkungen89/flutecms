@@ -61,7 +61,7 @@ class PasswordResetTokenComponent extends Component
     public function render()
     {
         return $this->view('flute::components.reset.reset-token', [
-            'token' => request()->input('token'),
+            'token' => $this->token,
         ]);
     }
 

@@ -46,6 +46,10 @@ class ModulesController extends BaseController
      */
     public function installModule(FluteRequest $request)
     {
+        if (!user()->can('admin.boss')) {
+            return $this->error(__('def.permission_denied'), 403);
+        }
+
         try {
             $uploadedFile = $request->files->get('module_archive');
             if (!$uploadedFile || !$uploadedFile->isValid()) {
@@ -167,8 +171,9 @@ class ModulesController extends BaseController
         } catch (Throwable $e) {
             logs('modules')->error('Module installation error: ' . $e->getMessage());
 
-            return $this->error(__('admin-modules.dropzone.errors.installation_failed', ['error' =>
-                $e->getMessage()]), 500);
+            return $this->error(__('admin-modules.dropzone.errors.installation_failed', ['error' => __(
+                'def.internal_server_error',
+            )]), 500);
         }
     }
 
@@ -193,7 +198,10 @@ class ModulesController extends BaseController
                 $totalSize += $stats['size'];
 
                 // Check for suspiciously large compression ratio
-                if ($stats['size'] > 0 && ( $stats['comp_size'] / $stats['size'] ) < 0.001) {
+                if (
+                    $stats['size'] > 0
+                    && ( (int) $stats['comp_size'] <= 0 || ( $stats['comp_size'] / $stats['size'] ) < 0.001 )
+                ) {
                     logs('security')->warning('Potential zip bomb detected with high compression ratio');
                     $zip->close();
 
@@ -266,7 +274,7 @@ class ModulesController extends BaseController
             if (
                 $realTarget === false
                 || $realExtract === false
-                || str_starts_with($realTarget, $realExtract) === false
+                || !$this->pathStaysInsideRoot($realTarget, $realExtract)
             ) {
                 logs('security')->warning('Zip slip attempt detected: ' . $entryName);
                 $success = false;
@@ -454,9 +462,15 @@ class ModulesController extends BaseController
      */
     protected function createTempModuleInfo($moduleInfo)
     {
-        $module = new ModuleInformation($moduleInfo['key'], $moduleInfo['name'] ?? $moduleInfo['key']);
+        $moduleKey = $moduleInfo['key'] ?? $moduleInfo['name'];
+        $module = new ModuleInformation($moduleKey, $moduleInfo['name'] ?? $moduleKey);
 
         return $module;
+    }
+
+    protected function pathStaysInsideRoot(string $path, string $root): bool
+    {
+        return $path === $root || str_starts_with($path, $root . DIRECTORY_SEPARATOR);
     }
 
     /**

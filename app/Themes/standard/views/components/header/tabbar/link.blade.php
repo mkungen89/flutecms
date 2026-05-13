@@ -1,15 +1,16 @@
 @props(['item'])
 
-<a href="{{ url($item['url']) }}" @if ($item['new_tab']) target="_blank" rel="noopener" @endif
-    class="tabbar__item {{ active($item['url']) }}" itemprop="url">
-    <x-icon path="{{ $item['icon'] }}" />
+@php
+    $_active = trim(active($item['url'])) !== '';
+@endphp
 
-    <span itemprop="name">
-        {{ transValue($item['title']) }}
-        @if (!empty($item['description']))
-            <small class="tabbar__item-description" style="display: block; font-size: 0.75em; opacity: 0.7; margin-top: 2px;">
-                {{ transValue($item['description']) }}
-            </small>
-        @endif
+<a href="{{ url($item['url']) }}"
+    @if ($item['new_tab']) target="_blank" rel="noopener" @endif
+    class="tabbar__item {{ $_active ? 'active' : '' }}"
+    @if ($_active) aria-current="page" @endif
+    itemprop="url">
+    <span class="tabbar__item-icon">
+        <x-icon path="{{ $item['icon'] }}" />
     </span>
+    <span class="tabbar__item-label" itemprop="name">{{ transValue($item['title']) }}</span>
 </a>

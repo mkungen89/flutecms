@@ -50,6 +50,7 @@
 
     {{-- Misc --}}
     <span data-icon="highlight"><x-icon path="ph.bold.highlighter-bold" /></span>
+    <span data-icon="text-color"><x-icon path="ph.bold.palette-bold" /></span>
     <span data-icon="superscript"><x-icon path="ph.bold.text-superscript-bold" /></span>
     <span data-icon="subscript"><x-icon path="ph.bold.text-subscript-bold" /></span>
     <span data-icon="translation"><x-icon path="ph.bold.translate-bold" /></span>
@@ -95,6 +96,10 @@
         'redo',
         'superscript',
         'subscript',
+        'text_color',
+        'bg_color',
+        'custom_color',
+        'reset_color',
         'align',
         'align_left',
         'align_center',

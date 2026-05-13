@@ -237,7 +237,7 @@ function reinitializeComponents(container) {
         if (!document.body.contains(container)) return;
 
         initRichTextEditors(container);
-        initFilePonds(container);
+        initUploads(container);
         initSelects(container);
         initPopovers(container);
         initColorPickersInContainer(container);
@@ -285,11 +285,9 @@ function initRichTextEditors(container) {
     } catch (_) { }
 }
 
-function initFilePonds(container) {
-    if (typeof initializeFilePondElement !== 'function') return;
-    try {
-        container.querySelectorAll('input.filepond').forEach(initializeFilePondElement);
-    } catch (_) { }
+function initUploads(container) {
+    if (!window.Upload) return;
+    try { window.Upload.init(container); } catch (_) { }
 }
 
 function initSelects(container) {

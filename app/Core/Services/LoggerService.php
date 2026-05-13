@@ -4,10 +4,13 @@ namespace Flute\Core\Services;
 
 use Exception;
 use Monolog\Formatter\LineFormatter;
+use Monolog\Handler\NullHandler;
 use Monolog\Handler\RotatingFileHandler;
+use Monolog\Handler\WhatFailureGroupHandler;
 use Monolog\Logger;
 use Monolog\Processor\IntrospectionProcessor;
 use Monolog\Processor\WebProcessor;
+use Throwable;
 
 class LoggerService
 {
@@ -41,15 +44,19 @@ class LoggerService
         $logger->pushProcessor(new WebProcessor());
         $logger->pushProcessor(self::crashReportProcessor());
 
-        $handler = new RotatingFileHandler($logFile, self::MAX_FILES, $logLevel, true, 0o666, true);
+        try {
+            $handler = new RotatingFileHandler($logFile, self::MAX_FILES, $logLevel, true, 0o666, true);
 
-        $lineFormatter = new LineFormatter(
-            "[%datetime%] %channel%.%level_name%: %message% %context% %extra%\n",
-            'Y-m-d H:i:s',
-        );
-        $handler->setFormatter($lineFormatter);
+            $lineFormatter = new LineFormatter(
+                "[%datetime%] %channel%.%level_name%: %message% %context% %extra%\n",
+                'Y-m-d H:i:s',
+            );
+            $handler->setFormatter($lineFormatter);
 
-        $logger->pushHandler($handler);
+            $logger->pushHandler(new WhatFailureGroupHandler([$handler]));
+        } catch (Throwable) {
+            $logger->pushHandler(new NullHandler($logLevel));
+        }
 
         $this->loggers[$name] = $logger;
     }
@@ -151,10 +158,18 @@ class LoggerService
             }
 
             if (isset($context['exception']) && $context['exception'] instanceof \Throwable) {
+                if (( $context['crash_report'] ?? null ) === false) {
+                    return $record;
+                }
+
                 CrashReportService::capture($context['exception'], [
                     'source' => 'log.' . $channel,
                 ]);
 
+                return $record;
+            }
+
+            if (( $context['crash_report'] ?? false ) !== true) {
                 return $record;
             }
 

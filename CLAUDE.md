@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Claude Code in this repo: **commands, layout, style, tests, commits, PRs, security → `AGENTS.md`.**
+Assistant guidance in this repo: **commands, layout, style, tests, commits, PRs, security -> `AGENTS.md`.**
 
 ## Stack
 
@@ -26,6 +26,10 @@ Check APIs when calling other modules; respect `module.json` dependencies.
 ## Branches
 
 `main` — stable; `early` — default development.
+
+## Git Safety
+
+Assistants must not run `git commit` or `git push` without explicit user approval in the current conversation. Push approval must be requested every time.
 
 ## CLI beyond AGENTS.md
 

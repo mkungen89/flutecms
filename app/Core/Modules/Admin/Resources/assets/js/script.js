@@ -231,6 +231,18 @@ function closeAllDropdowns() {
 
         const handleTransitionEnd = () => {
             menu.style.display = 'none';
+            if (menu.dataset.portal === '1' && menu.__originalParent) {
+                try {
+                    if (menu.__nextSibling && menu.__nextSibling.parentNode === menu.__originalParent) {
+                        menu.__originalParent.insertBefore(menu, menu.__nextSibling);
+                    } else {
+                        menu.__originalParent.appendChild(menu);
+                    }
+                } catch (e) {}
+                delete menu.dataset.portal;
+                delete menu.__originalParent;
+                delete menu.__nextSibling;
+            }
             menu.removeEventListener('transitionend', handleTransitionEnd);
         };
         menu.addEventListener('transitionend', handleTransitionEnd);
@@ -605,9 +617,45 @@ window.addEventListener('beforeunload', () => {
 });
 
 // Дополнительные обработчики для HTMX событий
-htmx.on('htmx:beforeSwap', () => {
+htmx.on('htmx:beforeSwap', (evt) => {
     hideAllTooltips();
     closeAllDropdowns();
+
+    var swapTarget = evt.detail && evt.detail.target;
+    document.querySelectorAll('[data-dropdown][data-portal="1"]').forEach(function (menu) {
+        var origParent = menu.__originalParent;
+        var inTarget = swapTarget && origParent && swapTarget.contains(origParent);
+        var inDoc = origParent && document.body.contains(origParent);
+
+        if (!inTarget && inDoc) return;
+
+        menu.classList.remove('active');
+        menu.style.display = 'none';
+
+        var cleanup = cleanupMap.get(menu);
+        if (cleanup && typeof cleanup === 'function') {
+            cleanup();
+            cleanupMap.delete(menu);
+        }
+
+        if (inTarget && origParent) {
+            try {
+                if (menu.__nextSibling && menu.__nextSibling.parentNode === origParent) {
+                    origParent.insertBefore(menu, menu.__nextSibling);
+                } else {
+                    origParent.appendChild(menu);
+                }
+            } catch (_) {
+                menu.remove();
+            }
+        } else {
+            menu.remove();
+        }
+
+        delete menu.dataset.portal;
+        delete menu.__originalParent;
+        delete menu.__nextSibling;
+    });
 });
 
 document.addEventListener('visibilitychange', () => {

@@ -1,5 +1,6 @@
 @php
     $mods = is_array($modules) ? $modules : [];
+    $filterInclude = ".admin-marketplace [name='searchQuery'], .admin-marketplace [name='categoryFilter'], .admin-marketplace [name='priceFilter'], .admin-marketplace [name='statusFilter'], .admin-marketplace [name='sortBy']";
     $total = count($mods);
     $installedCount = 0;
     $updatesCount = 0;
@@ -25,7 +26,7 @@
     }
 @endphp
 
-<div class="admin-marketplace shadcn" yoyo>
+<div class="admin-marketplace shadcn">
     @if (!ioncube_loaded())
         <x-admin::alert type="warning" withClose="false" class="mb-3">
             <strong>{{ __('admin-marketplace.ioncube.missing_title') }}</strong>
@@ -47,9 +48,10 @@
             <aside class="mp-sidebar card-gradient">
                 {{-- Search --}}
                 <div class="mp-sidebar-search">
-                    <x-fields.input type="search" name="q" value="{{ $searchQuery }}"
+                    <x-fields.input type="search" name="searchQuery" value="{{ $searchQuery }}"
                         placeholder="{{ __('admin-marketplace.labels.search_modules') }}"
-                        yoyo:on="input delay:400ms" yoyo:post="handleFilters" />
+                        yoyo:on="input changed delay:400ms" yoyo:post="handleFilters"
+                        hx-include="{{ $filterInclude }}" />
                 </div>
 
                 {{-- Categories --}}
@@ -58,7 +60,7 @@
                     @foreach ($categoriesWithCounts as $cat)
                         <label class="mp-cat-item {{ $categoryFilter === $cat['key'] || ($categoryFilter === '' && $cat['key'] === 'all') ? 'active' : '' }}">
                             <input type="radio" name="categoryFilter" value="{{ $cat['key'] }}"
-                                yoyo:on="change" yoyo:post="handleFilters"
+                                yoyo:on="change" yoyo:post="handleFilters" hx-include="{{ $filterInclude }}"
                                 @if ($categoryFilter === $cat['key'] || ($categoryFilter === '' && $cat['key'] === 'all')) checked @endif>
                             <x-icon path="{{ $cat['icon'] }}" />
                             <span class="mp-cat-label">{{ $cat['label'] }}</span>
@@ -73,8 +75,8 @@
                     @php $prices = ['' => 'all_modules', 'free' => 'free_only', 'paid' => 'paid_only']; @endphp
                     @foreach ($prices as $val => $labelKey)
                         <label class="mp-filter-item {{ $priceFilter === $val ? 'active' : '' }}">
-                            <input type="radio" name="price" value="{{ $val }}"
-                                yoyo:on="change" yoyo:post="handleFilters"
+                            <input type="radio" name="priceFilter" value="{{ $val }}"
+                                yoyo:on="change" yoyo:post="handleFilters" hx-include="{{ $filterInclude }}"
                                 @if ($priceFilter === $val) checked @endif>
                             <span>{{ __('admin-marketplace.labels.' . $labelKey) }}</span>
                         </label>
@@ -87,8 +89,8 @@
                     @php $statuses = ['' => 'all_modules', 'installed' => 'installed_only', 'notinstalled' => 'not_installed', 'update' => 'updates_available']; @endphp
                     @foreach ($statuses as $val => $labelKey)
                         <label class="mp-filter-item {{ $statusFilter === $val ? 'active' : '' }}">
-                            <input type="radio" name="status" value="{{ $val }}"
-                                yoyo:on="change" yoyo:post="handleFilters"
+                            <input type="radio" name="statusFilter" value="{{ $val }}"
+                                yoyo:on="change" yoyo:post="handleFilters" hx-include="{{ $filterInclude }}"
                                 @if ($statusFilter === $val) checked @endif>
                             <span>{{ __('admin-marketplace.labels.' . $labelKey) }}</span>
                         </label>
@@ -108,8 +110,8 @@
                         @endif
                     </div>
                     <div class="mp-top-controls">
-                        <select name="sortBy" class="mp-sort-select" yoyo:ignore
-                            yoyo:on="change" yoyo:post="handleFilters">
+                        <select name="sortBy" class="mp-sort-select" yoyo:on="change" yoyo:post="handleFilters"
+                            hx-include="{{ $filterInclude }}">
                             <option value="featured" @if ($sortBy === 'featured') selected @endif>{{ __('admin-marketplace.labels.sort_featured') }}</option>
                             <option value="name" @if ($sortBy === 'name') selected @endif>{{ __('admin-marketplace.labels.sort_name') }}</option>
                             <option value="free_first" @if ($sortBy === 'free_first') selected @endif>{{ __('admin-marketplace.labels.sort_free') }}</option>

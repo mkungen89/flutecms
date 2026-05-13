@@ -1,4 +1,4 @@
-.modal {
+﻿.modal {
     display: none;
     position: fixed;
     top: 0;
@@ -8,8 +8,7 @@
     z-index: 1000;
     inset: 0;
 
-    // Hide drag handle on desktop — it's rendered in HTML for mobile.
-    .drag-handle {
+.drag-handle {
         display: none;
     }
 
@@ -204,9 +203,8 @@
         }
     }
 
-    // On mobile, ALL modals are bottom-sheet drawers (no JS class needed).
-    @media (max-width: 768px) {
-        // Overlay: use opacity transition for smooth open/close.
+@media (max-width: 768px) {
+
         .modal__overlay {
             opacity: 0;
             transition: opacity 0.3s ease;

@@ -1,4 +1,4 @@
-.select {
+﻿.select {
     &-wrapper {
         @extend .flex-column;
         position: relative;
@@ -97,7 +97,6 @@
     }
 }
 
-// Hide native select when FluteSelect will enhance it (prevents FOUC on HTMX swap)
 select[data-select] {
     display: none;
 }
@@ -128,7 +127,6 @@ select[data-select] {
     --fs-radius-popover: 12px;
 }
 
-// Rich option/item styles for custom Blade views
 .ts-opt--rich {
     display: flex;
     align-items: center;

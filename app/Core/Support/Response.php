@@ -43,6 +43,8 @@ class Response
      */
     public function error(int $status = 404, ?string $message = null): JsonResponse|SymfonyResponse
     {
+        ExceptionReporter::reportHttpFailure($status, $message);
+
         /** @var FluteRequest $request */
         $request = app(FluteRequest::class);
 

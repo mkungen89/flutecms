@@ -6,6 +6,7 @@ use Closure;
 use Laravel\SerializableClosure\SerializableClosure;
 use ReflectionFunction;
 use Symfony\Component\EventDispatcher\EventDispatcher;
+use Throwable;
 
 class FluteEventDispatcher extends EventDispatcher
 {
@@ -16,6 +17,8 @@ class FluteEventDispatcher extends EventDispatcher
     private bool $isDirty = false;
 
     private static array $closureIdCache = [];
+
+    private array $registeredInDispatcher = [];
 
     public function __construct()
     {
@@ -40,19 +43,20 @@ class FluteEventDispatcher extends EventDispatcher
             $this->deferredListeners[$eventName] = [];
         }
 
-        if (isset($this->deferredListeners[$eventName][$listenerId])) {
-            return;
+        if (!isset($this->deferredListeners[$eventName][$listenerId])) {
+            $this->deferredListeners[$eventName][$listenerId] = [
+                'listener' => $listener,
+                'priority' => $priority,
+                'id' => $listenerId,
+            ];
+            $this->isDirty = true;
         }
 
-        $this->deferredListeners[$eventName][$listenerId] = [
-            'listener' => $listener,
-            'priority' => $priority,
-            'id' => $listenerId,
-        ];
-        $this->isDirty = true;
+        $dispatcherKey = $eventName . '::' . $listenerId;
 
-        if (is_callable($listener)) {
+        if (!isset($this->registeredInDispatcher[$dispatcherKey]) && is_callable($listener)) {
             $this->addListener($eventName, $listener, $priority);
+            $this->registeredInDispatcher[$dispatcherKey] = true;
         }
     }
 
@@ -70,6 +74,9 @@ class FluteEventDispatcher extends EventDispatcher
             $this->isDirty = true;
         }
 
+        $dispatcherKey = $eventName . '::' . $listenerId;
+        unset($this->registeredInDispatcher[$dispatcherKey]);
+
         $this->removeListener($eventName, $listener);
     }
 
@@ -79,13 +86,23 @@ class FluteEventDispatcher extends EventDispatcher
             return;
         }
 
-        cache()->set($this->deferredListenersKey, $this->deferredListeners, 3600);
-        $this->isDirty = false;
+        try {
+            if (function_exists('cache')) {
+                cache()->set($this->deferredListenersKey, $this->deferredListeners, 3600);
+            }
+            $this->isDirty = false;
+        } catch (Throwable) {
+            $this->isDirty = true;
+        }
     }
 
     private function initializeDeferredListeners()
     {
-        $deferredListeners = cache()->get($this->deferredListenersKey, []);
+        try {
+            $deferredListeners = function_exists('cache') ? cache()->get($this->deferredListenersKey, []) : [];
+        } catch (Throwable) {
+            $deferredListeners = [];
+        }
 
         if (!is_array($deferredListeners)) {
             $deferredListeners = [];
@@ -98,8 +115,12 @@ class FluteEventDispatcher extends EventDispatcher
                     $listener = $listener->getClosure();
                 }
 
+                $listenerId = $listenerData['id'] ?? $this->getListenerId($listener);
+                $dispatcherKey = $eventName . '::' . $listenerId;
+
                 if (is_callable($listener)) {
                     $this->addListener($eventName, $listener, $listenerData['priority']);
+                    $this->registeredInDispatcher[$dispatcherKey] = true;
                 }
 
                 if (isset($listenerData['id']) && is_object($listener)) {

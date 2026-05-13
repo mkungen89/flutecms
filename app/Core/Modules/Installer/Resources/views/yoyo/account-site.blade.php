@@ -84,11 +84,14 @@
                         <input type="text" name="siteDescription" class="field__input" value="{{ $siteDescription }}" placeholder="{{ __('install.account_site.site_description_placeholder') }}" />
                     </div>
 
-                    <div class="field">
-                        <label class="field__label">{{ __('install.account_site.timezone') }} <span class="required">*</span></label>
-                        <x-select name="timezone" :options="$timezones" :selected="$timezone" :searchable="true" />
-                        @error('timezone') <span class="field__error">{{ $message }}</span> @enderror
-                    </div>
+                    <x-select
+                        name="timezone"
+                        label="{{ __('install.account_site.timezone') }}"
+                        :options="$timezones"
+                        :selected="$timezone"
+                        :searchable="true"
+                        :required="true"
+                    />
                 </div>
 
                 @if($errorMessage)

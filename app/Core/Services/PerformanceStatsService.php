@@ -45,6 +45,10 @@ class PerformanceStatsService
 
         try {
             $req = request();
+            if (method_exists($req, 'isPrefetch') && $req->isPrefetch()) {
+                return;
+            }
+
             $path = $req->getPathInfo();
             $method = $req->getMethod();
 

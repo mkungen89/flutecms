@@ -1,4 +1,4 @@
-html[data-nav-style="pill"] {
+﻿html[data-nav-style="pill"] {
     .flute_header {
         position: fixed;
         top: 0;
@@ -76,10 +76,6 @@ html[data-nav-style="pill"] {
         padding-top: calc(60px + var(--space-lg));
     }
 }
-
-// ========================================
-// PILL TRANSPARENT - Glass reveal style
-// ========================================
 
 html[data-nav-style="pill-transparent"] {
     .flute_header {
@@ -172,8 +168,7 @@ html[data-nav-style="pill-transparent"] {
             transition: gap 0.5s $nav-ease;
         }
 
-        // Initially slightly transparent
-        &__theme-switcher,
+&__theme-switcher,
         &__notifications,
         &__profile,
         &__lang,
@@ -242,10 +237,6 @@ html[data-nav-style="pill-transparent"][data-nav-scrolled="true"] {
         }
     }
 }
-
-// ========================================
-// PILL FULL - Full-width pill navigation
-// ========================================
 
 html[data-nav-style="pill-full"] {
     .flute_header {

@@ -67,6 +67,14 @@ class EmailService
         try {
             $user = $event->getUser();
 
+            if (!$this->hasValidRecipient($user->email ?? null)) {
+                logs()->warning('Email reset skipped: user has no valid email.', [
+                    'user_id' => $user->id ?? null,
+                ]);
+
+                return;
+            }
+
             $template = template()->render('flute::emails.reset', [
                 'url' => url('reset/' . $event->getToken()->token)->get(),
                 'name' => $user->name,
@@ -90,6 +98,14 @@ class EmailService
         try {
             $user = $event->getUser();
 
+            if (!$this->hasValidRecipient($user->email ?? null)) {
+                logs()->warning('Email registration skipped: user has no valid email.', [
+                    'user_id' => $user->id ?? null,
+                ]);
+
+                return;
+            }
+
             $verificationToken = auth()->createVerificationToken($user)->rawToken;
 
             $template = template()->render('flute::emails.confirmation', [
@@ -101,6 +117,11 @@ class EmailService
         } catch (Throwable $e) {
             logs()->error("Email registration failed: {$e->getMessage()}");
         }
+    }
+
+    private function hasValidRecipient(?string $email): bool
+    {
+        return $email !== null && filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
     }
 
     /**

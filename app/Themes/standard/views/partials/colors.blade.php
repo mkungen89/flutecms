@@ -342,6 +342,7 @@
                 'sidebar-style' => $themeColors['--sidebar-style'] ?? 'default',
                 'sidebar-mode' => $themeColors['--sidebar-mode'] ?? 'full',
                 'sidebar-position' => $themeColors['--sidebar-position'] ?? 'top',
+                'sidebar-mini-labels' => $themeColors['--sidebar-mini-labels'] ?? 'text',
                 'nav-fixed' => ($themeColors['--nav-fixed'] ?? 'true') === 'true' ? 'true' : 'false',
                 'nav-blur' => ($themeColors['--nav-blur'] ?? 'true') === 'true' ? 'true' : 'false',
                 'nav-socials' => ($themeColors['--nav-socials'] ?? 'true') === 'true' ? 'true' : 'false',

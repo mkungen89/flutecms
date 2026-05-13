@@ -28,11 +28,12 @@ class ThemeSelect {
         const placeholder = this.resolvePlaceholder(select);
 
         const options = this.collectOptions(select);
+        const optionCount = select.querySelectorAll('option:not([value=""])').length;
 
         const config = {
             placeholder: placeholder,
             multiple: isMultiple,
-            searchable: searchable || options.length > 6,
+            searchable: searchable || optionCount > 6,
             clearable: allowEmpty,
             name: select.getAttribute('name') || '',
             disabled: select.disabled,
@@ -69,15 +70,33 @@ class ThemeSelect {
             : 'Select...';
     }
 
+    parseOption(opt) {
+        const item = {
+            value: opt.value,
+            label: opt.textContent.trim(),
+            disabled: opt.disabled,
+        };
+        if (opt.dataset.description) item.description = opt.dataset.description;
+        if (opt.dataset.image) item.image = opt.dataset.image;
+        if (opt.dataset.icon) item.icon = opt.dataset.icon;
+        return item;
+    }
+
     collectOptions(select) {
         const result = [];
-        for (const opt of select.querySelectorAll('option')) {
-            if (opt.value === '') continue;
-            result.push({
-                value: opt.value,
-                label: opt.textContent.trim(),
-                disabled: opt.disabled,
-            });
+        for (const child of select.children) {
+            if (child.tagName === 'OPTGROUP') {
+                const groupOpts = [];
+                for (const opt of child.querySelectorAll('option')) {
+                    if (opt.value === '') continue;
+                    groupOpts.push(this.parseOption(opt));
+                }
+                if (groupOpts.length > 0) {
+                    result.push({ label: child.label, options: groupOpts });
+                }
+            } else if (child.tagName === 'OPTION' && child.value !== '') {
+                result.push(this.parseOption(child));
+            }
         }
         return result;
     }

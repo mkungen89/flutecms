@@ -24,6 +24,8 @@ class InstallerSelect {
         const allowEmpty = select.dataset.allowEmpty === 'true';
         const allowAdd = select.dataset.allowAdd === 'true';
         const searchable = select.dataset.searchable === 'true';
+        const positioning = select.dataset.positioning || 'dropdown';
+        const maxHeight = parseInt(select.dataset.maxHeight || '300', 10);
         const placeholder = this.resolvePlaceholder(select);
 
         const options = this.collectOptions(select);
@@ -33,7 +35,8 @@ class InstallerSelect {
             multiple: isMultiple,
             searchable: searchable || options.length > 6,
             clearable: allowEmpty,
-            positioning: 'aligned',
+            positioning: positioning,
+            maxHeight: Number.isNaN(maxHeight) ? 300 : maxHeight,
             name: select.getAttribute('name') || '',
             disabled: select.disabled,
         };
@@ -107,6 +110,10 @@ document.body.addEventListener('htmx:beforeSwap', (evt) => {
     target.querySelectorAll('[data-tom-select]').forEach((select) => {
         window.InstallerSelect.destroySelect(select);
     });
+
+    if (target.matches?.('[data-tom-select]')) {
+        window.InstallerSelect.destroySelect(target);
+    }
 });
 
 document.body.addEventListener('htmx:afterSettle', () => {

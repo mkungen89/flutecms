@@ -16,7 +16,7 @@ class SystemHealthCheck
      * Bump this version whenever system migrations change (e.g. new permissions added).
      * This invalidates the cache and forces re-run on next request.
      */
-    protected const SYSTEM_VERSION = 3;
+    protected const SYSTEM_VERSION = 4;
 
     protected array $systemServices = [
         EnsureUtf8mb4Migration::class,

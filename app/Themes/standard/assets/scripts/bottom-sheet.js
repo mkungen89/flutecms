@@ -1,5 +1,14 @@
-function initializeA11yDialog() {
-    const modals = document.querySelectorAll('.modal, .right_sidebar');
+function initializeA11yDialog(parentElement = document) {
+    const root = parentElement && parentElement.querySelectorAll ? parentElement : document;
+    const modals = [];
+
+    if (root.matches && root.matches('.modal, .right_sidebar')) {
+        modals.push(root);
+    }
+
+    root.querySelectorAll('.modal, .right_sidebar').forEach((modal) => {
+        modals.push(modal);
+    });
 
     modals.forEach((modalElement) => {
         if (modalElement.dialogInstance) {
@@ -106,8 +115,28 @@ window.addEventListener('DOMContentLoaded', () => {
     initializeA11yDialog();
 });
 
+const _pendingModalInitRoots = new Set();
+let _modalInitScheduled = false;
+
+function scheduleA11yDialogInit(root = document) {
+    _pendingModalInitRoots.add(root && root.querySelectorAll ? root : document);
+
+    if (_modalInitScheduled) {
+        return;
+    }
+
+    _modalInitScheduled = true;
+    requestAnimationFrame(() => {
+        const roots = Array.from(_pendingModalInitRoots);
+        _pendingModalInitRoots.clear();
+        _modalInitScheduled = false;
+
+        roots.forEach((initRoot) => initializeA11yDialog(initRoot));
+    });
+}
+
 document.body.addEventListener('htmx:afterSettle', (event) => {
-    initializeA11yDialog(event.detail.elt);
+    scheduleA11yDialogInit(event.detail?.target || event.detail?.elt || event.target || document);
 });
 
 function openModal(modalId) {
@@ -131,10 +160,20 @@ function openModal(modalId) {
 
             if ($modal[0].dialogInstance) {
                 $modal[0].dialogInstance.show();
+                document.body.dispatchEvent(
+                    new CustomEvent('modalOpened', {
+                        detail: { modalId, modalElement: $modal[0] },
+                    }),
+                );
             }
         } else {
             if ($modal[0].dialogInstance) {
                 $modal[0].dialogInstance.show();
+                document.body.dispatchEvent(
+                    new CustomEvent('modalOpened', {
+                        detail: { modalId, modalElement: $modal[0] },
+                    }),
+                );
             }
         }
     } else {
@@ -220,6 +259,14 @@ function onModalShow(modalElement) {
 
     lockBodyScroll();
 
+    const contentEl = modalElement.querySelector('.modal__content');
+    if (contentEl && !contentEl.dataset.lazySnapshot) {
+        const lazyTrigger = contentEl.querySelector('[hx-get][hx-trigger]');
+        if (lazyTrigger) {
+            contentEl.dataset.lazySnapshot = contentEl.innerHTML;
+        }
+    }
+
     const $autofocusElement = $modalElement.find('[autofocus]');
     if ($autofocusElement.length) {
         $autofocusElement[0].focus();
@@ -280,6 +327,16 @@ function onModalHide(modalElement) {
             $(trigger).data('returnFocus', false);
             break;
         }
+    }
+
+    const contentEl = modalElement.querySelector('.modal__content');
+    if (contentEl && contentEl.dataset.lazySnapshot) {
+        contentEl.querySelectorAll('[data-tom-select]').forEach(function (sel) {
+            if (window.ThemeSelect) window.ThemeSelect.destroySelect(sel);
+        });
+        // Restore saved skeleton with hx-get trigger (same-origin, server-rendered)
+        contentEl.innerHTML = contentEl.dataset.lazySnapshot; // eslint-disable-line no-unsanitized/property
+        htmx.process(contentEl);
     }
 
     if (isMobileDevice()) {

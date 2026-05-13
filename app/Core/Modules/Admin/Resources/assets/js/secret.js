@@ -1,6 +1,32 @@
 let resetTimers = new WeakMap();
 
+function loadConfetti(callback) {
+    if (typeof confetti === 'function') {
+        callback();
+        return;
+    }
+
+    const src = typeof u === 'function'
+        ? u('assets/js/libs/confetti.js')
+        : '/assets/js/libs/confetti.js';
+
+    if (window.AdminAssetLoader && typeof window.AdminAssetLoader.loadScripts === 'function') {
+        window.AdminAssetLoader.loadScripts([src], callback);
+        return;
+    }
+
+    const script = document.createElement('script');
+    script.src = src;
+    script.onload = callback;
+    document.head.appendChild(script);
+}
+
 function launchConfetti(element) {
+    if (typeof confetti !== 'function') {
+        loadConfetti(() => launchConfetti(element));
+        return;
+    }
+
     const colors = [
         getComputedStyle(document.documentElement)
             .getPropertyValue('--primary')

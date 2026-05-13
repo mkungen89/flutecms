@@ -1,9 +1,5 @@
-$pe-topbar-h: 80px;
+﻿$pe-topbar-h: 80px;
 $pe-dock-h: 180px;
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Edit Mode
-// ═══════════════════════════════════════════════════════════════════════════
 
 html.page-edit-active {
     padding-left: 0 !important;
@@ -38,10 +34,6 @@ body.page-edit-mode {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Top Bar
-// ═══════════════════════════════════════════════════════════════════════════
-
 .pe-topbar {
     position: fixed;
     top: 0;
@@ -63,8 +55,7 @@ body.page-edit-mode {
         opacity: 1;
     }
 
-    // ── Floating pill ─────────────────────────────────────────────────
-    &__pill {
+&__pill {
         display: flex;
         align-items: center;
         gap: 4px;
@@ -82,8 +73,7 @@ body.page-edit-mode {
         pointer-events: auto;
     }
 
-    // ── Close button ──────────────────────────────────────────────────
-    &__back {
+&__back {
         width: 32px;
         height: 32px;
         border-radius: 10px;
@@ -108,8 +98,7 @@ body.page-edit-mode {
         }
     }
 
-    // ── Title / page path ─────────────────────────────────────────────
-    &__title {
+&__title {
         display: flex;
         align-items: center;
         gap: 5px;
@@ -134,8 +123,7 @@ body.page-edit-mode {
         max-width: 140px;
     }
 
-    // ── Divider ───────────────────────────────────────────────────────
-    &__divider {
+&__divider {
         width: 1px;
         height: 18px;
         background: color-mix(in srgb, var(--text) 8%, transparent);
@@ -143,14 +131,12 @@ body.page-edit-mode {
         margin: 0 2px;
     }
 
-    // ── Group (undo/redo) ─────────────────────────────────────────────
-    &__group {
+&__group {
         display: flex;
         gap: 1px;
     }
 
-    // ── Icon button ───────────────────────────────────────────────────
-    &__btn {
+&__btn {
         width: 32px;
         height: 32px;
         border-radius: 10px;
@@ -180,14 +166,12 @@ body.page-edit-mode {
         }
     }
 
-    // ── Spacer (pushes save/discard to the right) ─────────────────────
-    &__spacer {
+&__spacer {
         width: 8px;
         flex-shrink: 0;
     }
 
-    // ── Discard ───────────────────────────────────────────────────────
-    &__discard {
+&__discard {
         height: 30px;
         padding: 0 10px;
         border-radius: 8px;
@@ -207,8 +191,7 @@ body.page-edit-mode {
         }
     }
 
-    // ── Save ──────────────────────────────────────────────────────────
-    &__save {
+&__save {
         height: 30px;
         padding: 0 14px;
         border-radius: 8px;
@@ -245,7 +228,6 @@ body.page-edit-mode {
     }
 }
 
-// Scope toggle
 .pe-scope-toggle {
     display: flex;
     background: color-mix(in srgb, var(--text) 5%, transparent);
@@ -305,8 +287,7 @@ body.page-edit-mode {
         pointer-events: auto;
     }
 
-    // ── Glass shell ────────────────────────────────────────────────────
-    &__container {
+&__container {
         max-width: 1100px;
         margin: 0 auto;
         display: flex;
@@ -323,15 +304,13 @@ body.page-edit-mode {
         -webkit-backdrop-filter: blur(36px) saturate(1.5);
     }
 
-    // ── Header: search + horizontal chips ─────────────────────────────
-    &__header {
+&__header {
         flex-shrink: 0;
         padding: 8px 10px 0;
         border-bottom: 1px solid color-mix(in srgb, var(--text) 4%, transparent);
     }
 
-    // ── Search ─────────────────────────────────────────────────────────
-    &__search {
+&__search {
         display: flex;
         align-items: center;
         gap: 6px;
@@ -405,8 +384,7 @@ body.page-edit-mode {
         }
     }
 
-    // ── Horizontal category chips ─────────────────────────────────────
-    &__chips {
+&__chips {
         display: flex;
         flex-wrap: wrap;
         gap: 4px;
@@ -459,15 +437,13 @@ body.page-edit-mode {
         }
     }
 
-    // ── Body: full width widget area ──────────────────────────────────
-    &__body {
+&__body {
         display: flex;
         flex: 1;
         min-height: 0;
     }
 
-    // ── Widget area ───────────────────────────────────────────────────
-    &__content {
+&__content {
         flex: 1;
         padding: 8px 10px 10px;
         overflow: hidden;
@@ -506,8 +482,7 @@ body.page-edit-mode {
         }
     }
 
-    // ── Groups (category headers in "All" view) ───────────────────────
-    &__group {
+&__group {
         width: 100%;
 
         & + & {
@@ -541,8 +516,7 @@ body.page-edit-mode {
         gap: 6px;
     }
 
-    // ── Search results ─────────────────────────────────────────────────
-    &__search-results {
+&__search-results {
         .pe-dock__widgets {
             flex-wrap: wrap;
         }
@@ -564,10 +538,6 @@ body.page-edit-mode {
         }
     }
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Widget Card — vertical tile with icon + name + col badge
-// ═══════════════════════════════════════════════════════════════════════════
 
 .pe-widget-card {
     display: flex;
@@ -608,9 +578,7 @@ body.page-edit-mode {
         transition-duration: 0.06s;
     }
 
-    // ── Icon ────────────────────────────────────────────────────────────
-
-    &__icon {
+&__icon {
         width: 32px;
         height: 32px;
         display: flex;
@@ -628,9 +596,7 @@ body.page-edit-mode {
         }
     }
 
-    // ── Name — single line, truncated ──────────────────────────────────
-
-    &__name {
+&__name {
         font-size: 10.5px;
         font-weight: 500;
         color: var(--text-400);
@@ -744,10 +710,6 @@ body.page-edit-mode {
         }
     }
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// FAB
-// ═══════════════════════════════════════════════════════════════════════════
 
 .page-edit-fab {
     $fab-size: 48px;
@@ -905,22 +867,18 @@ body.page-edit-mode {
     background: transparent;
     margin-top: 20px;
 
-    // GridStack placeholder
-    .grid-stack-placeholder>.placeholder-content {
+.grid-stack-placeholder>.placeholder-content {
         border-radius: var(--border05);
         background: color-mix(in srgb, var(--accent) 12%, transparent);
         border: 2px dashed var(--accent);
         opacity: 0.5;
     }
 
-    // Widget items — overflow visible so toolbar above widget is not clipped
-    // Padding creates the visual gap between widgets (GridStack margin=0)
-    .grid-stack-item {
+.grid-stack-item {
         overflow: visible !important;
         padding: var(--pe-widget-gap, 8px) !important;
 
-        // Hover state — show toolbar when hovering the widget or the toolbar itself
-        &:hover:not(.ui-draggable-dragging):not(.ui-resizable-resizing),
+&:hover:not(.ui-draggable-dragging):not(.ui-resizable-resizing),
         &.toolbar-hover:not(.ui-draggable-dragging):not(.ui-resizable-resizing) {
             >.grid-stack-item-content {
                 border-color: var(--transp-3);
@@ -933,8 +891,7 @@ body.page-edit-mode {
             }
         }
 
-        // While dragging
-        &.ui-draggable-dragging {
+&.ui-draggable-dragging {
             >.grid-stack-item-content {
                 box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15), 0 0 0 1.5px var(--accent);
                 border-color: var(--accent);
@@ -945,8 +902,7 @@ body.page-edit-mode {
             }
         }
 
-        // While resizing
-        &.ui-resizable-resizing {
+&.ui-resizable-resizing {
             >.grid-stack-item-content {
                 border-color: var(--accent);
             }
@@ -956,8 +912,7 @@ body.page-edit-mode {
             }
         }
 
-        // System widget
-        &[data-widget-name="Content"],
+&[data-widget-name="Content"],
         &[data-system-widget="true"] {
             .grid-stack-item-content {
                 border: 1.5px dashed var(--transp-2);
@@ -969,8 +924,7 @@ body.page-edit-mode {
         }
     }
 
-    // Item content — inset creates the visual gap between widgets
-    .grid-stack-item-content {
+.grid-stack-item-content {
         border-radius: var(--border05);
         background: transparent;
         border: 1.5px solid transparent;
@@ -992,8 +946,7 @@ body.page-edit-mode {
         }
     }
 
-    // GridStack resize handles — positioned at content edges (not outer item edges)
-    .ui-resizable-handle {
+.ui-resizable-handle {
         opacity: 0;
         transition: opacity 0.15s ease;
     }
@@ -1034,13 +987,9 @@ body.page-edit-mode {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Widget Toolbar — floating pill above widget on hover
-// ═══════════════════════════════════════════════════════════════════════════
-
 .widget-toolbar {
     position: absolute;
-    // Sit flush above .grid-stack-item-content (accounting for item padding)
+
     top: var(--pe-widget-gap, 8px);
     left: 50%;
     transform: translateX(-50%) translateY(-90%);
@@ -1058,8 +1007,7 @@ body.page-edit-mode {
     transition: opacity 0.15s ease, transform 0.15s ease;
     white-space: nowrap;
 
-    // Invisible bridge between toolbar and widget content to prevent hover gap
-    &::after {
+&::after {
         content: '';
         position: absolute;
         left: 0;
@@ -1128,10 +1076,6 @@ body.page-edit-mode {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Empty State — shown when grid has no widgets
-// ═══════════════════════════════════════════════════════════════════════════
-
 .pe-empty-state {
     display: flex;
     flex-direction: column;
@@ -1182,10 +1126,6 @@ body.page-edit-mode {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Content Widget Placeholder — shown in editor when no page content
-// ═══════════════════════════════════════════════════════════════════════════
-
 .pe-content-placeholder {
     display: flex;
     flex-direction: column;
@@ -1231,10 +1171,6 @@ body.page-edit-mode {
         line-height: 1.5;
     }
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Skeleton
-// ═══════════════════════════════════════════════════════════════════════════
 
 .page-edit-skeleton {
     display: flex;
@@ -1286,10 +1222,6 @@ body.page-edit-mode {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Settings Skeleton — form-like loading placeholder
-// ═══════════════════════════════════════════════════════════════════════════
-
 @mixin pe-shimmer-bg {
     background: linear-gradient(90deg, var(--transp-05) 25%, var(--transp-1) 37%, var(--transp-05) 63%);
     background-size: 400% 100%;
@@ -1333,18 +1265,13 @@ body.page-edit-mode {
         }
     }
 
-    // Staggered animation
-    &__field:nth-child(2) &__label { animation-delay: 0.06s; }
+&__field:nth-child(2) &__label { animation-delay: 0.06s; }
     &__field:nth-child(2) &__input { animation-delay: 0.1s; }
     &__field:nth-child(3) &__label { animation-delay: 0.14s; }
     &__field:nth-child(3) &__input { animation-delay: 0.18s; }
     &__field:nth-child(4) &__label { animation-delay: 0.22s; }
     &__field:nth-child(4) &__input { animation-delay: 0.26s; }
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Dialog / Errors / Misc
-// ═══════════════════════════════════════════════════════════════════════════
 
 .page-edit-dialog-content {
     margin-top: var(--space-md);
@@ -1372,10 +1299,6 @@ body.page-edit-mode {
         padding-right: 0;
     }
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Onboarding
-// ═══════════════════════════════════════════════════════════════════════════
 
 .page-edit-onboarding {
     position: fixed;
@@ -1492,10 +1415,6 @@ body.page-edit-mode {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Spinner
-// ═══════════════════════════════════════════════════════════════════════════
-
 @keyframes btn-spin {
     to {
         transform: rotate(360deg);
@@ -1510,10 +1429,6 @@ body.page-edit-mode {
     border-radius: 50%;
     animation: btn-spin 0.6s linear infinite;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Mobile
-// ═══════════════════════════════════════════════════════════════════════════
 
 @media (max-width: 768px) {
     #widget-grid.grid-stack {
@@ -1546,8 +1461,7 @@ body.page-edit-mode {
             display: none;
         }
 
-        // Hide non-essential dividers on mobile
-        &__divider:nth-child(2),
+&__divider:nth-child(2),
         &__divider:nth-child(4) {
             display: none;
         }
@@ -1608,17 +1522,9 @@ body.page-edit-mode {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Sidebar mobile overlay (kept for compat, not needed with bottom dock)
-// ═══════════════════════════════════════════════════════════════════════════
-
 .pe-sidebar-overlay {
     display: none;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Excluded Paths Editor
-// ═══════════════════════════════════════════════════════════════════════════
 
 .pe-excluded-paths {
     display: flex;
@@ -1747,10 +1653,6 @@ body.page-edit-mode {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Preview Mode Controls (topbar)
-// ═══════════════════════════════════════════════════════════════════════════
-
 .pe-preview-device,
 .pe-preview-auth {
     display: flex;
@@ -1791,10 +1693,6 @@ body.page-edit-mode {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Device Preview Viewport
-// ═══════════════════════════════════════════════════════════════════════════
-
 body.pe-device-tablet,
 body.pe-device-mobile {
     #widget-grid {
@@ -1815,10 +1713,6 @@ body.pe-device-mobile .container-fullwidth {
     margin: 0 auto !important;
     transition: max-width 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Widget Conditions Badge
-// ═══════════════════════════════════════════════════════════════════════════
 
 .pe-conditions-badge {
     position: absolute;
@@ -1841,20 +1735,14 @@ body.pe-device-mobile .container-fullwidth {
     letter-spacing: 0.02em;
 }
 
-// Hidden widget in preview mode — truly hidden, grid recompacts
 .grid-stack-item.pe-condition-hidden {
     display: none !important;
 }
 
-// Toolbar conditions button
 .widget-toolbar__btn--conditions:hover {
     background: color-mix(in srgb, var(--info) 12%, transparent);
     color: var(--info);
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Conditions Editor (right sidebar)
-// ═══════════════════════════════════════════════════════════════════════════
 
 .pe-conditions-editor {
     display: flex;
@@ -1905,20 +1793,17 @@ body.pe-device-mobile .container-fullwidth {
     }
 }
 
-// Unified toggle button group (auth / device)
 .pe-cond-toggle {
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
 
-    // 3-column row (auth: all / guest / auth)
-    &--3 .pe-cond-toggle__btn {
+&--3 .pe-cond-toggle__btn {
         flex: 1 1 0;
         min-width: 0;
     }
 
-    // 2×2 grid (device: all / desktop / tablet / mobile)
-    &--2x2 {
+&--2x2 {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 6px;
@@ -1959,7 +1844,6 @@ body.pe-device-mobile .container-fullwidth {
     }
 }
 
-// Role chips (multi-select)
 .pe-cond-roles {
     display: flex;
     flex-wrap: wrap;
@@ -2005,7 +1889,6 @@ body.pe-device-mobile .container-fullwidth {
     flex-shrink: 0;
 }
 
-// Divider between sections
 .pe-conditions-editor__divider {
     height: 1px;
     background: var(--transp-1);
@@ -2019,7 +1902,6 @@ body.pe-device-mobile .container-fullwidth {
     line-height: 1.4;
 }
 
-// Mobile: hide preview controls text, show only icons
 @media (max-width: 768px) {
     .pe-preview-device,
     .pe-preview-auth {

@@ -1,4 +1,4 @@
-.modal {
+﻿.modal {
     display: none;
     position: fixed;
     top: 0;
@@ -35,8 +35,7 @@
         }
     }
 
-    // Modal sizes
-    &--sm .modal__container { width: 380px; }
+&--sm .modal__container { width: 380px; }
     &--md .modal__container { width: 560px; }
     &--lg .modal__container { width: 800px; }
     &--xl .modal__container { width: 1200px; }
@@ -175,8 +174,7 @@
         }
     }
 
-    // ─── Mobile bottom-sheet ──────────────────────────────────────────────
-    @media (max-width: 768px) {
+@media (max-width: 768px) {
         .modal__overlay {
             opacity: 0;
             transition: opacity 0.3s ease;

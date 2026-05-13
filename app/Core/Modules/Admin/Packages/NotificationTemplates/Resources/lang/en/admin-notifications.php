@@ -22,6 +22,8 @@ return [
         'confirm_send' => 'Send notification to selected recipients?',
         'sent' => 'Notification sent to :count users',
         'no_recipients' => 'No recipients found for selected criteria',
+        'no_available_channels' => 'No selected delivery channels are available',
+        'invalid_url' => 'Notification URL must be a relative path or an HTTP/HTTPS URL',
         'blocks' => [
             'recipients' => 'Recipients',
             'recipients_description' => 'Choose who will receive the notification',

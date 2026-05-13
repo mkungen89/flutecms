@@ -63,9 +63,23 @@ window.FluteRichText.ToolbarBuilder = class {
             { group: 'insert', items: ['link', 'image', 'table', 'youtube'] },
             '|',
             {
+                group: 'color',
+                type: 'color',
+                mode: 'color',
+                label: t('text_color', 'Text color'),
+                icon: 'text-color',
+            },
+            {
+                group: 'bgcolor',
+                type: 'color',
+                mode: 'highlight',
+                label: t('bg_color', 'Background color'),
+                icon: 'highlight',
+            },
+            '|',
+            {
                 group: 'misc',
                 items: [
-                    'highlight',
                     'superscript',
                     'subscript',
                     'inline-code',
@@ -94,6 +108,10 @@ window.FluteRichText.ToolbarBuilder = class {
             }
             if (item.type === 'dropdown') {
                 toolbar.appendChild(this._dropdown(item, editorId));
+                return;
+            }
+            if (item.type === 'color') {
+                toolbar.appendChild(this._colorPicker(item, editorId));
                 return;
             }
             if (item.items) {
@@ -180,6 +198,40 @@ window.FluteRichText.ToolbarBuilder = class {
         return container;
     }
 
+    _colorPicker(config, editorId) {
+        var t = this._t.bind(this);
+        var mode = config.mode === 'highlight' ? 'highlight' : 'color';
+
+        var container = document.createElement('div');
+        container.className = 'toolbar-color-picker';
+        container.dataset.colorMode = mode;
+
+        var toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'toolbar-color-toggle';
+        toggle.setAttribute('data-tooltip', config.label);
+        toggle.setAttribute('data-tooltip-placement', 'top');
+        toggle.setAttribute('tabindex', '-1');
+        toggle.innerHTML =
+            '<span class="toolbar-color-icon">' + (this.Icons[config.icon] || '') + '</span>' +
+            '<span class="toolbar-color-caret">' + (this.Icons['chevron-down'] || '') + '</span>';
+        container.appendChild(toggle);
+
+        var menu = document.createElement('div');
+        menu.className = 'toolbar-color-menu';
+        menu.innerHTML =
+            '<div class="rt-pickr-host" data-pickr-host></div>' +
+            '<div class="rt-pickr-actions">' +
+                '<button type="button" class="rt-pickr-reset" data-color-reset tabindex="-1">' +
+                    (this.Icons['clear'] || '') +
+                    '<span>' + t('reset_color', 'Reset') + '</span>' +
+                '</button>' +
+            '</div>';
+        container.appendChild(menu);
+
+        return container;
+    }
+
     _title(name) {
         var t = this._t.bind(this);
         var keyMap = {
@@ -261,7 +313,19 @@ window.FluteRichText.ToolbarBuilder = class {
     }
 
     execAction(editor, action, ctx) {
+        if (typeof action === 'string' && action.indexOf('set-color:') === 0) {
+            editor.chain().focus().setColor(action.slice(10)).run();
+            return;
+        }
+        if (typeof action === 'string' && action.indexOf('set-bg:') === 0) {
+            editor.chain().focus().setHighlight({ color: action.slice(7) }).run();
+            return;
+        }
         const chain = editor.chain().focus();
+        switch (action) {
+            case 'unset-color': chain.unsetColor().run(); return;
+            case 'unset-bg': chain.unsetHighlight().run(); return;
+        }
         switch (action) {
             case 'bold': chain.toggleBold().run(); break;
             case 'italic': chain.toggleItalic().run(); break;

@@ -104,6 +104,8 @@ class Template extends AbstractTemplateInstance implements ViewServiceInterface
         ?string $viewsPath = null,
         ?string $cachePath = null,
     ) {
+        self::$instance = $this;
+
         $this->templateAssets = $templateAssets;
         $this->router = $router;
         $this->themeManager = $themeManager;
@@ -149,6 +151,11 @@ class Template extends AbstractTemplateInstance implements ViewServiceInterface
     public function getYoyo(): Yoyo
     {
         return $this->yoyo;
+    }
+
+    public static function getInitializedInstance(): ?self
+    {
+        return self::$instance ?? null;
     }
 
     /**
@@ -923,6 +930,14 @@ class Template extends AbstractTemplateInstance implements ViewServiceInterface
     }
 
     /**
+     * Resolve a view path through theme replacements (public wrapper).
+     */
+    public function resolveViewReplacement(string $viewPath): string
+    {
+        return $this->searchReplacementForInterface($viewPath);
+    }
+
+    /**
      * Enhanced search for replacement based on theme configuration.
      */
     protected function searchReplacementForInterface(string $interfacePath): string
@@ -951,6 +966,16 @@ class Template extends AbstractTemplateInstance implements ViewServiceInterface
 
     protected function isAdminPath(): bool
     {
-        return is_admin_path() && user()->can('admin');
+        if (!is_admin_path()) {
+            return false;
+        }
+
+        try {
+            return user()->can('admin');
+        } catch (Throwable $e) {
+            logs('templates')->warning('Unable to resolve admin template context: ' . $e->getMessage());
+
+            return false;
+        }
     }
 }

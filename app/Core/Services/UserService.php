@@ -72,6 +72,16 @@ class UserService
     protected ?int $highestPriority = null;
 
     /**
+     * Prevent repeated logs when a request hits a transient auth/DB failure.
+     */
+    protected bool $permissionFailureLogged = false;
+
+    /**
+     * Prevent repeated logs when auth state cannot be restored for a request.
+     */
+    protected bool $authFailureLogged = false;
+
+    /**
      * Constructor for UserService.
      *
      * Initializes class variables and starts an authentication session.
@@ -181,8 +191,14 @@ class UserService
      */
     public function getCurrentUser(): ?User
     {
-        if (!$this->currentUser) {
-            $this->authSession();
+        try {
+            if (!$this->currentUser) {
+                $this->authSession();
+            }
+        } catch (Throwable $e) {
+            $this->handleAuthStateFailure('Current user restore failed', $e);
+
+            return null;
         }
 
         return $this->currentUser;
@@ -203,8 +219,14 @@ class UserService
      */
     public function isLoggedIn(): bool
     {
-        if (!$this->currentUser) {
-            $this->authSession();
+        try {
+            if (!$this->currentUser) {
+                $this->authSession();
+            }
+        } catch (Throwable $e) {
+            $this->handleAuthStateFailure('Login state restore failed', $e);
+
+            return false;
         }
 
         return $this->currentUser !== null;
@@ -227,7 +249,14 @@ class UserService
             return;
         }
 
-        if (session()->has('user_id')) {
+        $request = request();
+        if (!$request->hasAuthenticationCookie() && empty($this->userToken)) {
+            $this->triedToLogin = true;
+
+            return;
+        }
+
+        if ($request->hasSessionCookie() && session()->has('user_id')) {
             $this->initializeBySession();
         } elseif ($this->userToken) {
             $this->initializeByToken();
@@ -265,30 +294,37 @@ class UserService
      */
     public function can(UserPermission|string|array|User $permissions, ?callable $callback = null): bool
     {
-        $permissions = is_array($permissions) ? $permissions : [$permissions];
+        try {
+            $permissions = is_array($permissions) ? $permissions : [$permissions];
 
-        foreach ($permissions as $permission) {
-            $permissionName = $permission instanceof UserPermission ? $permission->value : $permission;
+            foreach ($permissions as $permission) {
+                $permissionName = $permission instanceof UserPermission ? $permission->value : $permission;
 
-            if ($permissionName instanceof User) {
-                if (!$this->canEditUser($permissionName)) {
-                    return false;
-                }
-            } else {
-                if (!$this->checkUserPermission($permissionName)) {
-                    return false;
+                if ($permissionName instanceof User) {
+                    if (!$this->canEditUser($permissionName)) {
+                        return false;
+                    }
+                } else {
+                    if (!$this->checkUserPermission($permissionName)) {
+                        return false;
+                    }
                 }
             }
-        }
 
-        if ($callback) {
-            try {
-                $callback();
-            } catch (Throwable $e) {
+            if ($callback) {
+                try {
+                    $callback();
+                } catch (Throwable $callbackError) {
+                    logs()->debug('Permission callback failed: ' . $callbackError->getMessage());
+                }
             }
-        }
 
-        return true;
+            return true;
+        } catch (Throwable $e) {
+            $this->handleAuthStateFailure('Permission check failed', $e);
+
+            return false;
+        }
     }
 
     /**
@@ -442,6 +478,8 @@ class UserService
         ?string $description = null,
         ?BalanceHistoryMeta $meta = null,
     ): void {
+        $sum = $this->normalizeMoneyAmount($sum);
+
         if ($sum <= 0) {
             throw new InvalidArgumentException('The sum must be a positive number.');
         }
@@ -461,8 +499,11 @@ class UserService
                 ->where(['id' => $balanceUser->id])
                 ->fetchOne();
 
-            if ($balanceUser->balance < $sum) {
-                $neededSum = $sum - $balanceUser->balance;
+            $balanceMinor = $this->moneyToMinorUnits((float) $balanceUser->balance);
+            $sumMinor = $this->moneyToMinorUnits($sum);
+
+            if ($balanceMinor < $sumMinor) {
+                $neededSum = $this->minorUnitsToMoney($sumMinor - $balanceMinor);
                 $database->rollback();
 
                 throw ( new BalanceNotEnoughException() )->setNeededSum($neededSum);
@@ -516,29 +557,35 @@ class UserService
      */
     public function getHighestPriority(?User $user = null): int
     {
-        $userToCheck = $user ?? $this->currentUser;
+        try {
+            $userToCheck = $user ?? $this->currentUser;
 
-        if (!$userToCheck) {
+            if (!$userToCheck) {
+                return 0;
+            }
+
+            if ($userToCheck === $this->currentUser && $this->highestPriority !== null) {
+                return $this->highestPriority;
+            }
+
+            $highestPriority = 0;
+
+            foreach ($userToCheck->roles as $role) {
+                if ($role->priority > $highestPriority) {
+                    $highestPriority = $role->priority;
+                }
+            }
+
+            if ($userToCheck === $this->currentUser) {
+                $this->highestPriority = $highestPriority;
+            }
+
+            return $highestPriority;
+        } catch (Throwable $e) {
+            $this->handleAuthStateFailure('Highest role priority lookup failed', $e);
+
             return 0;
         }
-
-        if ($userToCheck === $this->currentUser && $this->highestPriority !== null) {
-            return $this->highestPriority;
-        }
-
-        $highestPriority = 0;
-
-        foreach ($userToCheck->roles as $role) {
-            if ($role->priority > $highestPriority) {
-                $highestPriority = $role->priority;
-            }
-        }
-
-        if ($userToCheck === $this->currentUser) {
-            $this->highestPriority = $highestPriority;
-        }
-
-        return $highestPriority;
     }
 
     /**
@@ -574,21 +621,27 @@ class UserService
      */
     public function hasRole(string $role): bool
     {
-        if (!$this->isLoggedIn()) {
+        try {
+            if (!$this->isLoggedIn()) {
+                return false;
+            }
+
+            if ($this->rolesCache !== null) {
+                return isset($this->rolesCache[$role]);
+            }
+
+            $this->rolesCache = [];
+
+            foreach ($this->currentUser->roles as $userRole) {
+                $this->rolesCache[$userRole->name] = true;
+            }
+
+            return isset($this->rolesCache[$role]);
+        } catch (Throwable $e) {
+            $this->handleAuthStateFailure('Role check failed', $e);
+
             return false;
         }
-
-        if ($this->rolesCache !== null) {
-            return isset($this->rolesCache[$role]);
-        }
-
-        $this->rolesCache = [];
-
-        foreach ($this->currentUser->roles as $userRole) {
-            $this->rolesCache[$userRole->name] = true;
-        }
-
-        return isset($this->rolesCache[$role]);
     }
 
     /**
@@ -598,11 +651,17 @@ class UserService
      */
     public function hasSocialNetwork(string $key): bool
     {
-        if (!$this->isLoggedIn()) {
+        try {
+            if (!$this->isLoggedIn()) {
+                return false;
+            }
+
+            return !empty($this->currentUser->getSocialNetwork($key));
+        } catch (Throwable $e) {
+            $this->handleAuthStateFailure('Social network check failed', $e);
+
             return false;
         }
-
-        return !empty($this->currentUser->getSocialNetwork($key));
     }
 
     /**
@@ -612,11 +671,35 @@ class UserService
      */
     public function hasEnoughBalance(float $sum): bool
     {
-        if (!$this->isLoggedIn()) {
+        try {
+            if (!$this->isLoggedIn()) {
+                return false;
+            }
+
+            $balanceMinor = $this->moneyToMinorUnits((float) ( $this->currentUser->balance ?? 0 ));
+            $sumMinor = $this->moneyToMinorUnits($sum);
+
+            return $balanceMinor >= $sumMinor;
+        } catch (Throwable $e) {
+            $this->handleAuthStateFailure('Balance check failed', $e);
+
             return false;
         }
+    }
 
-        return ( $this->currentUser->balance ?? 0 ) >= $sum;
+    private function normalizeMoneyAmount(float $amount): float
+    {
+        return $this->minorUnitsToMoney($this->moneyToMinorUnits($amount));
+    }
+
+    private function moneyToMinorUnits(float $amount): int
+    {
+        return (int) round($amount * 100);
+    }
+
+    private function minorUnitsToMoney(int $amount): float
+    {
+        return round($amount / 100, 2);
     }
 
     /**
@@ -695,6 +778,8 @@ class UserService
         $this->rolesCache = null;
         $this->highestPriority = null;
         $this->triedToLogin = false;
+        $this->authFailureLogged = false;
+        $this->permissionFailureLogged = false;
     }
 
     /**
@@ -733,10 +818,11 @@ class UserService
             }
 
             if (config('auth.check_ip')) {
-                if ($tokenInfo->userDevice->ip !== request()->ip()) {
+                $clientIp = request()->getClientIp();
+                if ($tokenInfo->userDevice->ip !== $clientIp) {
                     logs()->warning('auth.token.ip_mismatch', [
                         'expected' => $tokenInfo->userDevice->ip,
-                        'actual' => request()->ip(),
+                        'actual' => $clientIp,
                     ]);
                     $this->sessionExpired();
 
@@ -765,7 +851,7 @@ class UserService
                 logs()->debug('auth.token.initialize_success', ['ms' => $dt, 'user_id' => (int) $tokenInfo->user->id]);
             }
         } catch (Throwable $e) {
-            logs()->warning($e->getMessage());
+            logs()->warning('auth.token.initialize_failed', ['reason' => $e->getMessage()]);
             $this->sessionExpired();
         }
     }
@@ -813,12 +899,40 @@ class UserService
 
     protected function checkUserPermission(string $permission)
     {
-        if (!$this->isLoggedIn()) {
+        try {
+            if (!$this->isLoggedIn()) {
+                return false;
+            }
+
+            $permissions = $this->getPermissions();
+
+            return isset($permissions[UserPermission::ADMIN_BOSS->value]) || isset($permissions[$permission]);
+        } catch (Throwable $e) {
+            if (!$this->permissionFailureLogged) {
+                logs('database')->warning('Permission check failed: ' . $e->getMessage(), [
+                    'permission' => $permission,
+                ]);
+
+                $this->permissionFailureLogged = true;
+            }
+
             return false;
         }
+    }
 
-        $permissions = $this->getPermissions();
+    protected function handleAuthStateFailure(string $message, Throwable $e): void
+    {
+        $this->currentUser = null;
+        $this->permissionsCache = null;
+        $this->rolesCache = null;
+        $this->highestPriority = null;
+        $this->triedToLogin = true;
 
-        return isset($permissions[UserPermission::ADMIN_BOSS->value]) || isset($permissions[$permission]);
+        if ($this->authFailureLogged) {
+            return;
+        }
+
+        logs('database')->warning($message . ': ' . $e->getMessage());
+        $this->authFailureLogged = true;
     }
 }

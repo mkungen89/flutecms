@@ -25,7 +25,9 @@ $router->group([
             ->middleware('csrf');
     });
 
-    $group->post('verify-email', [ProfileVerificationController::class, 'verifyEmail'])->middleware('throttle');
+    $group
+        ->post('verify-email', [ProfileVerificationController::class, 'verifyEmail'])
+        ->middleware(['throttle', 'csrf']);
 });
 
 $router->group([

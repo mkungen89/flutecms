@@ -28,9 +28,13 @@ class FluteRequest extends Request
         'fc00::/7',
     ];
 
+    private ?HtmxRequest $htmxRequest = null;
+
+    private ?array $jsonInputCache = null;
+
     public function htmx(): HtmxRequest
     {
-        return new HtmxRequest($this->headers);
+        return $this->htmxRequest ??= new HtmxRequest($this->headers);
     }
 
     public function isBoost(): bool
@@ -41,6 +45,29 @@ class FluteRequest extends Request
     public function isOnlyHtmx(): bool
     {
         return $this->htmx()->isHtmxRequest() && !$this->htmx()->isBoosted();
+    }
+
+    public function isPrefetch(): bool
+    {
+        return $this->htmx()->isPrefetch();
+    }
+
+    public function hasSessionCookie(): bool
+    {
+        $sessionConfig = (array) config('app.session', []);
+        $sessionName = (string) ( $sessionConfig['name'] ?? 'flute_session' );
+
+        return $sessionName !== '' && $this->cookies->has($sessionName);
+    }
+
+    public function hasRememberToken(): bool
+    {
+        return $this->cookies->has('remember_token');
+    }
+
+    public function hasAuthenticationCookie(): bool
+    {
+        return $this->hasSessionCookie() || $this->hasRememberToken();
     }
 
     /**
@@ -90,7 +117,7 @@ class FluteRequest extends Request
     /**
      * Retrieve the current authenticated user.
      */
-    public function user(): User
+    public function user(): ?User
     {
         return user()->getCurrentUser();
     }
@@ -170,8 +197,7 @@ class FluteRequest extends Request
         $data = array_merge($this->attributes->all(), $this->query->all(), $this->request->all());
 
         if ($this->isJson()) {
-            $jsonData = json_decode($this->getContent(), true, 32) ?? [];
-            $data = array_merge($data, $jsonData);
+            $data = array_merge($data, $this->jsonInput());
         }
 
         if ($key === null) {
@@ -179,6 +205,17 @@ class FluteRequest extends Request
         }
 
         return ArrDots::get($data, $key, $default);
+    }
+
+    private function jsonInput(): array
+    {
+        if ($this->jsonInputCache !== null) {
+            return $this->jsonInputCache;
+        }
+
+        $decoded = json_decode($this->getContent(), true, 32);
+
+        return $this->jsonInputCache = is_array($decoded) ? $decoded : [];
     }
 
     /**

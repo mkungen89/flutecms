@@ -1,4 +1,4 @@
-.richtext-editor {
+﻿.richtext-editor {
 	border-radius: var(--border05);
 	border: none;
 	transition: all var(--transition);
@@ -21,13 +21,15 @@
 	border: 1px solid var(--transp-1);
 	position: relative;
 
-	// Content area wrapper (scrollable)
+	:root[data-theme=light] & {
+		border-color: rgba(0, 0, 0, 0.15);
+		background-color: var(--background);
+	}
 	.tiptap-content-area {
 		position: relative;
 	}
 
-	// ProseMirror content area
-	.ProseMirror {
+.ProseMirror {
 		border-radius: 0;
 		border: none;
 		color: var(--text);
@@ -53,13 +55,11 @@
 			height: 0;
 		}
 
-		// Links — not clickable inside editor
-		a {
+a {
 			cursor: text;
 		}
 
-		// ========= IMAGE =========
-		img {
+img {
 			max-width: 100%;
 			height: auto;
 			border-radius: var(--border05);
@@ -72,16 +72,11 @@
 			}
 		}
 
-		// Image resize (TipTap v3 ResizableNodeView)
-		// DOM: [data-resize-container] > [data-resize-wrapper] > img + [data-resize-handle]*4
-		// ResizableNodeView sets inline: display:flex on container, position:relative on wrapper
-		// Handles get inline: position:absolute + top/bottom/left/right:0 at corners
-		[data-resize-container] {
+[data-resize-container] {
 			display: inline-flex !important;
 			line-height: 0;
 
-			// Selection outline on the container (not the img)
-			&.ProseMirror-selectednode {
+&.ProseMirror-selectednode {
 				outline: 2px solid var(--accent);
 				border-radius: var(--border05);
 			}
@@ -93,10 +88,8 @@
 		}
 
 		[data-resize-handle] {
-			// Inline styles already set by ResizableNodeView:
-			// position: absolute; top/bottom/left/right: 0 (at corners)
-			// We only provide visual appearance + cursor + centering via transform
-			width: 10px;
+
+width: 10px;
 			height: 10px;
 			background: var(--accent);
 			border: 2px solid #fff;
@@ -106,8 +99,7 @@
 			opacity: 0;
 			transition: opacity 0.15s;
 
-			// Center handles on corners using transform (inline top/left/right/bottom = 0)
-			&[data-resize-handle='top-left'] {
+&[data-resize-handle='top-left'] {
 				cursor: nwse-resize;
 				transform: translate(-50%, -50%);
 			}
@@ -129,8 +121,7 @@
 			opacity: 1;
 		}
 
-		// ========= TABLE (Notion-like) =========
-		.tableWrapper {
+.tableWrapper {
 			overflow-x: auto;
 			margin: 1em 0;
 			position: relative;
@@ -158,8 +149,7 @@
 					background-color: var(--transp-05);
 				}
 
-				// Notion-style minimal paragraphs inside cells
-				p {
+p {
 					margin: 0;
 				}
 			}
@@ -199,8 +189,7 @@
 			cursor: col-resize;
 		}
 
-		// ========= TASK LIST =========
-		ul[data-type='taskList'] {
+ul[data-type='taskList'] {
 			list-style: none;
 			padding: 0;
 			margin: 0.5em 0;
@@ -235,14 +224,12 @@
 				}
 			}
 
-			// Nested task lists
-			ul[data-type='taskList'] {
+ul[data-type='taskList'] {
 				margin-left: 1.5em;
 			}
 		}
 
-		// ========= OTHER CONTENT =========
-		blockquote {
+blockquote {
 			border-left: 3px solid var(--accent);
 			padding-left: 1rem;
 			margin-left: 0;
@@ -288,8 +275,7 @@
 		}
 	}
 
-	// ========= TOOLBAR =========
-	.tiptap-toolbar {
+.tiptap-toolbar {
 		border: none;
 		background-color: var(--transp-05);
 		padding: 4px 8px;
@@ -298,6 +284,12 @@
 		flex-wrap: wrap;
 		gap: 1px;
 		align-items: center;
+        justify-content: center;
+
+		:root[data-theme=light] & {
+			background-color: #f8f9fa;
+			border-bottom-color: rgba(0, 0, 0, 0.1);
+		}
 
 		button {
 			color: var(--text-500);
@@ -346,8 +338,7 @@
 		}
 	}
 
-	// ========= DROPDOWN =========
-	.toolbar-dropdown {
+.toolbar-dropdown {
 		position: relative;
 		display: inline-flex;
 
@@ -424,8 +415,64 @@
 		}
 	}
 
-	// ========= STATUS BAR =========
-	.tiptap-statusbar {
+	.toolbar-color-picker {
+		position: relative;
+		display: inline-flex;
+
+		.toolbar-color-toggle {
+			display: inline-flex !important;
+			align-items: center;
+			justify-content: center;
+			gap: 2px;
+			padding: 0 6px !important;
+			width: auto !important;
+
+			.toolbar-color-icon {
+				display: flex;
+				line-height: 0;
+
+				svg {
+					width: 16px;
+					height: 16px;
+				}
+			}
+
+			.toolbar-color-caret {
+				display: flex;
+				line-height: 0;
+
+				svg {
+					width: 10px;
+					height: 10px;
+				}
+			}
+		}
+
+		.toolbar-color-menu {
+			display: none;
+			position: absolute;
+			top: calc(100% + 6px);
+			left: 0;
+			background: var(--background);
+			border: 1px solid var(--transp-1);
+			border-radius: 10px;
+			padding: 10px;
+			width: 280px;
+			box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+			z-index: 60;
+
+			:root[data-theme=light] & {
+				border-color: rgba(0, 0, 0, 0.12);
+				box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+			}
+		}
+
+		&.is-open .toolbar-color-menu {
+			display: block;
+		}
+	}
+
+.tiptap-statusbar {
 		color: var(--text-600);
 		padding: 4px 12px;
 		background-color: var(--transp-05);
@@ -435,10 +482,15 @@
 		justify-content: flex-end;
 		gap: 8px;
 		user-select: none;
+
+		:root[data-theme=light] & {
+			background-color: #f8f9fa;
+			border-top-color: rgba(0, 0, 0, 0.1);
+			color: var(--text-500);
+		}
 	}
 
-	// ========= FULLSCREEN =========
-	&.tiptap-fullscreen {
+&.tiptap-fullscreen {
 		position: fixed;
 		top: 0;
 		left: 0;
@@ -477,11 +529,9 @@
 	}
 }
 
-// ========= EDITOR MODAL HELPERS =========
 .popup-body-list {
 	padding: 4px;
 }
-
 
 .popup-list-item {
 	width: 100%;
@@ -527,7 +577,63 @@
 	}
 }
 
-// ========= TABLE GRID PICKER =========
+.rt-pickr-host {
+	width: 100%;
+	border-radius: 8px;
+	overflow: hidden;
+	background: var(--transp-02);
+	border: 1px solid var(--transp-1);
+
+	:root[data-theme=light] & {
+		background: rgba(0, 0, 0, 0.02);
+		border-color: rgba(0, 0, 0, 0.08);
+	}
+
+	.pickr-inline-trigger { display: none !important; }
+	.pickr { display: none !important; }
+
+	> .pcr-app {
+		min-height: 0;
+	}
+}
+
+.rt-pickr-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 6px;
+	padding-top: 8px;
+	margin-top: 8px;
+	border-top: 1px solid var(--transp-1);
+}
+
+.rt-pickr-reset {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 10px;
+	font-size: 12px;
+	color: var(--text-600);
+	background: none;
+	border: 1px solid var(--transp-1);
+	border-radius: 6px;
+	cursor: pointer;
+	width: auto;
+	height: auto;
+	transition: all 0.1s;
+
+	svg {
+		width: 12px;
+		height: 12px;
+		fill: currentColor;
+	}
+
+	&:hover {
+		background: var(--transp-1);
+		color: var(--text);
+	}
+}
+
 .table-grid-picker {
 	display: grid;
 	grid-template-columns: repeat(8, 1fr);
@@ -561,7 +667,12 @@
 	font-weight: 500;
 }
 
-// ========= BUBBLE MENUS =========
+.modal .modal__footer {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+}
+
 .tiptap-bubble-menu {
 	position: absolute;
 	left: 0;
@@ -576,6 +687,11 @@
 	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 	white-space: nowrap;
 	pointer-events: auto;
+
+	:root[data-theme=light] & {
+		border-color: rgba(0, 0, 0, 0.12);
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+	}
 
 	&.tiptap-bubble-link {
 		z-index: 52;
@@ -655,8 +771,7 @@
 		margin: 0 2px;
 	}
 
-	// Heading dropdown inside text bubble
-	.bubble-heading-dropdown {
+.bubble-heading-dropdown {
 		position: relative;
 	}
 
@@ -726,31 +841,82 @@
 			color: var(--accent);
 		}
 	}
+
+.bubble-color-dropdown {
+		position: relative;
+		display: inline-flex;
+	}
+
+	.bubble-color-toggle {
+		display: flex !important;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 1px;
+		padding: 2px 4px !important;
+		width: auto !important;
+
+		.bubble-color-icon {
+			display: flex;
+			line-height: 0;
+
+			svg {
+				width: 14px;
+				height: 14px;
+				fill: currentColor;
+			}
+		}
+
+		.bubble-color-indicator {
+			display: block;
+			width: 14px;
+			height: 3px;
+			border-radius: 2px;
+			background-color: transparent;
+			border: 1px solid var(--transp-2);
+		}
+	}
+
+	.bubble-color-dropdown.has-color .bubble-color-indicator {
+		border-color: transparent;
+	}
+
+	.bubble-color-menu {
+		display: none;
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 50%;
+		transform: translateX(-50%);
+		background: var(--background);
+		border: 1px solid var(--transp-1);
+		border-radius: 10px;
+		padding: 10px;
+		width: 280px;
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+		z-index: 60;
+
+		:root[data-theme=light] & {
+			border-color: rgba(0, 0, 0, 0.12);
+			box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+		}
+	}
+
+	.bubble-color-dropdown.is-open .bubble-color-menu {
+		display: block;
+	}
 }
 
-// ========= MODAL FOOTER BUTTONS =========
-.modal .modal__footer {
-	display: flex;
-	gap: 8px;
-	justify-content: flex-end;
-}
-
-// ========= NOTION-LIKE TABLE CONTROLS (overlay) =========
-
-// Overlay container — sits inside .tiptap-content-area, outside ProseMirror
 .table-controls-overlay {
 	position: absolute;
-	pointer-events: none; // let clicks pass through to table below
+	pointer-events: none;
 	z-index: 25;
-	display: none; // shown by JS when hovering a table
+	display: none;
 
-	// All children (buttons, grips) are interactive
-	> * {
+> * {
 		pointer-events: auto;
 	}
 }
 
-// "+" add buttons (column right / row bottom)
 .table-ctrl {
 	position: absolute;
 	display: flex;
@@ -785,7 +951,6 @@
 	height: 22px;
 }
 
-// Column & row grips (shared)
 .table-ctrl-col-grip,
 .table-ctrl-row-grip {
 	position: absolute;
@@ -813,7 +978,6 @@
 	}
 }
 
-// Right-click context menu (appended to body)
 .table-context-menu {
 	position: fixed;
 	z-index: 200;
@@ -871,7 +1035,6 @@
 	margin: 3px 8px;
 }
 
-// ========= UPLOAD OVERLAY =========
 .tiptap-upload-overlay {
 	position: absolute;
 	top: 0;
@@ -903,5 +1066,17 @@
 @keyframes tiptap-spin {
 	to {
 		transform: rotate(360deg);
+	}
+}
+
+[id^='tiptap-modal-'] {
+	z-index: 1100;
+
+	.modal__overlay {
+		z-index: 1100;
+	}
+
+	.modal__container {
+		z-index: 1101;
 	}
 }

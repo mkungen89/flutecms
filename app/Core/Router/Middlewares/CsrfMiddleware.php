@@ -88,6 +88,6 @@ class CsrfMiddleware extends BaseMiddleware
             return false;
         }
 
-        return $this->csrfTokenService->validateToken($token);
+        return $this->csrfTokenService->validateToken($token, !$request->hasAuthenticationCookie());
     }
 }

@@ -35,6 +35,7 @@ return array(
     'maintenance_title' => '',
     'maintenance_show_timer' => false,
     'maintenance_end_time' => '',
+    'maintenance_allowed_roles' => [],
     'footer_description' => '',
     'csrf_enabled' => true,
     'convert_to_webp' => true,
@@ -46,7 +47,6 @@ return array(
     ],
     'trusted_headers' => [
         'X_FORWARDED_FOR',
-        'X_FORWARDED_HOST',
         'X_FORWARDED_PROTO',
         'X_FORWARDED_PORT',
     ],

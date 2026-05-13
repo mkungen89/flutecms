@@ -286,4 +286,5 @@ return [
     'created' => 'Yaratilgan',
     'deleted' => "O'chirilgan",
     'auth_required' => 'Autentifikatsiya talab qilinadi',
+    'more' => "Ko'proq",
 ];
