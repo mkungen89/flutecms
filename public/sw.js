@@ -5,7 +5,6 @@ const ASSET_CACHE = 'flute-assets-v1';
 const FONT_CACHE = 'flute-fonts-v1';
 const PAGE_PREFETCH_CACHE = 'flute-page-prefetch-v1';
 const PAGE_PREFETCH_TTL = 300000;
-const PAGE_PREFETCH_NO_STORE_TTL = 180000;
 const PAGE_PREFETCH_MAX_ENTRIES = 24;
 const PAGE_PREFETCH_MAX_BYTES = 2 * 1024 * 1024;
 const pagePrefetchCache = new Map();
@@ -233,13 +232,13 @@ self.addEventListener('fetch', (event) => {
                     const contentType = response.headers.get('content-type') || '';
                     const cacheControl = response.headers.get('cache-control') || '';
                     const contentLength = Number(response.headers.get('content-length') || 0);
-                    const ttl = /no-store/i.test(cacheControl)
-                        ? PAGE_PREFETCH_NO_STORE_TTL
-                        : PAGE_PREFETCH_TTL;
+                    const isUncacheable = /(?:^|,)\s*(?:private|no-cache|no-store)\s*(?:,|$)/i.test(cacheControl);
+                    const ttl = PAGE_PREFETCH_TTL;
 
                     if (
                         response.ok &&
                         !response.redirected &&
+                        !isUncacheable &&
                         contentType.includes('text/html') &&
                         (!contentLength || contentLength <= PAGE_PREFETCH_MAX_BYTES)
                     ) {
