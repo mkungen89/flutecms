@@ -3,6 +3,10 @@
 
 @php
     $title = __('install.title');
+    $currentStep = $currentStep ?? null;
+    $steps = $steps ?? [];
+    $totalSteps = $totalSteps ?? 0;
+    $stepData = $stepData ?? [];
 @endphp
 
 <head hx-head="append">

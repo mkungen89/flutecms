@@ -20,6 +20,7 @@ use Flute\Core\Database\Entities\DatabaseConnection;
 use Flute\Core\Database\Entities\Server;
 use Flute\Core\Rcon\RconService;
 use Flute\Core\ServerQuery\ServerQueryService;
+use Flute\Core\Services\DatabaseService;
 use Illuminate\Support\Str;
 use PDO;
 use Throwable;
@@ -595,6 +596,7 @@ class ServerEditScreen extends Screen
             $connection->additional = json_encode($additional);
             $connection->server = $this->server;
             $connection->save();
+            DatabaseService::flushModesCache();
 
             $this->dbConnections = DatabaseConnection::query()->where('server_id', $this->serverId)->fetchAll();
             $this->flashMessage(__('admin-server.messages.connection_add_success'), 'success');
@@ -856,6 +858,7 @@ class ServerEditScreen extends Screen
             $connection->dbname = $data['dbname'];
             $connection->additional = json_encode($additional);
             $connection->save();
+            DatabaseService::flushModesCache();
 
             $this->dbConnections = DatabaseConnection::query()->where('server_id', $this->serverId)->fetchAll();
             $this->flashMessage(__('admin-server.messages.connection_update_success'), 'success');
