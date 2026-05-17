@@ -731,15 +731,6 @@ class InstallerController extends BaseController
      */
     private function guardInstallerAccess(FluteRequest $request): mixed
     {
-        if (!$this->isInstallerRequestAllowed($request)) {
-            logs('installer')->warning('Denied installer access from non-local request.', [
-                'ip' => $request->getClientIp(),
-                'path' => $request->getPathInfo(),
-            ]);
-
-            return response()->error(403, 'Installer access denied');
-        }
-
         if ($request->isMethod('GET') || $request->isMethod('HEAD') || $request->isMethod('OPTIONS')) {
             return null;
         }
@@ -754,46 +745,6 @@ class InstallerController extends BaseController
         }
 
         return null;
-    }
-
-    private function isInstallerRequestAllowed(FluteRequest $request): bool
-    {
-        if ($this->isLocalInstallerRequest($request)) {
-            return true;
-        }
-
-        if (session('installer.setup_authorized') === true) {
-            return true;
-        }
-
-        $expectedToken = (string) ( getenv('FLUTE_INSTALLER_SETUP_TOKEN') ?: config('installer.setup_token', '') );
-        if ($expectedToken === '') {
-            return false;
-        }
-
-        $providedToken = $request->input('setup_token') ?? $request->headers->get('X-Setup-Token');
-
-        if (!is_string($providedToken) || !hash_equals($expectedToken, $providedToken)) {
-            return false;
-        }
-
-        session()->set('installer.setup_authorized', true);
-
-        return true;
-    }
-
-    private function isLocalInstallerRequest(FluteRequest $request): bool
-    {
-        $clientIp = $request->getClientIp();
-        if (!in_array($clientIp, ['127.0.0.1', '::1'], true)) {
-            return false;
-        }
-
-        return (
-            !$request->headers->has('Forwarded')
-            && !$request->headers->has('X-Forwarded-For')
-            && !$request->headers->has('X-Real-IP')
-        );
     }
 
     protected function renderStep(int $id, array $extraData = [], bool $allowAdvance = true): mixed

@@ -13,6 +13,11 @@ class DatabaseService
 
     private static array $modesCache = [];
 
+    public static function flushModesCache(): void
+    {
+        self::$modesCache = [];
+    }
+
     /**
      * Retrieves server modes based on provided mods.
      *

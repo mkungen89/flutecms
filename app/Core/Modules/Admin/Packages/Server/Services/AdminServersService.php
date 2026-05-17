@@ -7,6 +7,7 @@ use Flute\Admin\Packages\Server\Contracts\ModDriverInterface;
 use Flute\Admin\Packages\Server\Factories\ModDriverFactory;
 use Flute\Core\Database\Entities\DatabaseConnection;
 use Flute\Core\Database\Entities\Server;
+use Flute\Core\Services\DatabaseService;
 
 class AdminServersService
 {
@@ -294,7 +295,7 @@ class AdminServersService
             $server->setSettings($settings);
         }
 
-        $server->save();
+        $server->save(false);
 
         return $server;
     }
@@ -311,6 +312,7 @@ class AdminServersService
         }
 
         $connection->delete();
+        DatabaseService::flushModesCache();
     }
 
     /**
