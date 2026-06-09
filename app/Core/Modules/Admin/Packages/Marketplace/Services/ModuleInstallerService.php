@@ -3,15 +3,48 @@
 namespace Flute\Admin\Packages\Marketplace\Services;
 
 use Exception;
+use FilesystemIterator;
 use Flute\Core\App;
 use Flute\Core\Composer\ComposerManager;
+use Flute\Core\ModulesManager\Actions\Concerns\FlushesTranslationCache;
 use Flute\Core\ModulesManager\ModuleManager;
+use Flute\Core\Support\FileUploader;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
-use ZipArchive;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\UriInterface;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use Symfony\Component\Finder\Exception\DirectoryNotFoundException;
+use Throwable;
 
 class ModuleInstallerService
 {
+    use FlushesTranslationCache;
+
+    private const ZIP_MAGIC_LOCAL = "PK\x03\x04";
+
+    private const ZIP_MAGIC_EMPTY = "PK\x05\x06";
+
+    private const ZIP_MAGIC_SPANNED = "PK\x07\x08";
+
+    /**
+     * Official Flute marketplace hosts allowed for module ZIP downloads (always merged with config mirrors).
+     */
+    private const TRUSTED_FLUTE_DOWNLOAD_HOSTS = [
+        'flute-cms.com',
+        'api.flute-cms.com',
+        'mirror.flute-cms.com',
+    ];
+
+    /**
+     * Single-flight lock for download → install → composer (concurrent admin tabs).
+     *
+     * @var resource|null
+     */
+    private $marketplaceLockHandle = null;
+
     /**
      * HTTP клиент
      */
@@ -63,16 +96,22 @@ class ModuleInstallerService
     public function __construct()
     {
         $this->client = new Client([
-            'timeout' => 30,
+            'timeout' => 600.0,
+            'connect_timeout' => 25.0,
             'http_errors' => false,
+            'verify' => true,
+            'allow_redirects' => [
+                'max' => 5,
+                'strict' => false,
+                'referer' => true,
+                'track_redirects' => false,
+            ],
         ]);
 
         $this->tempDir = storage_path('app/temp/marketplace');
         $this->modulesDir = path('app/Modules');
 
-        if (!is_dir($this->tempDir)) {
-            mkdir($this->tempDir, 0o755, true);
-        }
+        $this->ensureWritableDirectory($this->tempDir, true);
     }
 
     /**
@@ -83,33 +122,58 @@ class ModuleInstallerService
     public function downloadModule(array $module): array
     {
         $this->keepProcessAlive();
+        $this->ensureMarketplaceWorkspace();
 
         if (empty($module['downloadUrl'])) {
             throw new Exception(__('admin-marketplace.messages.download_failed') . ': URL не указан');
         }
 
+        $this->acquireMarketplaceLock();
+
         try {
             $downloadUrl = $module['downloadUrl'];
             $this->moduleArchivePath = $this->tempDir . '/' . $module['slug'] . '-' . time() . '.zip';
 
-            if (strpos($downloadUrl, 'http') !== 0) {
-                $downloadUrl = rtrim(config('app.flute_market_url', 'https://flute-cms.com'), '/') . $downloadUrl;
+            if (is_file($this->moduleArchivePath)) {
+                @unlink($this->moduleArchivePath);
             }
 
-            $response = $this->client->get($downloadUrl . '&accessKey=' . config('app.flute_key', ''), [
+            if (!str_starts_with($downloadUrl, 'http')) {
+                $api = new \Flute\Core\Services\FluteApiClient();
+                $downloadUrl = rtrim($api->getActiveBaseUrl(), '/') . '/' . ltrim($downloadUrl, '/');
+            }
+
+            $requestUrl = $this->buildDownloadRequestUrl($downloadUrl);
+            $this->assertDownloadUrlAllowed($requestUrl);
+
+            $response = $this->client->get($requestUrl, [
                 'sink' => $this->moduleArchivePath,
-                'allow_redirects' => false,
+                'allow_redirects' => [
+                    'max' => 5,
+                    'strict' => false,
+                    'referer' => false,
+                    'track_redirects' => true,
+                    'on_redirect' => function (
+                        RequestInterface $request,
+                        ResponseInterface $response,
+                        UriInterface $uri,
+                    ): void {
+                        $this->assertDownloadUrlAllowed((string) $uri);
+                    },
+                ],
             ]);
 
-            $body = method_exists($response, 'getBody') ? (string)$response->getBody() : '';
-            if (
-                $response->getStatusCode() === 401
-            ) {
+            if ($response->getStatusCode() === 401) {
+                $this->cleanupFailedDownloadArtifact();
                 throw new Exception('MARKETPLACE_BAD_REQUEST');
             }
             if ($response->getStatusCode() !== 200) {
+                $this->cleanupFailedDownloadArtifact();
                 throw new Exception(__('admin-marketplace.messages.download_failed'));
             }
+
+            clearstatcache(true, $this->moduleArchivePath);
+            $this->assertValidZipFile($this->moduleArchivePath);
 
             return [
                 'success' => true,
@@ -117,7 +181,11 @@ class ModuleInstallerService
                 'path' => $this->moduleArchivePath,
             ];
         } catch (GuzzleException $e) {
+            $this->cleanupFailedDownloadArtifact();
             throw new Exception(__('admin-marketplace.messages.download_failed') . ': ' . $e->getMessage());
+        } catch (Throwable $e) {
+            $this->cleanupFailedDownloadArtifact();
+            throw $e;
         }
     }
 
@@ -129,15 +197,10 @@ class ModuleInstallerService
     public function extractModule(array $module): array
     {
         $this->keepProcessAlive();
+        $this->ensureMarketplaceWorkspace();
 
         if (empty($this->moduleArchivePath) || !file_exists($this->moduleArchivePath)) {
             throw new Exception(__('admin-marketplace.messages.extract_failed') . ': Архив не найден');
-        }
-
-        $zip = new ZipArchive();
-
-        if ($zip->open($this->moduleArchivePath) !== true) {
-            throw new Exception(__('admin-marketplace.messages.extract_failed') . ': Не удалось открыть архив');
         }
 
         $this->moduleExtractPath = $this->tempDir . '/extract-' . $module['slug'] . '-' . time();
@@ -146,8 +209,7 @@ class ModuleInstallerService
             mkdir($this->moduleExtractPath, 0o755, true);
         }
 
-        $zip->extractTo($this->moduleExtractPath);
-        $zip->close();
+        app(FileUploader::class)->safeExtractZip($this->moduleArchivePath, $this->moduleExtractPath);
 
         $rootDir = $this->moduleExtractPath;
         $items = scandir($this->moduleExtractPath);
@@ -211,7 +273,9 @@ class ModuleInstallerService
             $requiredPhp = $moduleJson['requires']['php'];
 
             if (!$this->checkPhpVersion($requiredPhp)) {
-                throw new Exception(__('admin-marketplace.messages.validate_failed') . ': Требуется PHP ' . $requiredPhp);
+                throw new Exception(
+                    __('admin-marketplace.messages.validate_failed') . ': Требуется PHP ' . $requiredPhp,
+                );
             }
         }
 
@@ -219,7 +283,9 @@ class ModuleInstallerService
             $requiredFlute = $moduleJson['requires']['flute'];
 
             if (!$this->checkFluteVersion($requiredFlute)) {
-                throw new Exception(__('admin-marketplace.messages.validate_failed') . ': Требуется Flute ' . $requiredFlute);
+                throw new Exception(
+                    __('admin-marketplace.messages.validate_failed') . ': Требуется Flute ' . $requiredFlute,
+                );
             }
         }
 
@@ -228,7 +294,10 @@ class ModuleInstallerService
             $missingModules = $this->checkModuleDependencies($requiredModules);
 
             if (!empty($missingModules)) {
-                throw new Exception(__('admin-marketplace.messages.validate_failed') . ': Отсутствуют модули: ' . implode(', ', $missingModules));
+                throw new Exception(
+                    __('admin-marketplace.messages.validate_failed') . ': Отсутствуют модули: '
+                        . implode(', ', $missingModules),
+                );
             }
         }
 
@@ -247,6 +316,7 @@ class ModuleInstallerService
     public function installModule(array $module): array
     {
         $this->keepProcessAlive();
+        $this->ensureMarketplaceWorkspace();
 
         if (empty($this->moduleExtractPath) || !is_dir($this->moduleExtractPath)) {
             throw new Exception(__('admin-marketplace.messages.install_failed') . ': Распакованные файлы не найдены');
@@ -263,7 +333,9 @@ class ModuleInstallerService
             $moduleName = $this->moduleInfo['name'];
         }
 
-        $moduleFolder = $this->sanitizeModuleFolderName((string) ($moduleName ?? $this->moduleKey ?? $module['slug']));
+        $moduleFolder = $this->sanitizeModuleFolderName(
+            (string) ( $moduleName ?? $this->moduleKey ?? $module['slug'] ),
+        );
         $destination = $this->modulesDir . '/' . $moduleFolder;
 
         $this->backupDir = null;
@@ -271,11 +343,11 @@ class ModuleInstallerService
             if (config('app.create_backup')) {
                 $this->backupDir = storage_path('backup/modules/' . $moduleFolder . '-' . date('Y-m-d-His'));
 
-                if (!is_dir($this->backupDir)) {
-                    mkdir($this->backupDir, 0o755, true);
-                }
+                $this->ensureWritableDirectory(dirname((string) $this->backupDir), true);
+                $this->ensureWritableDirectory($this->backupDir, true);
 
                 $this->copyDirectory($destination, $this->backupDir);
+                $this->applyModuleFilesystemAcl($this->backupDir);
             }
 
             $this->removeDirectory($destination);
@@ -286,6 +358,11 @@ class ModuleInstallerService
         }
 
         $this->copyDirectory($source, $destination);
+
+        clearstatcache(true, $destination);
+        $this->applyModuleFilesystemAcl($destination);
+        $this->invalidatePhpOpcacheUnder($destination);
+
         $this->waitForCopiedModuleJson($destination);
         $this->moduleFolder = $moduleFolder;
 
@@ -327,11 +404,18 @@ class ModuleInstallerService
             $composerManager = app(ComposerManager::class);
             $composerManager->install();
 
+            clearstatcache(true, $this->modulesDir . '/' . $this->moduleFolder);
+            $this->invalidateComposerAutoloadCaches();
+            $modulePath = $this->modulesDir . '/' . $this->moduleFolder;
+            if (is_dir($modulePath)) {
+                $this->invalidatePhpOpcacheUnder($modulePath);
+            }
+
             return [
                 'success' => true,
                 'message' => __('admin-marketplace.messages.composer_success'),
             ];
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             throw new Exception(__('admin-marketplace.messages.composer_failed') . ': ' . $e->getMessage());
         }
     }
@@ -341,24 +425,37 @@ class ModuleInstallerService
      */
     public function finishInstallation(): array
     {
-        if ($this->moduleArchivePath && file_exists($this->moduleArchivePath)) {
-            unlink($this->moduleArchivePath);
+        try {
+            if ($this->moduleArchivePath && file_exists($this->moduleArchivePath)) {
+                @unlink($this->moduleArchivePath);
+            }
+
+            if ($this->moduleExtractPath && is_dir($this->moduleExtractPath)) {
+                $this->removeDirectory($this->moduleExtractPath);
+            }
+
+            if ($this->moduleFolder !== null && $this->moduleFolder !== '') {
+                $installedPath = $this->modulesDir . '/' . $this->moduleFolder;
+                if (is_dir($installedPath)) {
+                    $this->invalidatePhpOpcacheUnder($installedPath);
+                }
+            }
+
+            app(ModuleManager::class)->clearCache();
+            $this->flushCompiledTranslations();
+            $this->logOpcacheProductionHints();
+
+            if (function_exists('cache_warmup_mark')) {
+                cache_warmup_mark();
+            }
+
+            return [
+                'success' => true,
+                'message' => __('admin-marketplace.messages.installation_complete'),
+            ];
+        } finally {
+            $this->releaseMarketplaceLock();
         }
-
-        if ($this->moduleExtractPath && is_dir($this->moduleExtractPath)) {
-            $this->removeDirectory($this->moduleExtractPath);
-        }
-
-        app(\Flute\Core\ModulesManager\ModuleManager::class)->clearCache();
-
-        if (function_exists('cache_warmup_mark')) {
-            cache_warmup_mark();
-        }
-
-        return [
-            'success' => true,
-            'message' => __('admin-marketplace.messages.installation_complete'),
-        ];
     }
 
     /**
@@ -374,6 +471,10 @@ class ModuleInstallerService
 
         if ($backupDir && is_dir($backupDir)) {
             $this->copyDirectory($backupDir, $destination);
+            if (is_dir($destination)) {
+                $this->applyModuleFilesystemAcl($destination);
+                $this->invalidatePhpOpcacheUnder($destination);
+            }
             $this->removeDirectory($backupDir);
         }
 
@@ -413,36 +514,60 @@ class ModuleInstallerService
         return $base;
     }
 
-    protected function waitForCopiedModuleJson(string $destinationDir, int $timeoutSeconds = 15): void
+    protected function waitForCopiedModuleJson(string $destinationDir, int $timeoutSeconds = 20): void
     {
         $this->keepProcessAlive();
 
         $start = microtime(true);
+        $moduleJsonPath = $destinationDir . '/module.json';
 
-        while ((microtime(true) - $start) < $timeoutSeconds) {
-            clearstatcache(true);
+        while (( microtime(true) - $start ) < $timeoutSeconds) {
+            clearstatcache(true, $destinationDir);
+            clearstatcache(true, $moduleJsonPath);
 
-            if (is_file($destinationDir . '/module.json')) {
-                return;
-            }
+            if (is_file($moduleJsonPath)) {
+                $content = @file_get_contents($moduleJsonPath);
+                if ($content !== false && strlen($content) > 10) {
+                    if (function_exists('opcache_invalidate')) {
+                        @opcache_invalidate($moduleJsonPath, true);
+                    }
 
-            $jsonFinder = finder();
-            $jsonFinder
-                ->files()
-                ->name('module.json')
-                ->in($destinationDir)
-                ->depth('== 1');
-
-            foreach ($jsonFinder as $jsonFile) {
-                if ($jsonFile->isFile()) {
                     return;
                 }
             }
 
-            usleep(250000);
+            if (is_dir($destinationDir)) {
+                try {
+                    $jsonFinder = finder();
+                    $jsonFinder->files()->name('module.json')->in($destinationDir)->depth('== 1');
+
+                    foreach ($jsonFinder as $jsonFile) {
+                        if ($jsonFile->isFile()) {
+                            $nestedPath = $jsonFile->getRealPath();
+                            $content = @file_get_contents($nestedPath);
+                            if ($content !== false && strlen($content) > 10) {
+                                if (function_exists('opcache_invalidate')) {
+                                    @opcache_invalidate($nestedPath, true);
+                                }
+
+                                return;
+                            }
+                        }
+                    }
+                } catch (DirectoryNotFoundException $e) {
+                    logs('marketplace')->debug('module.json finder: ' . $e->getMessage());
+                }
+            }
+
+            usleep(300000);
         }
 
-        throw new Exception(__('admin-marketplace.messages.install_failed') . ': Файл module.json не найден после копирования');
+        throw new Exception(
+            __('admin-marketplace.messages.install_failed')
+            . ': Файл module.json не найден после копирования ('
+            . $moduleJsonPath
+            . ')',
+        );
     }
 
     /**
@@ -505,11 +630,7 @@ class ModuleInstallerService
         }
 
         if (!is_dir($destination)) {
-            $dirPerms = fileperms($source) & 0o777;
-            mkdir($destination, $dirPerms, true);
-            chmod($destination, $dirPerms);
-            @chown($destination, fileowner($source));
-            @chgrp($destination, filegroup($source));
+            mkdir($destination, 0o755, true);
         }
 
         $directory = opendir($source);
@@ -517,7 +638,7 @@ class ModuleInstallerService
             return false;
         }
 
-        while (($file = readdir($directory)) !== false) {
+        while (( $file = readdir($directory) ) !== false) {
             if ($file === '.' || $file === '..') {
                 continue;
             }
@@ -528,11 +649,9 @@ class ModuleInstallerService
             if (is_dir($sourcePath)) {
                 $this->copyDirectory($sourcePath, $destinationPath);
             } else {
-                copy($sourcePath, $destinationPath);
-                $filePerms = fileperms($sourcePath) & 0o777;
-                chmod($destinationPath, $filePerms);
-                @chown($destinationPath, fileowner($sourcePath));
-                @chgrp($destinationPath, filegroup($sourcePath));
+                if (copy($sourcePath, $destinationPath)) {
+                    chmod($destinationPath, 0o644);
+                }
             }
         }
 
@@ -579,6 +698,273 @@ class ModuleInstallerService
         }
         if (function_exists('ignore_user_abort')) {
             @ignore_user_abort(true);
+        }
+    }
+
+    protected function ensureWritableDirectory(string $dir, bool $create): void
+    {
+        if ($create && !is_dir($dir)) {
+            if (!@mkdir($dir, 0o755, true) && !is_dir($dir)) {
+                throw new Exception(__('admin-marketplace.messages.directory_not_writable', ['path' => $dir]));
+            }
+        }
+
+        if (!is_dir($dir) || !is_writable($dir)) {
+            throw new Exception(__('admin-marketplace.messages.directory_not_writable', ['path' => $dir]));
+        }
+    }
+
+    protected function ensureMarketplaceWorkspace(): void
+    {
+        $this->ensureWritableDirectory($this->tempDir, true);
+        $this->ensureWritableDirectory($this->modulesDir, true);
+    }
+
+    protected function acquireMarketplaceLock(): void
+    {
+        if ($this->marketplaceLockHandle !== null) {
+            return;
+        }
+
+        $lockPath = $this->tempDir . '/.marketplace-install.lock';
+        $handle = @fopen($lockPath, 'cb');
+        if ($handle === false) {
+            throw new Exception(__('admin-marketplace.messages.install_failed') . ': lock file');
+        }
+
+        if (!flock($handle, LOCK_EX | LOCK_NB)) {
+            fclose($handle);
+            throw new Exception(__('admin-marketplace.messages.concurrent_marketplace_operation'));
+        }
+
+        $this->marketplaceLockHandle = $handle;
+    }
+
+    protected function releaseMarketplaceLock(): void
+    {
+        if ($this->marketplaceLockHandle === null) {
+            return;
+        }
+
+        flock($this->marketplaceLockHandle, LOCK_UN);
+        fclose($this->marketplaceLockHandle);
+        $this->marketplaceLockHandle = null;
+    }
+
+    protected function buildDownloadRequestUrl(string $downloadUrl): string
+    {
+        $key = (string) config('app.flute_key', '');
+        $separator = str_contains($downloadUrl, '?') ? '&' : '?';
+
+        return $downloadUrl . $separator . 'accessKey=' . rawurlencode($key);
+    }
+
+    /**
+     * Limit server-side downloads to configured marketplace hosts (mitigates SSRF if API JSON is tampered).
+     *
+     * @return array<string,bool> map host(lower) => true
+     */
+    protected function getTrustedMarketplaceDownloadHostMap(): array
+    {
+        $map = [];
+        $primary = rtrim((string) config('app.flute_market_url', 'https://flute-cms.com'), '/');
+        $mirrors = config('app.flute_market_mirrors', []);
+        $extra = config('app.flute_market_download_hosts', []);
+
+        foreach ([$primary, ...( is_array($mirrors) ? $mirrors : [] )] as $url) {
+            if (!is_string($url) || $url === '') {
+                continue;
+            }
+            $parsed = parse_url($url);
+            if (!empty($parsed['host'])) {
+                $map[strtolower((string) $parsed['host'])] = true;
+            }
+        }
+
+        foreach (is_array($extra) ? $extra : [] as $item) {
+            if (!is_string($item) || $item === '') {
+                continue;
+            }
+            if (str_contains($item, '://')) {
+                $parsed = parse_url($item);
+                if (!empty($parsed['host'])) {
+                    $map[strtolower((string) $parsed['host'])] = true;
+                }
+            } else {
+                $map[strtolower($item)] = true;
+            }
+        }
+
+        foreach (self::TRUSTED_FLUTE_DOWNLOAD_HOSTS as $host) {
+            $map[strtolower($host)] = true;
+        }
+
+        return $map;
+    }
+
+    protected function assertDownloadUrlAllowed(string $url): void
+    {
+        $parts = parse_url($url);
+        if (!is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
+            throw new Exception(__('admin-marketplace.messages.download_url_not_allowed'));
+        }
+
+        $scheme = strtolower((string) $parts['scheme']);
+        $host = strtolower((string) $parts['host']);
+
+        $allowHttp = function_exists('is_debug') && is_debug() || (bool) config('app.development_mode', false);
+        if ($scheme !== 'https' && !( $scheme === 'http' && $allowHttp )) {
+            throw new Exception(__('admin-marketplace.messages.download_url_not_allowed'));
+        }
+
+        $trusted = $this->getTrustedMarketplaceDownloadHostMap();
+        if ($trusted === [] || !isset($trusted[$host])) {
+            throw new Exception(__('admin-marketplace.messages.download_url_not_allowed'));
+        }
+    }
+
+    protected function cleanupFailedDownloadArtifact(): void
+    {
+        if ($this->moduleArchivePath !== null && is_file($this->moduleArchivePath)) {
+            @unlink($this->moduleArchivePath);
+        }
+    }
+
+    protected function assertValidZipFile(string $path): void
+    {
+        if (!is_file($path)) {
+            throw new Exception(__('admin-marketplace.messages.invalid_zip'));
+        }
+
+        $size = filesize($path);
+        if ($size === false || $size < 22) {
+            @unlink($path);
+            throw new Exception(__('admin-marketplace.messages.invalid_zip'));
+        }
+
+        $handle = fopen($path, 'rb');
+        if ($handle === false) {
+            @unlink($path);
+            throw new Exception(__('admin-marketplace.messages.invalid_zip'));
+        }
+
+        $magic = fread($handle, 4);
+        fclose($handle);
+
+        if (
+            $magic !== self::ZIP_MAGIC_LOCAL
+            && $magic !== self::ZIP_MAGIC_EMPTY
+            && $magic !== self::ZIP_MAGIC_SPANNED
+        ) {
+            @unlink($path);
+            throw new Exception(__('admin-marketplace.messages.invalid_zip'));
+        }
+
+        app(FileUploader::class)->inspectZipArchive($path, [
+            'max_entries' => 5000,
+            'max_total_size' => 100 * 1024 * 1024,
+            'min_compression_ratio' => 0.001,
+        ]);
+    }
+
+    /**
+     * Normalize permissions for production (dirs 0755, files 0644).
+     */
+    protected function applyModuleFilesystemAcl(string $root): void
+    {
+        if (!is_dir($root)) {
+            return;
+        }
+
+        @chmod($root, 0o755);
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST,
+        );
+
+        foreach ($iterator as $file) {
+            if ($file->isDir()) {
+                @chmod($file->getPathname(), 0o755);
+            } elseif ($file->isFile()) {
+                @chmod($file->getPathname(), 0o644);
+            }
+        }
+    }
+
+    protected function invalidatePhpOpcacheUnder(string $root): void
+    {
+        if (!function_exists('opcache_invalidate') || !is_dir($root)) {
+            return;
+        }
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST,
+        );
+
+        foreach ($iterator as $file) {
+            if (!$file->isFile()) {
+                continue;
+            }
+
+            if (strtolower($file->getExtension()) !== 'php') {
+                continue;
+            }
+
+            @opcache_invalidate($file->getPathname(), true);
+        }
+    }
+
+    protected function invalidateComposerAutoloadCaches(): void
+    {
+        if (!function_exists('opcache_invalidate')) {
+            return;
+        }
+
+        $dir = path('vendor/composer');
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $files = [
+            'autoload_real.php',
+            'autoload_static.php',
+            'autoload_classmap.php',
+            'autoload_psr4.php',
+            'autoload_files.php',
+            'autoload_namespaces.php',
+            'installed.php',
+        ];
+
+        foreach ($files as $name) {
+            $full = $dir . DIRECTORY_SEPARATOR . $name;
+            if (is_file($full)) {
+                @opcache_invalidate($full, true);
+            }
+        }
+    }
+
+    /**
+     * When opcache.validate_timestamps=0, invalidate may not refresh all FPM workers until process reload.
+     */
+    protected function logOpcacheProductionHints(): void
+    {
+        if (!function_exists('opcache_get_status')) {
+            return;
+        }
+
+        $status = @opcache_get_status(false);
+        if (!is_array($status) || empty($status['opcache_enabled'])) {
+            return;
+        }
+
+        $validate = ini_get('opcache.validate_timestamps');
+        if ($validate === '0' || $validate === false || strtolower((string) $validate) === 'off') {
+            logs('marketplace')->warning(
+                'OPcache validate_timestamps is off: some PHP-FPM workers may serve stale code until reload. '
+                . 'After marketplace install/update, reload php-fpm (or enable validate_timestamps in php.ini).',
+            );
         }
     }
 }

@@ -3,6 +3,7 @@
 namespace Flute\Admin\Packages\User\Services;
 
 use DateTimeImmutable;
+use DateTimeZone;
 use Exception;
 use Flute\Core\Database\Entities\Role;
 use Flute\Core\Database\Entities\SocialNetwork;
@@ -34,11 +35,26 @@ class AdminUsersService
     /**
      * Сохранение пользователя.
      */
-    public function saveUser(User $user, array $data, \Symfony\Component\HttpFoundation\FileBag $files): void
-    {
+    public function saveUser(
+        User $user,
+        array $data,
+        \Symfony\Component\HttpFoundation\FileBag $files,
+        bool $removeAvatar = false,
+        bool $removeBanner = false,
+    ): void {
         $this->handleRoles($user, $data['roles'] ?? []);
 
-        $this->handleFiles($user, $files);
+        $avatarUploaded = $this->handleFile($user, $files, 'avatar', $user->avatar);
+        $bannerUploaded = $this->handleFile($user, $files, 'banner', $user->banner);
+
+        if ($removeAvatar && !$avatarUploaded) {
+            $user->avatar = config('profile.default_avatar');
+        }
+
+        if ($removeBanner && !$bannerUploaded) {
+            $user->banner = null;
+        }
+
         $this->updateUserData($user, $data);
 
         $user->saveOrFail();
@@ -54,7 +70,7 @@ class AdminUsersService
         $block->blockedBy = user()->getCurrentUser();
         $block->reason = $data['reason'];
         $block->blockedFrom = new DateTimeImmutable();
-        $block->blockedUntil = $data['blockedUntil'] ? new DateTimeImmutable($data['blockedUntil']) : null;
+        $block->blockedUntil = $data['blockedUntil'] ? $this->parseDateTime($data['blockedUntil']) : null;
         $block->save();
     }
 
@@ -64,7 +80,10 @@ class AdminUsersService
     public function unblockUser(User $user): void
     {
         foreach ($user->blocksReceived as $block) {
-            if ($block->isActive && ($block->blockedUntil > new DateTimeImmutable() || $block->blockedUntil === null)) {
+            if (
+                $block->isActive
+                && ( $block->blockedUntil > new DateTimeImmutable() || $block->blockedUntil === null )
+            ) {
                 $block->isActive = false;
                 $block->save();
             }
@@ -76,7 +95,7 @@ class AdminUsersService
      */
     public function resetPassword(User $user, string $password): void
     {
-        $user->password = password_hash($password, PASSWORD_DEFAULT);
+        $user->setPassword($password);
         $user->save();
 
         $this->clearUserSessions($user);
@@ -177,6 +196,18 @@ class AdminUsersService
     }
 
     /**
+     * Parse datetime string from datetime-local input.
+     * The input comes in format Y-m-d\TH:i without timezone info.
+     * We interpret it as the application's configured timezone.
+     */
+    private function parseDateTime(string $dateTimeString): DateTimeImmutable
+    {
+        $timezone = new DateTimeZone(config('app.timezone') ?: date_default_timezone_get());
+
+        return new DateTimeImmutable($dateTimeString, $timezone);
+    }
+
+    /**
      * Обработка ролей пользователя.
      */
     private function handleRoles(User $user, array $roleIds): void
@@ -189,10 +220,11 @@ class AdminUsersService
         $user->clearRoles();
 
         if ($hasBossAccess) {
-            $selectedRoles = array_filter(
-                Role::findAll(),
-                static fn ($role) => in_array($role->id, $roleIds)
-            );
+            $selectedRoles = array_filter(Role::findAll(), static fn($role) => in_array(
+                $role->id,
+                array_map('intval', $roleIds),
+                true,
+            ));
 
             foreach ($selectedRoles as $role) {
                 $user->addRole($role);
@@ -207,7 +239,10 @@ class AdminUsersService
             if (!empty($roleIds)) {
                 $allowedRoles = array_filter(
                     Role::findAll(),
-                    static fn ($role) => in_array($role->id, $roleIds) && $role->priority < $userHighestPriority
+                    static fn($role) => (
+                        in_array($role->id, array_map('intval', $roleIds), true)
+                        && $role->priority < $userHighestPriority
+                    ),
                 );
 
                 foreach ($allowedRoles as $role) {
@@ -228,34 +263,98 @@ class AdminUsersService
     }
 
     /**
-     * Обработка загруженных файлов.
+     * Process a single file upload field (avatar or banner).
+     * Returns true if a new file was actually uploaded.
      */
-    private function handleFiles(User $user, \Symfony\Component\HttpFoundation\FileBag $files): void
-    {
+    private function handleFile(
+        User $user,
+        \Symfony\Component\HttpFoundation\FileBag $files,
+        string $field,
+        ?string $currentPath,
+    ): bool {
+        if (!$files->has($field)) {
+            return false;
+        }
+
+        $file = $files->get($field);
+
+        if (!$this->isValidNewUpload($file, $currentPath)) {
+            return false;
+        }
+
         /** @var FileUploader $uploader */
         $uploader = app(FileUploader::class);
 
-        if ($files->has('avatar') && $files->get('avatar')->isValid()) {
-            try {
-                $avatar = $uploader->uploadImage($files->get('avatar'), 10);
-                if ($avatar) {
-                    $user->avatar = $avatar;
+        try {
+            $uploaded = $uploader->uploadImage($file, 10);
+            if ($uploaded) {
+                $oldFile = $user->{$field};
+                $user->{$field} = $uploaded;
+                $uploader->removeUploadedFile($oldFile);
+
+                return true;
+            }
+        } catch (Throwable $e) {
+            throw new Exception(__("admin-users.messages.{$field}_upload_error", ['message' => $e->getMessage()]));
+        }
+
+        return false;
+    }
+
+    /**
+     * Checks whether the file is a genuinely new upload (not a re-fetched default).
+     *
+     * FilePond with storeAsFile re-sends existing images as blobs fetched from
+     * their current URL. We detect these by comparing the uploaded filename
+     * against the basename of the currently stored path.
+     */
+    private function isValidNewUpload($file, ?string $currentPath = null): bool
+    {
+        if (!$file || !$file->isValid()) {
+            return false;
+        }
+
+        if ($file->getSize() === 0) {
+            return false;
+        }
+
+        $originalName = $file->getClientOriginalName();
+
+        if (
+            $originalName
+            && ( str_starts_with($originalName, 'http://') || str_starts_with($originalName, 'https://') )
+        ) {
+            return false;
+        }
+
+        if ($originalName && ( str_starts_with($originalName, '/') || str_starts_with($originalName, 'assets/') )) {
+            return false;
+        }
+
+        $tempPath = $file->getPathname();
+        if ($tempPath) {
+            $firstBytes = @file_get_contents($tempPath, false, null, 0, 256);
+            if ($firstBytes !== false) {
+                $trimmed = trim($firstBytes);
+                if (
+                    str_starts_with($trimmed, 'http://')
+                    || str_starts_with($trimmed, 'https://')
+                    || str_starts_with($trimmed, '/')
+                ) {
+                    return false;
                 }
-            } catch (Exception $e) {
-                throw new Exception(__('admin-users.messages.avatar_upload_error', ['message' => $e->getMessage()]));
             }
         }
 
-        if ($files->has('banner') && $files->get('banner')->isValid()) {
-            try {
-                $banner = $uploader->uploadImage($files->get('banner'), 10);
-                if ($banner) {
-                    $user->banner = $banner;
-                }
-            } catch (Exception $e) {
-                throw new Exception(__('admin-users.messages.banner_upload_error', ['message' => $e->getMessage()]));
+        if ($currentPath && $originalName) {
+            $currentBasename = basename($currentPath);
+            $nameWithoutQuery = explode('?', $originalName)[0];
+            if ($nameWithoutQuery === $currentBasename) {
+                return false;
             }
         }
+
+        return true;
     }
 
     /**
@@ -270,12 +369,32 @@ class AdminUsersService
         if (!empty($data['uri'])) {
             $user->uri = $data['uri'];
         }
-        if (!empty($data['email'])) {
-            $user->email = $data['email'];
+        if (!empty($data['email']) && $data['email'] !== $user->email) {
+            if (config('auth.registration.confirm_email')) {
+                $user->pendingEmail = $data['email'];
+
+                try {
+                    template()->addNamespace('flute', path('app/Themes/standard/views'));
+                    $verificationToken = auth()->createVerificationToken($user)->rawToken;
+                    $html = template()->render('flute::emails.confirmation', [
+                        'url' => url('confirm-email/' . $verificationToken),
+                        'name' => $user->name,
+                    ]);
+                    email()->send($data['email'], __('auth.confirmation.subject'), $html);
+                } catch (\Throwable $e) {
+                    logs()->warning('Failed to send email change confirmation from admin: ' . $e->getMessage());
+                }
+            } else {
+                $user->email = $data['email'];
+            }
         }
         $user->balance = floatval($data['balance']);
         $user->verified = isset($data['verified']) ? filter_var($data['verified'], FILTER_VALIDATE_BOOLEAN) : false;
         $user->hidden = isset($data['hidden']) ? filter_var($data['hidden'], FILTER_VALIDATE_BOOLEAN) : false;
+
+        if (isset($data['approved']) && user()->can('admin.boss')) {
+            $user->approved = filter_var($data['approved'], FILTER_VALIDATE_BOOLEAN);
+        }
 
         $user->save();
     }

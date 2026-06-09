@@ -29,7 +29,7 @@ class SocialService implements SocialServiceInterface
     /**
      * Settings that should be stored on provider root level, not inside "keys".
      */
-    private array $nonKeySettingFields = ['scope', 'fields', 'display', 'version', 'service_token'];
+    private array $nonKeySettingFields = ['scope', 'fields', 'display', 'version', 'service_token', 'proxy'];
 
     /**
      * Class constructor.
@@ -51,7 +51,10 @@ class SocialService implements SocialServiceInterface
     {
         $socialNetwork = new SocialNetwork();
         $socialNetwork->key = $config['key'];
-        $socialNetwork->settings = json_encode($this->prepareSettingsPayload($config['key'], $config['settings'] ?? []));
+        $socialNetwork->settings = json_encode($this->prepareSettingsPayload(
+            $config['key'],
+            $config['settings'] ?? [],
+        ));
         $socialNetwork->icon = $config['icon'] ?? '';
         $socialNetwork->enabled = $config['enabled'] ?? true;
         $socialNetwork->allowToRegister = $config['allowToRegister'] ?? true;
@@ -67,7 +70,11 @@ class SocialService implements SocialServiceInterface
      */
     public function registerSocials()
     {
-        $providers = SocialNetwork::findAll(['enabled' => true]);
+        $providers = cache()->callback(
+            'flute.social_networks',
+            static fn() => SocialNetwork::findAll(['enabled' => true]),
+            3600,
+        );
 
         foreach ($providers as $socialNetwork) {
             $this->registerSocial($socialNetwork);
@@ -231,7 +238,7 @@ class SocialService implements SocialServiceInterface
         }
 
         if ($this->requiresAdditionalRegistration()) {
-            throw new NeedRegistrationException($authData['profile']);
+            throw new NeedRegistrationException($authData['profile'], $social['entity']);
         }
 
         return $this->registerNewUser($authData['profile'], $social['entity']);
@@ -298,9 +305,7 @@ class SocialService implements SocialServiceInterface
         $email = $userProfile->email;
 
         if ($email) {
-            $existingUser = User::query()
-                ->where(['email' => $email])
-                ->fetchOne();
+            $existingUser = User::query()->where(['email' => $email])->fetchOne();
 
             if ($existingUser) {
                 $email = null;
@@ -327,6 +332,21 @@ class SocialService implements SocialServiceInterface
         $userSocialNetwork->socialNetwork = $socialNetwork;
         $userSocialNetwork->linkedAt = new DateTimeImmutable();
 
+        if ($socialNetwork->key === 'Discord' && !empty($userSocialNetwork->value)) {
+            $userSocialNetwork->url = 'https://discord.com/users/' . $userSocialNetwork->value;
+        }
+
+        $additionalData = [];
+        if (!empty($userProfile->photoURL)) {
+            $additionalData['photoUrl'] = $userProfile->photoURL;
+        }
+        if (!empty($userProfile->data) && is_array($userProfile->data)) {
+            $additionalData = array_merge($additionalData, $userProfile->data);
+        }
+        if (!empty($additionalData)) {
+            $userSocialNetwork->setAdditional($additionalData);
+        }
+
         try {
             transaction([$user, $userSocialNetwork])->run();
         } catch (\Cycle\Database\Exception\StatementException\ConstrainException $e) {
@@ -340,9 +360,16 @@ class SocialService implements SocialServiceInterface
             throw $e;
         }
 
+        if ($socialNetwork->key === 'Telegram') {
+            $extra = $userSocialNetwork->getAdditional() ?? [];
+            $extra['user_id'] = $user->id;
+            $userSocialNetwork->setAdditional($extra);
+            $userSocialNetwork->save();
+        }
+
         events()->dispatch(new UserRegisteredEvent($user), UserRegisteredEvent::NAME);
 
-        if ($socialNetwork->key === "Discord") {
+        if ($socialNetwork->key === 'Discord') {
             app()->get(DiscordService::class)->linkRoles($user, $user->roles);
         }
 
@@ -364,6 +391,8 @@ class SocialService implements SocialServiceInterface
         $authData = $this->authenticate($normalized, true);
         $social = $this->retrieveSocialNetwork($normalized);
 
+        $socialNetworkEntity = SocialNetwork::findByPK($social['entity']->id);
+
         $userSocialNetwork = UserSocialNetwork::query()
             ->where([
                 'user.id' => $user->id,
@@ -375,23 +404,33 @@ class SocialService implements SocialServiceInterface
         $profile = $authData['profile'];
         $token = $authData['adapter']->getAccessToken();
 
-        $existingSocial = UserSocialNetwork::query()
-            ->where(['value' => $profile->identifier])
-            ->load(['user'])
-            ->fetchOne();
+        $existingSocials = UserSocialNetwork::query()
+            ->where([
+                'value' => $profile->identifier,
+                'socialNetwork.id' => $social['entity']->id,
+            ])
+            ->fetchAll();
 
-        if ($existingSocial && $existingSocial->user->id !== $user->id) {
-            if ($existingSocial->user->isTemporary()) {
-                $tempUserId = $existingSocial->user->id;
+        foreach ($existingSocials as $existingSocial) {
+            $existingUser = null;
+            try {
+                $existingUser = $existingSocial->user;
+            } catch (Throwable $e) {
+                // Orphaned record — user was deleted
+            }
 
+            if ($existingUser && $existingUser->id === $user->id) {
+                continue;
+            }
+
+            if (!$existingUser || $existingUser->isTemporary()) {
                 try {
                     transaction($existingSocial, 'delete')->run();
-                    $tempUser = User::findByPK($tempUserId);
-                    if ($tempUser) {
-                        transaction($tempUser, 'delete')->run();
+                    if ($existingUser) {
+                        transaction($existingUser, 'delete')->run();
                     }
-                } catch (Exception $e) {
-                    logs()->error("Error deleting temporary user during bind: " . $e->getMessage());
+                } catch (Throwable $e) {
+                    logs()->error('Error deleting orphaned social binding: ' . $e->getMessage());
 
                     throw new Exception('Failed to reassign social account. Please try again.');
                 }
@@ -404,7 +443,11 @@ class SocialService implements SocialServiceInterface
         if ($userSocialNetwork) {
             $lastLinked = $userSocialNetwork->linkedAt;
 
-            if ($social['entity']->cooldownTime > 0 && $lastLinked && ($now->getTimestamp() - $lastLinked->getTimestamp() < $social['entity']->cooldownTime)) {
+            if (
+                $social['entity']->cooldownTime > 0
+                && $lastLinked
+                && ( $now->getTimestamp() - $lastLinked->getTimestamp() ) < $social['entity']->cooldownTime
+            ) {
                 throw new Exception(__('profile.errors.social_delay'));
             }
 
@@ -413,8 +456,23 @@ class SocialService implements SocialServiceInterface
             $userSocialNetwork->name = $profile->displayName;
             $userSocialNetwork->linkedAt = new DateTimeImmutable();
 
-            if ($token) {
-                $userSocialNetwork->additional = json_encode($token);
+            // Normalize Discord profile URL (historical compatibility + consistent behavior)
+            if ($social['entity']->key === 'Discord' && !empty($userSocialNetwork->value)) {
+                $userSocialNetwork->url = 'https://discord.com/users/' . $userSocialNetwork->value;
+            }
+
+            $additionalData = $token ? json_decode(json_encode($token), true) : [];
+            if (!empty($profile->photoURL)) {
+                $additionalData['photoUrl'] = $profile->photoURL;
+            }
+            if (!empty($profile->data) && is_array($profile->data)) {
+                $additionalData = array_merge($additionalData, $profile->data);
+            }
+            if ($social['entity']->key === 'Telegram') {
+                $additionalData['user_id'] = $user->id;
+            }
+            if (!empty($additionalData)) {
+                $userSocialNetwork->additional = json_encode($additionalData);
             }
 
             try {
@@ -430,11 +488,26 @@ class SocialService implements SocialServiceInterface
             $userSocialNetwork->url = $profile->profileURL;
             $userSocialNetwork->name = $profile->displayName;
             $userSocialNetwork->user = $user;
-            $userSocialNetwork->socialNetwork = $social['entity'];
+            $userSocialNetwork->socialNetwork = $socialNetworkEntity;
             $userSocialNetwork->linkedAt = new DateTimeImmutable();
 
-            if ($token) {
-                $userSocialNetwork->additional = json_encode($token);
+            // Normalize Discord profile URL (historical compatibility + consistent behavior)
+            if ($social['entity']->key === 'Discord' && !empty($userSocialNetwork->value)) {
+                $userSocialNetwork->url = 'https://discord.com/users/' . $userSocialNetwork->value;
+            }
+
+            $additionalData = $token ? json_decode(json_encode($token), true) : [];
+            if (!empty($profile->photoURL)) {
+                $additionalData['photoUrl'] = $profile->photoURL;
+            }
+            if (!empty($profile->data) && is_array($profile->data)) {
+                $additionalData = array_merge($additionalData, $profile->data);
+            }
+            if ($social['entity']->key === 'Telegram') {
+                $additionalData['user_id'] = $user->id;
+            }
+            if (!empty($additionalData)) {
+                $userSocialNetwork->additional = json_encode($additionalData);
             }
 
             try {
@@ -447,10 +520,13 @@ class SocialService implements SocialServiceInterface
         }
 
         if (!isset($user->roles)) {
-            $user = User::query()->load(['roles'])->where(['id' => $user->id])->fetchOne();
+            $user = User::query()
+                ->load(['roles'])
+                ->where(['id' => $user->id])
+                ->fetchOne();
         }
 
-        if ($social['entity']->key === "Discord") {
+        if ($social['entity']->key === 'Discord') {
             app()->get(DiscordService::class)->linkRoles($user, $user->roles);
         }
 
@@ -523,7 +599,11 @@ class SocialService implements SocialServiceInterface
      */
     private function initializeProviders(): void
     {
-        $providers = SocialNetwork::findAll(['enabled' => true]);
+        $providers = cache()->callback(
+            'flute.social_networks',
+            static fn() => SocialNetwork::findAll(['enabled' => true]),
+            3600,
+        );
 
         foreach ($providers as $socialNetwork) {
             $this->registerSocial($socialNetwork);
@@ -544,8 +624,31 @@ class SocialService implements SocialServiceInterface
      */
     private function initializePSR()
     {
-        $path = str_replace('\\', DIRECTORY_SEPARATOR, 'Hybridauth\\Provider\\');
-        app()->getLoader()->addPsr4('Hybridauth\\Provider\\', BASE_PATH . 'app' . DIRECTORY_SEPARATOR . 'Core' . DIRECTORY_SEPARATOR . 'Modules' . DIRECTORY_SEPARATOR . 'Auth' . DIRECTORY_SEPARATOR . 'Hybrid');
+        $hybridPath =
+            BASE_PATH
+            . 'app'
+            . DIRECTORY_SEPARATOR
+            . 'Core'
+            . DIRECTORY_SEPARATOR
+            . 'Modules'
+            . DIRECTORY_SEPARATOR
+            . 'Auth'
+            . DIRECTORY_SEPARATOR
+            . 'Hybrid';
+
+        $loader = app()->getLoader();
+
+        $loader->addPsr4('Hybridauth\\Provider\\', $hybridPath);
+
+        $loader->addClassMap([
+            'Hybridauth\\Provider\\Vkontakte' => $hybridPath . DIRECTORY_SEPARATOR . 'Vkontakte.php',
+            'Hybridauth\\Provider\\Yandex' => $hybridPath . DIRECTORY_SEPARATOR . 'Yandex.php',
+            'Hybridauth\\Provider\\HttpsSteam' => $hybridPath . DIRECTORY_SEPARATOR . 'HttpsSteam.php',
+            'Hybridauth\\Provider\\Telegram' => $hybridPath . DIRECTORY_SEPARATOR . 'Telegram.php',
+            'Hybridauth\\Provider\\Minecraft' => $hybridPath . DIRECTORY_SEPARATOR . 'Minecraft.php',
+        ]);
+
+        $loader->register();
     }
 
     /**
@@ -555,10 +658,20 @@ class SocialService implements SocialServiceInterface
     {
         $loader = app()->getLoader();
 
-        $path = str_replace('\\', DIRECTORY_SEPARATOR, 'Hybridauth\\Provider\\Discord');
+        $hybridPath =
+            BASE_PATH
+            . 'app'
+            . DIRECTORY_SEPARATOR
+            . 'Core'
+            . DIRECTORY_SEPARATOR
+            . 'Modules'
+            . DIRECTORY_SEPARATOR
+            . 'Auth'
+            . DIRECTORY_SEPARATOR
+            . 'Hybrid';
 
         $loader->addClassMap([
-            $path => BASE_PATH . 'app' . DIRECTORY_SEPARATOR . 'Core' . DIRECTORY_SEPARATOR . 'Modules' . DIRECTORY_SEPARATOR . 'Auth' . DIRECTORY_SEPARATOR . 'Hybrid' . DIRECTORY_SEPARATOR . 'Discord.php',
+            'Hybridauth\\Provider\\Discord' => $hybridPath . DIRECTORY_SEPARATOR . 'Discord.php',
         ]);
 
         $loader->register();
@@ -575,10 +688,14 @@ class SocialService implements SocialServiceInterface
         $callbackPath = $bind ? "profile/social/bind/{$providerName}" : "social/{$providerName}";
         $callbackUrl = url($callbackPath)->get();
 
-        $this->hybridauth = new Hybridauth([
-            'callback' => $callbackUrl,
-            'providers' => $this->registeredProviders,
-        ], null, new StorageSession());
+        $this->hybridauth = new Hybridauth(
+            [
+                'callback' => $callbackUrl,
+                'providers' => $this->registeredProviders,
+            ],
+            null,
+            new StorageSession(),
+        );
     }
 
     /**
@@ -622,8 +739,8 @@ class SocialService implements SocialServiceInterface
                     transaction($user, 'delete')->run();
                 }
             }
-        } catch (Exception $e) {
-            logs()->error("Error deleting temporary user: " . $e->getMessage());
+        } catch (Throwable $e) {
+            logs()->error('Error deleting temporary user: ' . $e->getMessage());
         }
     }
 
@@ -641,9 +758,33 @@ class SocialService implements SocialServiceInterface
         $settings['keys'] = $this->mapProviderKeys($providerKey, $settings['keys'] ?? []);
 
         if ($providerKey === 'Vkontakte') {
-            $settings['scope'] ??= 'email';
-            $settings['fields'] ??= 'photo_max,screen_name';
-            $settings['version'] ??= '5.131';
+            $settings['scope'] ??= 'vkid.personal_info email';
+        }
+
+        if (!empty($settings['proxy'])) {
+            $proxyUrl = $settings['proxy'];
+            $parsed = parse_url($proxyUrl);
+
+            $curlProxy = [];
+
+            if (!empty($parsed['user'])) {
+                $credentials = $parsed['user'];
+                if (!empty($parsed['pass'])) {
+                    $credentials .= ':' . $parsed['pass'];
+                }
+                $curlProxy[CURLOPT_PROXYUSERPWD] = $credentials;
+
+                // Rebuild proxy URL without credentials
+                $scheme = !empty($parsed['scheme']) ? $parsed['scheme'] . '://' : '';
+                $host = $parsed['host'] ?? '';
+                $port = !empty($parsed['port']) ? ':' . $parsed['port'] : '';
+                $proxyUrl = $scheme . $host . $port;
+            }
+
+            $curlProxy[CURLOPT_PROXY] = $proxyUrl;
+
+            $settings['curl_options'] = array_replace($settings['curl_options'] ?? [], $curlProxy);
+            unset($settings['proxy']);
         }
 
         return $settings;
@@ -762,7 +903,10 @@ class SocialService implements SocialServiceInterface
             $currentAvatar = $user->avatar ?? '';
             $defaultAvatar = config('profile.default_avatar');
 
-            $isDefault = empty($currentAvatar) || $currentAvatar === $defaultAvatar || str_contains($currentAvatar, basename($defaultAvatar));
+            $isDefault =
+                empty($currentAvatar)
+                || $currentAvatar === $defaultAvatar
+                || str_contains($currentAvatar, basename($defaultAvatar));
 
             $photoUrl = $profile->photoURL ?? null;
 
@@ -771,7 +915,7 @@ class SocialService implements SocialServiceInterface
 
                 try {
                     transaction($user)->run();
-                } catch (Exception $e) {
+                } catch (Throwable $e) {
                     logs()->warning('Failed to update user avatar from social profile: ' . $e->getMessage());
                 }
             }
@@ -789,7 +933,10 @@ class SocialService implements SocialServiceInterface
             $currentBanner = $user->banner ?? '';
             $defaultBanner = config('profile.default_banner');
 
-            $isDefault = empty($currentBanner) || $currentBanner === $defaultBanner || str_contains($currentBanner, basename($defaultBanner));
+            $isDefault =
+                empty($currentBanner)
+                || $currentBanner === $defaultBanner
+                || str_contains($currentBanner, basename($defaultBanner));
 
             $bannerUrl = $profile->data['bannerURL'] ?? null;
 
@@ -798,7 +945,7 @@ class SocialService implements SocialServiceInterface
 
                 try {
                     $user->saveOrFail();
-                } catch (Exception $e) {
+                } catch (Throwable $e) {
                     logs()->warning('Failed to update user banner from social profile: ' . $e->getMessage());
                 }
             }

@@ -2,7 +2,6 @@
 
 namespace Flute\Core\Modules\Payments\Initializers;
 
-use Exception;
 use Flute\Core\Database\Entities\PaymentGateway as PaymentGatewayEntity;
 use Flute\Core\Modules\Payments\Events\RegisterPaymentFactoriesEvent;
 use Flute\Core\Modules\Payments\Factories\GatewayFactory;
@@ -10,6 +9,7 @@ use Flute\Core\Modules\Payments\Processors\PaymentProcessor;
 use Flute\Core\Modules\Payments\Services\PaymentPromo;
 use Omnipay\Common\Helper;
 use Symfony\Component\EventDispatcher\EventDispatcher;
+use Throwable;
 
 class GatewayInitializer
 {
@@ -28,8 +28,11 @@ class GatewayInitializer
      * @param PaymentPromo     $paymentPromo    Service to handle promo codes.
      * @param EventDispatcher  $eventDispatcher Event dispatcher for handling events.
      */
-    public function __construct(GatewayFactory $gatewayFactory, PaymentPromo $paymentPromo, EventDispatcher $eventDispatcher)
-    {
+    public function __construct(
+        GatewayFactory $gatewayFactory,
+        PaymentPromo $paymentPromo,
+        EventDispatcher $eventDispatcher,
+    ) {
         $this->gatewayFactory = $gatewayFactory;
         $this->promoValidator = $paymentPromo;
         $this->paymentProcessor = new PaymentProcessor($this->gatewayFactory, $eventDispatcher);
@@ -122,7 +125,7 @@ class GatewayInitializer
                 } else {
                     logs()->error("Failed to initialize gateway: {$gatewayEntity->adapter}");
                 }
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 logs()->error("Failed to initialize gateway: {$gatewayEntity->adapter}");
             }
         }

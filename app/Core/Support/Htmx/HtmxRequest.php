@@ -16,11 +16,15 @@ class HtmxRequest
 
     public const HX_REQUEST = 'HX-Request';
 
+    public const HX_PRELOADED = 'HX-Preloaded';
+
     public const HX_TARGET = 'HX-Target';
 
     public const HX_TRIGGER = 'HX-Trigger';
 
     public const HX_TRIGGER_NAME = 'HX-Trigger-Name';
+
+    public const X_FLUTE_PREFETCH = 'X-Flute-Prefetch';
 
     protected HeaderBag $headers;
 
@@ -91,5 +95,24 @@ class HtmxRequest
     public function isHtmxRequest(): bool
     {
         return filter_var($this->headers->get(self::HX_REQUEST, 'false'), FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * Whether the request is a speculative preload/prefetch and must not mutate counters or analytics.
+     */
+    public function isPrefetch(): bool
+    {
+        return (
+            filter_var($this->headers->get(self::X_FLUTE_PREFETCH, 'false'), FILTER_VALIDATE_BOOLEAN)
+            || filter_var($this->headers->get(self::HX_PRELOADED, 'false'), FILTER_VALIDATE_BOOLEAN)
+        );
+    }
+
+    /**
+     * True when the layout shell (navbar, footer, sidebar frame) must not be rendered — only the swap target (e.g. #main).
+     */
+    public function omitsLayoutShell(): bool
+    {
+        return $this->isHtmxRequest() || $this->isBoosted();
     }
 }

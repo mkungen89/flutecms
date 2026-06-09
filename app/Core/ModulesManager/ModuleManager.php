@@ -47,6 +47,10 @@ class ModuleManager
 
     protected array $serviceProviders;
 
+    protected bool $databaseUnavailable = false;
+
+    protected bool $databaseFailureLogged = false;
+
     protected bool $performance;
 
     protected ?ModuleDependencies $dependencyChecker;
@@ -64,7 +68,7 @@ class ModuleManager
         $this->eventDispatcher = $eventDispatcher;
         $this->modulesPath = path('app/Modules');
         $this->ensureModulesDirectoryExists();
-        $this->performance = (bool) (is_performance());
+        $this->performance = (bool) is_performance();
         $this->dependencyChecker = $dependencyChecker;
 
         $this->modules = collect();
@@ -160,9 +164,9 @@ class ModuleManager
     {
         $this->clearCache();
 
-        $this->loadModulesJson();
-        $this->loadModulesCollections();
-        $this->loadModulesFromDatabase();
+        $this->forceReloadModulesJson();
+        $this->forceReloadModulesCollections();
+        $this->forceReloadModulesFromDatabase();
         $this->setInstalledModules();
         $this->setNotInstalledModules();
         $this->setDisabledModules();
@@ -220,6 +224,32 @@ class ModuleManager
         cache()->delete('flute.modules.collection');
         cache()->delete('flute.modules.alldb');
         cache()->delete('flute.modules.json');
+        $this->invalidateCompiledRouteCaches();
+    }
+
+    /**
+     * Drop compiled Symfony URL matchers so routes are rebuilt after module install/remove.
+     */
+    protected function invalidateCompiledRouteCaches(): void
+    {
+        $names = ['routes_compiled_front.php', 'routes_compiled_admin.php'];
+        foreach ($names as $name) {
+            $p = path('storage/app/cache/' . $name);
+            if (is_file($p)) {
+                @unlink($p);
+            }
+        }
+
+        $staleDir = (string) ( config('cache.stale_directory') ?? '' );
+        if ($staleDir !== '') {
+            $staleDir = rtrim(str_replace('\\', '/', $staleDir), '/');
+            foreach ($names as $name) {
+                $p = $staleDir . '/' . $name;
+                if (is_file($p)) {
+                    @unlink($p);
+                }
+            }
+        }
     }
 
     public function registerModules(): void
@@ -227,6 +257,70 @@ class ModuleManager
         $this->initialize();
 
         ModuleRegister::registerServiceProviders($this->serviceProviders);
+    }
+
+    /**
+     * Force reload modules from filesystem without cache.
+     */
+    public function forceReloadModulesJson(): void
+    {
+        clearstatcache(true);
+
+        if (function_exists('opcache_reset')) {
+            @opcache_reset();
+        }
+
+        $this->modulesJson = ModuleFinder::getAllJson($this->modulesPath);
+    }
+
+    protected function forceReloadModulesCollections(): void
+    {
+        $collection = collect();
+
+        foreach ($this->modulesJson as $moduleName => $modulePath) {
+            if (!is_file($modulePath)) {
+                logs('modules')->warning("Skipping module {$moduleName}: module.json missing at {$modulePath}");
+
+                continue;
+            }
+
+            try {
+                $moduleData = ModuleFinder::getModuleJson($modulePath);
+            } catch (Throwable $e) {
+                logs('modules')->warning("Skipping module {$moduleName}: " . $e->getMessage(), [
+                    'exception' => $e,
+                ]);
+
+                continue;
+            }
+
+            $moduleInformation = new ModuleInformation($moduleData, $moduleName);
+            $this->createModuleInCollection($moduleName, $moduleInformation);
+            $collection->put($moduleName, $moduleInformation);
+        }
+
+        $this->modules = $collection;
+
+        cache()->set('flute.modules.collection', $this->modules, self::CACHE_TIME);
+    }
+
+    protected function forceReloadModulesFromDatabase(): void
+    {
+        try {
+            $modules = Module::findAll();
+        } catch (Throwable $e) {
+            $this->useCachedModulesDatabase($e);
+            $this->setCurrentStatusModules();
+
+            return;
+        }
+
+        $this->databaseUnavailable = false;
+        $this->modulesDatabase = $this->mapDatabaseModules($modules);
+
+        cache()->set('flute.modules.alldb', $this->modulesDatabase, self::CACHE_TIME);
+
+        $this->setCurrentStatusModules();
     }
 
     /**
@@ -287,16 +381,23 @@ class ModuleManager
 
             foreach ($this->activeModules as $module) {
                 try {
-                    $this->dependencyChecker->checkDependencies($module->dependencies, $this->activeModules, $themeManager->getThemeInfo());
+                    $this->dependencyChecker->checkDependencies(
+                        $module->dependencies,
+                        $this->activeModules,
+                        $themeManager->getThemeInfo(),
+                    );
                 } catch (ModuleDependencyException $e) {
-                    logs('modules')->emergency("[EMERGENCY MODULE SHUTDOWN] Flute module \"" . $module->key . "\" dependency check failed - " . $e->getMessage());
+                    logs('modules')->emergency(
+                        '[EMERGENCY MODULE SHUTDOWN] Flute module "' . $module->key . '" dependency check failed - '
+                            . $e->getMessage(),
+                    );
                     $modulesToDisable[] = $module;
                 }
             }
 
             if (!empty($modulesToDisable)) {
                 foreach ($modulesToDisable as $module) {
-                    (new ModuleActions())->disableModule($module, $this);
+                    ( new ModuleActions() )->disableModule($module, $this);
                 }
 
                 cache()->delete('flute.modules.alldb');
@@ -356,7 +457,7 @@ class ModuleManager
             }
         }
 
-        usort($providers, static fn ($a, $b) => $a['order'] <=> $b['order']);
+        usort($providers, static fn($a, $b) => $a['order'] <=> $b['order']);
 
         $this->serviceProviders = $providers;
     }
@@ -379,47 +480,76 @@ class ModuleManager
 
     protected function loadModulesJson(): void
     {
-        $this->modulesJson = cache()->callback('flute.modules.json', fn () => ModuleFinder::getAllJson($this->modulesPath), self::CACHE_TIME);
+        $this->modulesJson = cache()->callback(
+            'flute.modules.json',
+            fn() => ModuleFinder::getAllJson($this->modulesPath),
+            self::CACHE_TIME,
+        );
+
+        $removed = false;
+        foreach ($this->modulesJson as $moduleName => $jsonPath) {
+            if (!is_file($jsonPath)) {
+                unset($this->modulesJson[$moduleName]);
+                $removed = true;
+            }
+        }
+
+        if ($removed) {
+            cache()->delete('flute.modules.json');
+            cache()->delete('flute.modules.collection');
+            $this->modulesJson = ModuleFinder::getAllJson($this->modulesPath);
+        }
     }
 
     protected function loadModulesFromDatabase(): void
     {
-        $this->modulesDatabase = cache()->callback('flute.modules.alldb', static function () {
-            $modules = Module::findAll();
-
-            return array_map(static fn ($m) => [
-                'key' => $m->key,
-                'createdAt' => $m->createdAt,
-                'status' => $m->status,
-                'installedVersion' => $m->installedVersion,
-            ], $modules);
-        }, self::CACHE_TIME);
+        try {
+            $this->modulesDatabase = cache()->callback(
+                'flute.modules.alldb',
+                fn() => $this->mapDatabaseModules(Module::findAll()),
+                self::CACHE_TIME,
+            );
+            $this->databaseUnavailable = false;
+        } catch (Throwable $e) {
+            $this->useCachedModulesDatabase($e);
+        }
 
         $this->setCurrentStatusModules();
     }
 
     protected function setCurrentStatusModules(): void
     {
-        $columnsDb = array_column($this->modulesDatabase, 'key');
+        $dbByKey = [];
+        foreach ($this->modulesDatabase as $row) {
+            $dbByKey[$row['key']] = $row;
+        }
 
         foreach ($this->modules as $module) {
             $moduleResult = $this->modules->get($module->key);
-            $search = array_search($module->key, $columnsDb);
 
-            if ($search === false || $this->modulesDatabase[$search]['key'] !== $module->key) {
+            if (!isset($dbByKey[$module->key])) {
+                if ($this->databaseUnavailable) {
+                    continue;
+                }
+
                 $this->createModuleInDatabase($module);
             } else {
-                $moduleResult->createdAt = $this->modulesDatabase[$search]['createdAt'];
-                $moduleResult->status = $this->modulesDatabase[$search]['status'];
-                $moduleResult->installedVersion = $this->modulesDatabase[$search]['installedVersion'];
+                $row = $dbByKey[$module->key];
+                $moduleResult->createdAt = $row['createdAt'];
+                $moduleResult->status = $row['status'];
+                $moduleResult->installedVersion = $row['installedVersion'];
             }
 
-            $this->createModuleInCollection($module->key, $moduleResult);
+            $this->modules->put($module->key, $moduleResult);
         }
     }
 
     protected function createModuleInDatabase(ModuleInformation $moduleInformation): void
     {
+        if ($this->databaseUnavailable) {
+            return;
+        }
+
         $existing = Module::findOne(['key' => $moduleInformation->key]);
         if ($existing) {
             $this->modulesDatabase[] = [
@@ -448,9 +578,11 @@ class ModuleManager
                 'status' => $module->status,
                 'installedVersion' => $module->installedVersion,
             ];
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             if (str_contains($e->getMessage(), 'Duplicate entry')) {
-                logs('modules')->warning("Module {$moduleInformation->key} already exists in database, skipping create");
+                logs('modules')->warning(
+                    "Module {$moduleInformation->key} already exists in database, skipping create",
+                );
 
                 $existing = Module::findOne(['key' => $moduleInformation->key]);
                 if ($existing) {
@@ -465,24 +597,74 @@ class ModuleManager
                 return;
             }
 
-            logs('modules')->error("Ошибка при создании модуля в базе данных: " . $e->getMessage());
+            logs('modules')->error('Ошибка при создании модуля в базе данных: ' . $e->getMessage());
+        }
+    }
+
+    protected function mapDatabaseModules(array $modules): array
+    {
+        return array_map(static fn($m) => [
+            'key' => $m->key,
+            'createdAt' => $m->createdAt,
+            'status' => $m->status,
+            'installedVersion' => $m->installedVersion,
+        ], $modules);
+    }
+
+    protected function useCachedModulesDatabase(Throwable $e): void
+    {
+        $this->databaseUnavailable = true;
+        $cachedModules = [];
+
+        try {
+            $cachedModules = cache()->get('flute.modules.alldb', []);
+        } catch (Throwable) {
+            $cachedModules = [];
+        }
+
+        $this->modulesDatabase = is_array($cachedModules) ? $cachedModules : [];
+
+        if (!$this->databaseFailureLogged) {
+            logs('modules')->warning(
+                'Module database lookup failed, using cached module metadata: ' . $e->getMessage(),
+            );
+            $this->databaseFailureLogged = true;
         }
     }
 
     protected function loadModulesCollections()
     {
-        $this->modules = cache()->callback('flute.modules.collection', function () {
-            $collection = collect();
+        $this->modules = cache()->callback(
+            'flute.modules.collection',
+            function () {
+                $collection = collect();
 
-            foreach ($this->modulesJson as $moduleName => $modulePath) {
-                $moduleData = ModuleFinder::getModuleJson($modulePath);
-                $moduleInformation = new ModuleInformation($moduleData, $moduleName);
-                $this->createModuleInCollection($moduleName, $moduleInformation);
-                $collection->put($moduleName, $moduleInformation);
-            }
+                foreach ($this->modulesJson as $moduleName => $modulePath) {
+                    if (!is_file($modulePath)) {
+                        logs('modules')->warning("Skipping module {$moduleName}: module.json missing at {$modulePath}");
 
-            return $collection;
-        }, self::CACHE_TIME);
+                        continue;
+                    }
+
+                    try {
+                        $moduleData = ModuleFinder::getModuleJson($modulePath);
+                    } catch (Throwable $e) {
+                        logs('modules')->warning("Skipping module {$moduleName}: " . $e->getMessage(), [
+                            'exception' => $e,
+                        ]);
+
+                        continue;
+                    }
+
+                    $moduleInformation = new ModuleInformation($moduleData, $moduleName);
+                    $this->createModuleInCollection($moduleName, $moduleInformation);
+                    $collection->put($moduleName, $moduleInformation);
+                }
+
+                return $collection;
+            },
+            self::CACHE_TIME,
+        );
     }
 
     protected function createModuleInCollection(string $moduleName, ModuleInformation $moduleInformation): void
@@ -494,6 +676,8 @@ class ModuleManager
 
     protected function filterModules(string $status, bool $notEqual = false): Collection
     {
-        return $this->modules->filter(static fn (ModuleInformation $module) => $notEqual ? ($module->status !== $status) : ($module->status === $status));
+        return $this->modules->filter(static fn(ModuleInformation $module) => $notEqual
+            ? $module->status !== $status
+            : $module->status === $status);
     }
 }

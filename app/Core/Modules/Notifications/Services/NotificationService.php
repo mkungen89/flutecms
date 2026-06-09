@@ -3,6 +3,7 @@
 namespace Flute\Core\Modules\Notifications\Services;
 
 use Cycle\ORM\RepositoryInterface;
+use DateTimeImmutable;
 use Flute\Core\Database\Entities\Notification;
 use Flute\Core\Database\Entities\User;
 use Throwable;
@@ -159,15 +160,81 @@ class NotificationService
      * @param string|null $icon The icon of the notification.
      * @throws Throwable
      */
-    public function createTextNotification(User $user, string $title, string $content, ?string $icon = null): void
-    {
+    public function createTextNotification(
+        User $user,
+        string $title,
+        string $content,
+        ?string $icon = null,
+        ?string $url = null,
+    ): void {
         $notification = new Notification();
         $notification->user = $user;
-        $notification->title = $title;
+        $notification->title = strip_tags($title, '<b><i><strong><em>');
         $notification->content = $content;
         $notification->type = 'text';
         $notification->icon = $icon;
+        $notification->url = $url;
         $this->create($notification);
+    }
+
+    /**
+     * Create the same text notification for many users without hydrating users or notification entities.
+     *
+     * @param array<int,int|string> $userIds
+     */
+    public function createTextNotificationsForUserIds(
+        array $userIds,
+        string $title,
+        string $content,
+        ?string $icon = null,
+        ?string $url = null,
+    ): int {
+        $userIds = $this->normalizeUserIds($userIds);
+        if (empty($userIds)) {
+            return 0;
+        }
+
+        $createdAt = ( new DateTimeImmutable() )->format('Y-m-d H:i:s');
+        $title = strip_tags($title, '<b><i><strong><em>');
+        $inserted = 0;
+        $database = db();
+
+        $database->transaction(static function () use (
+            $database,
+            $userIds,
+            $title,
+            $content,
+            $icon,
+            $url,
+            $createdAt,
+            &$inserted,
+        ): void {
+            foreach ($userIds as $userId) {
+                $database
+                    ->insert('notifications')
+                    ->values([
+                        'user_id' => $userId,
+                        'icon' => $icon,
+                        'url' => $url,
+                        'title' => $title,
+                        'content' => $content,
+                        'type' => 'text',
+                        'extra_data' => null,
+                        'viewed' => false,
+                        'created_at' => $createdAt,
+                        'updated_at' => null,
+                    ])
+                    ->run();
+
+                $inserted++;
+            }
+        });
+
+        if ($inserted > 0) {
+            $this->invalidateCache();
+        }
+
+        return $inserted;
     }
 
     /**
@@ -180,14 +247,19 @@ class NotificationService
      * @param string|null $icon The icon of the notification.
      * @throws Throwable
      */
-    public function createButtonNotification(User $user, string $title, string $content, array $buttons, ?string $icon = null): void
-    {
+    public function createButtonNotification(
+        User $user,
+        string $title,
+        string $content,
+        array $buttons,
+        ?string $icon = null,
+    ): void {
         $notification = new Notification();
         $notification->user = $user;
         $notification->title = $title;
         $notification->content = $content;
         $notification->type = 'button';
-        $notification->extra_data = ['buttons' => $buttons];
+        $notification->setExtraData(['buttons' => $buttons]);
         $notification->icon = $icon;
         $this->create($notification);
     }
@@ -202,8 +274,13 @@ class NotificationService
      * @param string|null $icon The icon of the notification.
      * @throws Throwable
      */
-    public function createFileNotification(User $user, string $title, string $content, string $fileUrl, ?string $icon = null): void
-    {
+    public function createFileNotification(
+        User $user,
+        string $title,
+        string $content,
+        string $fileUrl,
+        ?string $icon = null,
+    ): void {
         $notification = new Notification();
         $notification->user = $user;
         $notification->title = $title;
@@ -238,6 +315,27 @@ class NotificationService
             transaction($note)->run();
             $this->invalidateCache();
         }
+    }
+
+    /**
+     * Mark all notifications as read.
+     *
+     * @throws Throwable
+     */
+    public function markAllAsRead(): void
+    {
+        $unread = $this->unread();
+
+        if (empty($unread)) {
+            return;
+        }
+
+        foreach ($unread as $note) {
+            $note->viewed = true;
+        }
+
+        transaction($unread)->run();
+        $this->invalidateCache();
     }
 
     /**
@@ -302,27 +400,60 @@ class NotificationService
     }
 
     /**
+     * Check if the current user has any unread notifications.
+     * No caching - always fresh result.
+     *
+     * @return bool True if there are unread notifications.
+     */
+    public function hasUnread(): bool
+    {
+        return Notification::query()
+            ->where([
+                'user_id' => user()->id,
+                'viewed' => false,
+            ])
+            ->limit(1)
+            ->count() > 0;
+    }
+
+    /**
+     * Get the ID of the newest unread notification.
+     *
+     * @return int|null The ID of the newest unread notification, or null.
+     */
+    public function getNewestUnreadId(): ?int
+    {
+        $note = Notification::query()
+            ->where([
+                'user_id' => user()->id,
+                'viewed' => false,
+            ])
+            ->orderBy('id', 'DESC')
+            ->limit(1)
+            ->fetchOne();
+
+        return $note?->id;
+    }
+
+    /**
      * Count the number of unread notifications for the current user.
      *
      * @return int The number of unread notifications.
      */
     public function countUnread(): int
     {
-        $cacheKey = 'user_' . user()->id . '_unread_notifications_count';
-        if (cache()->has($cacheKey)) {
-            return cache()->get($cacheKey);
+        if ($this->cachedUnreadCount !== null) {
+            return $this->cachedUnreadCount;
         }
 
-        $count = Notification::query()
+        $this->cachedUnreadCount = Notification::query()
             ->where([
                 'user_id' => user()->id,
                 'viewed' => false,
             ])
             ->count();
 
-        cache()->set($cacheKey, $count, 60);
-
-        return $count;
+        return $this->cachedUnreadCount;
     }
 
     /**
@@ -357,9 +488,7 @@ class NotificationService
             return $this->cachedTotalCount;
         }
 
-        $this->cachedTotalCount = Notification::query()
-            ->where(['user_id' => user()->id])
-            ->count();
+        $this->cachedTotalCount = Notification::query()->where(['user_id' => user()->id])->count();
 
         return $this->cachedTotalCount;
     }
@@ -396,8 +525,6 @@ class NotificationService
      */
     protected function invalidateCache(): void
     {
-        $cacheKey = 'user_' . user()->id . '_unread_notifications_count';
-        cache()->delete($cacheKey);
         $this->cached = false;
         $this->cachedItems = [];
         $this->unreadCached = false;
@@ -407,5 +534,23 @@ class NotificationService
         $this->cachedTotalCount = null;
         $this->readCached = false;
         $this->cachedReadItems = [];
+    }
+
+    /**
+     * @param array<int,int|string> $userIds
+     * @return array<int,int>
+     */
+    protected function normalizeUserIds(array $userIds): array
+    {
+        $normalized = [];
+
+        foreach ($userIds as $userId) {
+            $userId = (int) $userId;
+            if ($userId > 0) {
+                $normalized[$userId] = $userId;
+            }
+        }
+
+        return array_values($normalized);
     }
 }

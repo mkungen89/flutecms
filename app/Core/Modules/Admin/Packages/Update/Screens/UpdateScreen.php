@@ -2,7 +2,6 @@
 
 namespace Flute\Admin\Packages\Update\Screens;
 
-use Exception;
 use Flute\Admin\Platform\Layouts\LayoutFactory;
 use Flute\Admin\Platform\Screen;
 use Flute\Core\App;
@@ -15,6 +14,7 @@ use Flute\Core\Update\Updaters\ModuleUpdater;
 use Flute\Core\Update\Updaters\ThemeUpdater;
 use InvalidArgumentException;
 use RuntimeException;
+use Throwable;
 
 class UpdateScreen extends Screen
 {
@@ -22,15 +22,20 @@ class UpdateScreen extends Screen
 
     public $description = 'admin-update.description';
 
+    public ?string $permission = 'admin.system';
+
     /**
      */
     protected UpdateService $updateService;
 
+    /**
+     * @var resource|null
+     */
+    protected $updateLockHandle = null;
+
     public function mount(): void
     {
-        breadcrumb()
-            ->add(__('def.admin_panel'), url('/admin'))
-            ->add(__('admin-update.title'));
+        breadcrumb()->add(__('def.admin_panel'), url('/admin'))->add(__('admin-update.title'));
 
         $this->updateService = app(UpdateService::class);
         $savedChannel = config('app.update_channel', 'stable');
@@ -47,16 +52,25 @@ class UpdateScreen extends Screen
      */
     public function layout(): array
     {
+        $activeChannel = $this->updateService->getChannel();
+        $otherChannel = $activeChannel === 'stable' ? 'early' : 'stable';
+
         $updates = $this->updateService->getAvailableUpdates();
+        $otherUpdates = $this->updateService->getAllVersionsForChannel($otherChannel);
 
         return [
             LayoutFactory::view('admin-update::components.javascript'),
 
             LayoutFactory::view('admin-update::layouts.update-center', [
                 'current_version' => App::VERSION,
+                'active_channel' => $activeChannel,
                 'update' => $updates['cms'] ?? null,
                 'modules' => $updates['modules'] ?? [],
                 'themes' => $updates['themes'] ?? [],
+                'other_channel' => $otherChannel,
+                'other_update' => $otherUpdates['cms'] ?? null,
+                'other_modules' => $otherUpdates['modules'] ?? [],
+                'other_themes' => $otherUpdates['themes'] ?? [],
             ]),
         ];
     }
@@ -83,7 +97,7 @@ class UpdateScreen extends Screen
     public function switchChannel(): void
     {
         $data = request()->all();
-        $channel = in_array(($data['channel'] ?? ''), ['stable', 'early'], true) ? $data['channel'] : 'stable';
+        $channel = in_array($data['channel'] ?? '', ['stable', 'early'], true) ? $data['channel'] : 'stable';
         $currentAppConfig = config('app');
         $currentAppConfig['update_channel'] = $channel;
         config()->set('app', $currentAppConfig);
@@ -106,6 +120,15 @@ class UpdateScreen extends Screen
             @ignore_user_abort(true);
         }
 
+        if (!$this->acquireUpdateLock()) {
+            logs()->warning('Admin update skipped because another update is already running.');
+            $this->flashMessage(__('admin-update.update_failed'), 'error');
+
+            return;
+        }
+
+        $packageFile = null;
+
         try {
             $data = request()->all();
 
@@ -118,9 +141,10 @@ class UpdateScreen extends Screen
             $this->updateService->clearCache();
             $updates = $this->updateService->getAvailableUpdates(true);
 
-            if (($type === 'cms' && empty($updates['cms'])) ||
-                ($type === 'module' && (empty($id) || empty($updates['modules'][$id]))) ||
-                ($type === 'theme' && (empty($id) || empty($updates['themes'][$id])))
+            if (
+                $type === 'cms' && empty($updates['cms'])
+                || $type === 'module' && ( empty($id) || empty($updates['modules'][$id]) )
+                || $type === 'theme' && ( empty($id) || empty($updates['themes'][$id]) )
             ) {
                 throw new InvalidArgumentException(__('admin-update.no_updates'));
             }
@@ -135,7 +159,7 @@ class UpdateScreen extends Screen
             $this->flashMessage(__('admin-update.update_extracting'));
 
             $success = match ($type) {
-                'cms' => (new CmsUpdater())->update(['package_file' => $packageFile]),
+                'cms' => ( new CmsUpdater() )->update(['package_file' => $packageFile]),
                 'module' => $this->updateModule($id, ['package_file' => $packageFile]),
                 'theme' => $this->updateTheme($id, ['package_file' => $packageFile]),
                 default => throw new InvalidArgumentException(__('admin-update.unknown_type')),
@@ -157,12 +181,17 @@ class UpdateScreen extends Screen
             } else {
                 throw new RuntimeException(__('admin-update.update_failed'));
             }
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             if (is_debug()) {
                 throw $e;
             }
             logs()->error('Update error: ' . $e->getMessage());
             $this->flashMessage(__('admin-update.update_error', ['message' => $e->getMessage()]), 'error');
+        } finally {
+            if (is_string($packageFile) && file_exists($packageFile)) {
+                @unlink($packageFile);
+            }
+            $this->releaseUpdateLock();
         }
     }
 
@@ -178,6 +207,13 @@ class UpdateScreen extends Screen
             @ignore_user_abort(true);
         }
 
+        if (!$this->acquireUpdateLock()) {
+            logs()->warning('Admin bulk update skipped because another update is already running.');
+            $this->flashMessage(__('admin-update.update_failed'), 'error');
+
+            return;
+        }
+
         try {
             $this->flashMessage(__('admin-update.update_all_preparing'));
 
@@ -189,6 +225,7 @@ class UpdateScreen extends Screen
 
             if (!empty($updates['cms'])) {
                 $totalUpdates++;
+                $packageFile = null;
 
                 try {
                     $this->flashMessage(__('admin-update.update_downloading') . ' (CMS)');
@@ -196,7 +233,7 @@ class UpdateScreen extends Screen
 
                     if (!empty($packageFile) && file_exists($packageFile)) {
                         $this->flashMessage(__('admin-update.update_extracting') . ' (CMS)');
-                        $success = (new CmsUpdater())->update(['package_file' => $packageFile]);
+                        $success = ( new CmsUpdater() )->update(['package_file' => $packageFile]);
 
                         if ($success) {
                             $successfulUpdates++;
@@ -206,18 +243,27 @@ class UpdateScreen extends Screen
                             @unlink($packageFile);
                         }
                     }
-                } catch (Exception $e) {
+                } catch (Throwable $e) {
                     logs()->error('CMS update error: ' . $e->getMessage());
+                } finally {
+                    if (is_string($packageFile) && file_exists($packageFile)) {
+                        @unlink($packageFile);
+                    }
                 }
             }
 
             if (!empty($updates['modules'])) {
                 foreach ($updates['modules'] as $moduleId => $moduleUpdate) {
                     $totalUpdates++;
+                    $packageFile = null;
 
                     try {
                         $this->flashMessage(__('admin-update.update_downloading') . " ({$moduleUpdate['name']})");
-                        $packageFile = $this->updateService->downloadUpdate('module', $moduleId, $moduleUpdate['version']);
+                        $packageFile = $this->updateService->downloadUpdate(
+                            'module',
+                            $moduleId,
+                            $moduleUpdate['version'],
+                        );
 
                         if (!empty($packageFile) && file_exists($packageFile)) {
                             $this->flashMessage(__('admin-update.update_extracting') . " ({$moduleUpdate['name']})");
@@ -231,8 +277,12 @@ class UpdateScreen extends Screen
                                 @unlink($packageFile);
                             }
                         }
-                    } catch (Exception $e) {
+                    } catch (Throwable $e) {
                         logs()->error("Module {$moduleId} update error: " . $e->getMessage());
+                    } finally {
+                        if (is_string($packageFile) && file_exists($packageFile)) {
+                            @unlink($packageFile);
+                        }
                     }
                 }
             }
@@ -240,6 +290,7 @@ class UpdateScreen extends Screen
             if (!empty($updates['themes'])) {
                 foreach ($updates['themes'] as $themeId => $themeUpdate) {
                     $totalUpdates++;
+                    $packageFile = null;
 
                     try {
                         $this->flashMessage(__('admin-update.update_downloading') . " ({$themeUpdate['name']})");
@@ -257,8 +308,12 @@ class UpdateScreen extends Screen
                                 @unlink($packageFile);
                             }
                         }
-                    } catch (Exception $e) {
+                    } catch (Throwable $e) {
                         logs()->error("Theme {$themeId} update error: " . $e->getMessage());
+                    } finally {
+                        if (is_string($packageFile) && file_exists($packageFile)) {
+                            @unlink($packageFile);
+                        }
                     }
                 }
             }
@@ -279,13 +334,81 @@ class UpdateScreen extends Screen
             }
 
             $this->triggerSidebarRefresh();
-
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             if (is_debug()) {
                 throw $e;
             }
             logs()->error('Bulk update error: ' . $e->getMessage());
             $this->flashMessage(__('admin-update.update_error', ['message' => $e->getMessage()]), 'error');
+        } finally {
+            $this->releaseUpdateLock();
+        }
+    }
+
+    /**
+     * Install a specific CMS version from the catalog (upgrade or rollback)
+     */
+    public function handleInstallVersion(): void
+    {
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(0);
+        }
+        if (function_exists('ignore_user_abort')) {
+            @ignore_user_abort(true);
+        }
+
+        if (!$this->acquireUpdateLock()) {
+            logs()->warning('Admin version install skipped because another update is already running.');
+            $this->flashMessage(__('admin-update.update_failed'), 'error');
+
+            return;
+        }
+
+        $packageFile = null;
+
+        try {
+            $data = request()->all();
+            $version = $data['version'] ?? null;
+
+            if (empty($version)) {
+                throw new InvalidArgumentException(__('admin-update.no_version_selected'));
+            }
+
+            $this->flashMessage(__('admin-update.update_downloading'));
+            $packageFile = $this->updateService->downloadVersionFromCatalog($version);
+
+            if (empty($packageFile) || !file_exists($packageFile)) {
+                throw new RuntimeException(__('admin-update.update_failed'));
+            }
+
+            $this->flashMessage(__('admin-update.update_extracting'));
+
+            $success = ( new CmsUpdater() )->update(['package_file' => $packageFile]);
+
+            if ($success) {
+                $this->updateService->clearCache();
+                app(ModuleManager::class)->clearCache();
+
+                if (file_exists($packageFile)) {
+                    @unlink($packageFile);
+                }
+
+                $this->flashMessage(__('admin-update.version_installed', ['version' => $version]));
+                $this->triggerSidebarRefresh();
+            } else {
+                throw new RuntimeException(__('admin-update.update_failed'));
+            }
+        } catch (Throwable $e) {
+            if (is_debug()) {
+                throw $e;
+            }
+            logs()->error('Version install error: ' . $e->getMessage());
+            $this->flashMessage(__('admin-update.update_error', ['message' => $e->getMessage()]), 'error');
+        } finally {
+            if (is_string($packageFile) && file_exists($packageFile)) {
+                @unlink($packageFile);
+            }
+            $this->releaseUpdateLock();
         }
     }
 
@@ -299,7 +422,7 @@ class UpdateScreen extends Screen
             throw new InvalidArgumentException("Module {$moduleId} not found");
         }
 
-        return (new ModuleUpdater($module))->update($data);
+        return ( new ModuleUpdater($module) )->update($data);
     }
 
     /**
@@ -316,11 +439,49 @@ class UpdateScreen extends Screen
 
         $theme = Theme::findOne(['key' => $themeId]);
 
-        return (new ThemeUpdater($theme, $themeData))->update($data);
+        return ( new ThemeUpdater($theme, $themeData) )->update($data);
     }
 
     protected function triggerSidebarRefresh(): void
     {
         $this->dispatchBrowserEvent('sidebar-refresh');
+    }
+
+    protected function acquireUpdateLock(): bool
+    {
+        if ($this->updateLockHandle !== null) {
+            return true;
+        }
+
+        $lockDir = storage_path('app/temp/updates');
+        if (!is_dir($lockDir) && !@mkdir($lockDir, 0o755, true) && !is_dir($lockDir)) {
+            return false;
+        }
+
+        $handle = @fopen($lockDir . '/.admin-update.lock', 'cb');
+        if ($handle === false) {
+            return false;
+        }
+
+        if (!flock($handle, LOCK_EX | LOCK_NB)) {
+            fclose($handle);
+
+            return false;
+        }
+
+        $this->updateLockHandle = $handle;
+
+        return true;
+    }
+
+    protected function releaseUpdateLock(): void
+    {
+        if ($this->updateLockHandle === null) {
+            return;
+        }
+
+        flock($this->updateLockHandle, LOCK_UN);
+        fclose($this->updateLockHandle);
+        $this->updateLockHandle = null;
     }
 }

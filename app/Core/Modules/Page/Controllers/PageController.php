@@ -2,12 +2,12 @@
 
 namespace Flute\Core\Modules\Page\Controllers;
 
-use Exception;
 use Flute\Core\Database\Entities\Page;
 use Flute\Core\Modules\Page\Services\PageManager;
 use Flute\Core\Support\BaseController;
 use Flute\Core\Support\FluteRequest;
 use Flute\Core\Validator\FluteValidator;
+use Throwable;
 
 class PageController extends BaseController
 {
@@ -84,16 +84,17 @@ class PageController extends BaseController
             $this->toast(__('page.seo.saved'), 'success');
 
             return response()->htmx()->setTriggers(['close-modal' => 'page-seo-dialog']);
-        } catch (Exception $e) {
-            logs()->error("Failed to save SEO settings: " . $e->getMessage());
+        } catch (Throwable $e) {
+            logs()->error('Failed to save SEO settings: ' . $e->getMessage());
             $this->toast(__('page.seo.error'), 'error');
 
             return $this->json([
                 'error' => __('page.seo.error'),
-                'debug' => is_debug() ? [
-                    'message' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                ] : null,
+                'debug' => is_debug()
+                    ? [
+                        'message' => $e->getMessage(),
+                        'file' => basename($e->getFile()) . ':' . $e->getLine(),
+                    ] : null,
             ], 500);
         }
     }

@@ -2,9 +2,14 @@
 
 namespace Flute\Admin\Packages\Dashboard\Screens;
 
+use Flute\Admin\Packages\AboutSystem\Helpers\AboutSystemHelper;
+use Flute\Admin\Packages\Dashboard\Services\AttentionService;
 use Flute\Admin\Packages\Dashboard\Services\DashboardService;
+use Flute\Admin\Packages\Dashboard\Services\SetupChecklistService;
+use Flute\Admin\Platform\Actions\Button;
 use Flute\Admin\Platform\Layouts\LayoutFactory;
 use Flute\Admin\Platform\Screen;
+use Flute\Admin\Platform\Support\Color;
 use Flute\Core\Services\IoncubeService;
 use Throwable;
 
@@ -40,6 +45,27 @@ class DashboardScreen extends Screen
         $this->vars = $this->dashboardService->getVars();
     }
 
+    public function commandBar(): array
+    {
+        $buttons = [];
+
+        if (cookie()->get('admin_onboarding_done')) {
+            $buttons[] = Button::make(__('admin-dashboard.onboarding.restart'))
+                ->type(Color::OUTLINE_SECONDARY)
+                ->icon('ph.bold.compass-bold')
+                ->method('restartOnboarding');
+        }
+
+        return $buttons;
+    }
+
+    public function restartOnboarding(): void
+    {
+        cookie()->remove('admin_onboarding_done');
+
+        $this->flashMessage(__('admin-dashboard.onboarding.restart_success'), 'success');
+    }
+
     /**
      * Get the layout elements
      */
@@ -48,7 +74,10 @@ class DashboardScreen extends Screen
         $layouts = [];
 
         $basePathResolved = realpath(BASE_PATH) ?: rtrim(BASE_PATH, DIRECTORY_SEPARATOR);
-        $modulesFullPath = rtrim($basePathResolved . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'Modules', DIRECTORY_SEPARATOR);
+        $modulesFullPath = rtrim(
+            $basePathResolved . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'Modules',
+            DIRECTORY_SEPARATOR,
+        );
 
         if (user()->can('admin.boss')) {
             /** @var IoncubeService $ioncube */
@@ -67,6 +96,18 @@ class DashboardScreen extends Screen
                     'ini_line' => $iniLine,
                 ]);
             }
+        }
+
+        $attention = app(AttentionService::class);
+        $checklist = app(SetupChecklistService::class);
+
+        if ($attention->hasItems() || !$checklist->isAllDone()) {
+            $layouts[] = LayoutFactory::view('admin-dashboard::components.dashboard-notices', [
+                'attention' => $attention,
+                'attentionItems' => $attention->getItems(),
+                'checklist' => $checklist,
+                'checklistItems' => $checklist->getItems(),
+            ]);
         }
 
         $layouts[] = LayoutFactory::tabs($this->dashboardService->getTabs()->all())
@@ -112,11 +153,8 @@ class DashboardScreen extends Screen
 
         $paths = array_filter(array_map('trim', explode(PATH_SEPARATOR, $encodedPaths)));
 
-        $normalizedTarget = rtrim(str_replace('\\', '/', $modulesFullPath), '/');
-
         foreach ($paths as $path) {
-            $normalized = rtrim(str_replace('\\', '/', $path), '/');
-            if ($normalized === $normalizedTarget) {
+            if (AboutSystemHelper::ioncubeEncodedPathMatchesModulesDir($path, $modulesFullPath)) {
                 return true;
             }
         }

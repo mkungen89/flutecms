@@ -4,6 +4,15 @@ declare(strict_types=1);
 
 error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
 
+if (function_exists('ini_set')) {
+    ini_set('display_errors', '0');
+    ini_set('display_startup_errors', '0');
+}
+
+if (PHP_OS_FAMILY !== 'Windows') {
+    umask(0002);
+}
+
 if (!defined('FLUTE_START')) {
     define('FLUTE_START', microtime(true));
 }
@@ -28,10 +37,30 @@ if (!file_exists(BASE_PATH . 'vendor/autoload.php')) {
 
 define('FLUTE_BOOTSTRAP_START', microtime(true));
 
-/**
- * Include the composer autoloader
- */
-$loader = require BASE_PATH . 'vendor/autoload.php';
+require __DIR__ . '/composer-error.php';
+
+set_error_handler(function ($severity, $message, $file, $line) {
+    if ($severity === E_DEPRECATED || $severity === E_USER_DEPRECATED) {
+        return true;
+    }
+
+    if (!(error_reporting() & $severity)) {
+        return false;
+    }
+
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
+try {
+    $loader = require BASE_PATH . 'vendor/autoload.php';
+} catch (Throwable $e) {
+    restore_error_handler();
+    displayComposerError($e, BASE_PATH);
+}
+
+restore_error_handler();
+
+\Flute\Core\Support\StoragePermissionFixer::ensurePermissions(BASE_PATH);
 
 use Flute\Core\App;
 use Flute\Core\Profiling\GlobalProfiler;
@@ -56,6 +85,7 @@ use Flute\Core\ServiceProviders\EventsServiceProvider;
 use Flute\Core\ServiceProviders\FileSystemServiceProvider;
 use Flute\Core\ServiceProviders\FlashServiceProvider;
 use Flute\Core\ServiceProviders\FooterServiceProvider;
+use Flute\Core\ServiceProviders\GameServerServiceProvider;
 use Flute\Core\ServiceProviders\LoggerServiceProvider;
 use Flute\Core\ServiceProviders\ModulesServiceProvider;
 use Flute\Core\ServiceProviders\NavbarServiceProvider;
@@ -99,8 +129,8 @@ GlobalProfiler::start();
  * Initializes the service providers
  */
 $app->serviceProvider(FileSystemServiceProvider::class)
-    ->serviceProvider(RequestServiceProvider::class)
     ->serviceProvider(ConfigurationServiceProvider::class)
+    ->serviceProvider(RequestServiceProvider::class)
     ->serviceProvider(TranslationServiceProvider::class)
     ->serviceProvider(EventsServiceProvider::class)
     ->serviceProvider(LoggerServiceProvider::class)
@@ -129,6 +159,7 @@ $app->serviceProvider(FileSystemServiceProvider::class)
     ->serviceProvider(ThrottlerServiceProvider::class)
     ->serviceProvider(PaymentServiceProvider::class)
     ->serviceProvider(SteamServiceProvider::class)
+    ->serviceProvider(GameServerServiceProvider::class)
     ->serviceProvider(UpdateServiceProvider::class)
     ->serviceProvider(ModulesServiceProvider::class)
     ->serviceProvider(ProfileServiceProvider::class)
@@ -154,7 +185,11 @@ $app->bootServiceProviders();
 /**
  * Register shutdown function to stop profiling
  */
-register_shutdown_function(function() {
+if (!defined('FLUTE_DEBUG')) {
+    define('FLUTE_DEBUG', function_exists('is_debug') && is_debug());
+}
+
+register_shutdown_function(function () {
     GlobalProfiler::stop();
 });
 

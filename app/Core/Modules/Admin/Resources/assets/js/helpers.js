@@ -21,193 +21,95 @@ function isMobileDevice() {
     return window.innerWidth <= 768;
 }
 
-if (
-    typeof FilePondPluginFileValidateType !== 'undefined' &&
-    typeof FilePondPluginImagePreview !== 'undefined'
-) {
-    if (!window.filePondPluginsRegistered) {
-        FilePond.registerPlugin(
-            FilePondPluginFileValidateType,
-            FilePondPluginImagePreview,
-        );
-        window.filePondPluginsRegistered = true;
-    }
-}
+// FilePond removed from admin UI. Stubs kept for backward-compat calls from modules.
+function destroyFilePondsIn() {}
+function initializeFilePondElement() {}
+function _registerFilePondPlugins() {}
 
-function initializeFilePondElement(element) {
-    if (element.classList.contains('filepond') && !element.filepond) {
-        const defaultFile = element.dataset.defaultFile || null;
-        const wrapper = element.closest('.input-wrapper');
-        const fieldName = element.name;
+window._registerFilePondPlugins = _registerFilePondPlugins;
+window.initializeFilePondElement = initializeFilePondElement;
 
-        let filePondOptions = {
-            storeAsFile: true,
-            credits: false,
-            onwarning: (error) => {
-                const errorElement = wrapper.querySelector('.has-error');
-                if (errorElement) {
-                    errorElement.style.display = 'block';
-                }
-            },
-            onerror: (error) => {
-                const errorElement = wrapper.querySelector('.has-error');
-                if (errorElement) {
-                    errorElement.style.display = 'block';
-                }
-            },
-            onremovefile: (error, file) => {
-                if (!error && fieldName) {
-                    let clearInput = wrapper.querySelector(`input[name="${fieldName}_clear"]`);
-                    if (!clearInput) {
-                        clearInput = document.createElement('input');
-                        clearInput.type = 'hidden';
-                        clearInput.name = `${fieldName}_clear`;
-                        wrapper.appendChild(clearInput);
-                    }
-                    clearInput.value = '1';
-                }
-            },
-            onaddfile: (error, file) => {
-                if (!error && fieldName) {
-                    const clearInput = wrapper.querySelector(`input[name="${fieldName}_clear"]`);
-                    if (clearInput) {
-                        clearInput.value = '';
-                    }
-                }
+// ── Abort stale boost navigations to #main ──────────────────────────────────
+// When the user clicks a new sidebar link before the previous page finishes
+// loading, cancel the in-flight request so only the latest one renders.
+(function () {
+    let pendingMainElt = null;
+
+    if (typeof htmx === 'undefined') return;
+
+    htmx.on('htmx:beforeRequest', function (event) {
+        const elt = event.detail.elt;
+        if (!elt) return;
+
+        const target = elt.getAttribute('hx-target') ||
+            (elt.closest('[hx-target]') ? elt.closest('[hx-target]').getAttribute('hx-target') : null);
+        if (target !== '#main') return;
+
+        // Abort the previous in-flight request to #main
+        if (pendingMainElt && pendingMainElt !== elt) {
+            htmx.trigger(pendingMainElt, 'htmx:abort');
+        }
+        pendingMainElt = elt;
+
+        const xhr = event.detail.xhr;
+        if (xhr) {
+            const origChange = xhr.onreadystatechange;
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4) pendingMainElt = null;
+                if (origChange) origChange.apply(this, arguments);
+            };
+        }
+    });
+})();
+
+
+// ── Admin profile dropdown ───────────────────────────────────────────────
+(function () {
+    function initProfileDropdown() {
+        const toggle = document.querySelector('[data-admin-profile-toggle]');
+        const dropdown = document.querySelector('[data-admin-profile-dropdown]');
+        if (!toggle || !dropdown) return;
+
+        function open() {
+            dropdown.classList.add('is-open');
+            dropdown.setAttribute('aria-hidden', 'false');
+            toggle.setAttribute('aria-expanded', 'true');
+        }
+
+        function close() {
+            dropdown.classList.remove('is-open');
+            dropdown.setAttribute('aria-hidden', 'true');
+            toggle.setAttribute('aria-expanded', 'false');
+        }
+
+        toggle.addEventListener('click', function (e) {
+            e.stopPropagation();
+            dropdown.classList.contains('is-open') ? close() : open();
+        });
+
+        document.addEventListener('click', function (e) {
+            if (!dropdown.contains(e.target) && !toggle.contains(e.target)) close();
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') close();
+        });
+
+        // Close after navigation
+        dropdown.addEventListener('click', function (e) {
+            if (e.target.closest('a') || e.target.closest('button[type="submit"]')) {
+                setTimeout(close, 100);
             }
-        };
-
-        if (element.hasAttribute('multiple')) {
-            filePondOptions.allowReorder = true;
-            filePondOptions.allowMultiple = true;
-        }
-
-        try {
-            filePondOptions = {
-                ...(element.dataset.filePondOptions
-                    ? JSON.parse(element.dataset.filePondOptions)
-                    : {}),
-                ...filePondOptions,
-            };
-        } catch (e) {
-            console.error('Ошибка парсинга filePondOptions:', e);
-        }
-
-        const acceptAttr = element.dataset.accept || '';
-        const acceptedFileTypes = acceptAttr
-            .split(',')
-            .map((type) => type.trim())
-            .filter((type) => type);
-
-        if (acceptedFileTypes.length > 0) {
-            filePondOptions.acceptedFileTypes = acceptedFileTypes;
-
-            filePondOptions.fileValidateTypeDetectType = (source, type) => {
-                return new Promise((resolve, reject) => {
-                    if (type && acceptedFileTypes.includes(type)) {
-                        resolve(type);
-                        return;
-                    }
-
-                    const url = typeof source === 'string' ? source : (source.name || '');
-                    const extensionMatch = url.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
-
-                    if (extensionMatch) {
-                        const extension = extensionMatch[1].toLowerCase();
-                        const extensionToMime = {
-                            'jpg': 'image/jpeg',
-                            'jpeg': 'image/jpeg',
-                            'png': 'image/png',
-                            'gif': 'image/gif',
-                            'webp': 'image/webp',
-                            'svg': 'image/svg+xml',
-                            'bmp': 'image/bmp'
-                        };
-
-                        if (extensionToMime[extension]) {
-                            resolve(extensionToMime[extension]);
-                            return;
-                        }
-                    }
-
-                    if (type) {
-                        resolve(type);
-                    } else {
-                        reject();
-                    }
-                });
-            };
-        }
-
-        if (element.name) {
-            filePondOptions.name = element.name;
-        }
-
-        if (defaultFile) {
-            filePondOptions.files = [
-                {
-                    source: defaultFile,
-                },
-            ];
-        }
-
-        FilePond.create(wrapper, filePondOptions);
+        });
     }
-}
 
-document.addEventListener('DOMContentLoaded', function () {
-    const fileInputs = document.querySelectorAll('input.filepond');
-    fileInputs.forEach((input) => initializeFilePondElement(input));
-});
-
-document.body.addEventListener('htmx:load', function (evt) {
-    const swappedContent = evt.detail.elt;
-    const newFileInputs = swappedContent.querySelectorAll('input.filepond');
-    newFileInputs.forEach((input) => initializeFilePondElement(input));
-});
-
-if (typeof Choices !== 'undefined') {
-    if (!window.choicesInitialized) {
-        window.choicesInitialized = true;
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initProfileDropdown);
+    } else {
+        initProfileDropdown();
     }
-}
+})();
 
-function initializeChoicesElement(element) {
-    if (element.classList.contains('choices') && !element.choicesInstance) {
-        let choicesOptions = {
-            searchEnabled: true,
-            shouldSort: true,
-        };
-
-        try {
-            choicesOptions = {
-                ...(element.dataset.choicesOptions
-                    ? JSON.parse(element.dataset.choicesOptions)
-                    : {}),
-                ...choicesOptions,
-            };
-        } catch (e) {
-            console.error('Ошибка парсинга choicesOptions:', e);
-        }
-
-        const choices = new Choices(element, choicesOptions);
-        element.choicesInstance = choices;
-    }
-}
-
-document.addEventListener('DOMContentLoaded', function () {
-    const selectElements = document.querySelectorAll('select.choices');
-    selectElements.forEach((select) => initializeChoicesElement(select));
-});
-
-document.body.addEventListener('htmx:load', function (evt) {
-    const swappedContent = evt.detail.elt;
-    const newSelectElements = swappedContent.querySelectorAll('select.choices');
-    newSelectElements.forEach((select) => initializeChoicesElement(select));
-});
-
-// Prevent disabling all languages in Localization settings.
-// If user turns off everything, we automatically enable English (or the first available language).
 let _enforcingLanguages = false;
 document.addEventListener('change', function (event) {
     const checkbox = event.target;
@@ -231,61 +133,4 @@ document.addEventListener('change', function (event) {
             }, 0);
         }
     }
-});
-
-$(document).on('click', '[hx-flute-confirm]', function (event) {
-    event.preventDefault();
-
-    let $triggerElement = $(this);
-    let confirmMessage = $triggerElement.attr('hx-flute-confirm');
-    let confirmType = $triggerElement.attr('hx-flute-confirm-type') || 'error';
-
-    const confirmTypes = {
-        accent: {
-            buttonClass: 'btn-accent',
-            iconClass: 'icon-accent',
-        },
-        primary: {
-            buttonClass: 'btn-primary',
-            iconClass: 'icon-primary',
-        },
-        error: {
-            buttonClass: 'btn-error',
-            iconClass: 'icon-error',
-        },
-        warning: {
-            buttonClass: 'btn-warning',
-            iconClass: 'icon-warning',
-        },
-        info: {
-            buttonClass: 'btn-info',
-            iconClass: 'icon-info',
-        },
-    };
-
-    let currentType = confirmTypes[confirmType] || confirmTypes['error'];
-
-    $('#confirmation-dialog-message').text(confirmMessage);
-
-    let $confirmButton = $('#confirmation-dialog-confirm');
-
-    $confirmButton.removeClass(
-        'btn-accent btn-primary btn-error btn-warning btn-info',
-    );
-    $confirmButton.addClass(currentType.buttonClass);
-
-    let $iconContainer = $('#confirmation-dialog-icon');
-    $iconContainer.children().hide();
-    $iconContainer.find('.' + currentType.iconClass).show();
-
-    openModal('confirmation-dialog');
-
-    $('#confirmation-dialog-confirm').one('click', function () {
-        closeModal('confirmation-dialog');
-        htmx.trigger($triggerElement[0], 'confirmed');
-    });
-
-    $('#confirmation-dialog-cancel').one('click', function () {
-        closeModal('confirmation-dialog');
-    });
 });

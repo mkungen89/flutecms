@@ -85,13 +85,25 @@ class WidgetManager
 
             $seenClasses[$class] = true;
 
-            $instance = $this->container->get($class);
+            try {
+                $instance = $this->container->get($class);
 
-            if (method_exists($instance, 'isVisible') && !$instance->isVisible()) {
-                continue;
+                if (method_exists($instance, 'isVisible') && !$instance->isVisible()) {
+                    continue;
+                }
+
+                $instances[$name] = $instance;
+            } catch (\Throwable $e) {
+                if (function_exists('is_debug') && is_debug()) {
+                    throw $e;
+                }
+
+                if (function_exists('logs')) {
+                    logs()->error("Widget '{$name}' ({$class}) failed to instantiate: " . $e->getMessage(), [
+                        'exception' => $e,
+                    ]);
+                }
             }
-
-            $instances[$name] = $instance;
         }
 
         return $instances;
@@ -100,13 +112,31 @@ class WidgetManager
     /**
      * Returns a single widget instance by name.
      */
-    public function getWidget(string $name): WidgetInterface
+    public function getWidget(string $name): ?WidgetInterface
     {
         if (!isset($this->widgets[$name])) {
-            throw new InvalidArgumentException("Widget {$name} is not registered in the system.");
+            if (function_exists('logs')) {
+                logs()->warning("Widget {$name} is not registered in the system.");
+            }
+
+            return null;
         }
 
-        return $this->container->get($this->widgets[$name]);
+        try {
+            return $this->container->get($this->widgets[$name]);
+        } catch (\Throwable $e) {
+            if (function_exists('is_debug') && is_debug()) {
+                throw $e;
+            }
+
+            if (function_exists('logs')) {
+                logs()->error("Widget '{$name}' failed to instantiate: " . $e->getMessage(), [
+                    'exception' => $e,
+                ]);
+            }
+
+            return null;
+        }
     }
 
     /**

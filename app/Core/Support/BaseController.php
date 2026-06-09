@@ -21,14 +21,16 @@ abstract class BaseController
      * @param string|array<string, mixed> $message Error message
      * @param int $status HTTP Status code
      */
-    public function error(string|array $message, int $status = 403): Response
+    public function error(string|array $message, int|string $status = 403): Response
     {
+        $status = (int) $status;
+
         /** @var FluteRequest $request */
         $request = app(FluteRequest::class);
 
         if ($request->expectsJson() || $request->isAjax()) {
             return json([
-                "error" => $message,
+                'error' => $message,
             ], $status);
         }
 
@@ -62,7 +64,7 @@ abstract class BaseController
     public function success($message = null, int $status = 200): JsonResponse
     {
         return json([
-            "success" => $message,
+            'success' => $message,
         ], $status);
     }
 
@@ -111,12 +113,7 @@ abstract class BaseController
      */
     protected function throttle(string $key, int $maxRequest = 5, int $perMinute = 60, int $burstiness = 5): void
     {
-        throttler()->throttle(
-            ['action' => $key, request()->ip()],
-            $maxRequest,
-            $perMinute,
-            $burstiness
-        );
+        throttler()->throttle(['action' => $key, request()->ip()], $maxRequest, $perMinute, $burstiness);
     }
 
     /**
@@ -125,8 +122,12 @@ abstract class BaseController
      * @param array $requestParams Parameters to validate.
      * @param array $requiredParams List of required parameter keys.
      */
-    protected function validate(array $requestParams, array $requiredParams, array $messages = [], ?string $prefix = null): FluteValidator|bool|JsonResponse
-    {
+    protected function validate(
+        array $requestParams,
+        array $requiredParams,
+        array $messages = [],
+        ?string $prefix = null,
+    ): FluteValidator|bool|JsonResponse {
         $validator = validator();
 
         $validated = $validator->validate($requestParams, $requiredParams, $messages, $prefix);

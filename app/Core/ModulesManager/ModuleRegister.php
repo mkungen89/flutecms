@@ -5,15 +5,21 @@ namespace Flute\Core\ModulesManager;
 use Cycle\ORM\Exception\ORMException;
 use DI\DependencyException;
 use DI\NotFoundException;
-use Exception;
 use Flute\Core\Database\DatabaseConnection;
 use Flute\Core\Support\ModuleServiceProvider;
 use Throwable;
 
 class ModuleRegister
 {
+    protected const STATS_CACHE_KEY = 'modules.boot_times_stats';
+
+    protected const STATS_MAX_SAMPLES = 100;
+
     /** @var array Времена загрузки модулей */
     protected static array $modulesBootTimes = [];
+
+    /** @var bool Флаг что статистика уже сохранена */
+    protected static bool $statsSaved = false;
 
     /**
      * Register service providers
@@ -28,7 +34,7 @@ class ModuleRegister
             try {
                 $classPath = self::normalizeClassPath($provider['class']);
 
-                if (!class_exists(self::normalizeClassPath($classPath))) {
+                if (!class_exists($classPath)) {
                     logs('modules')->error("Module {$classPath} wasn't found in the FileSystem!");
 
                     continue;
@@ -68,24 +74,19 @@ class ModuleRegister
                         self::$modulesBootTimes[$provider['module']] += round($extensionsTime, 3);
                     }
                 }
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 logs('modules')->error($e);
 
-                // In production mode errors are often hidden; if a module fails because an ORM schema
-                // is missing, schedule a schema refresh so modules/widgets/routes recover on next request.
                 if ($e instanceof ORMException && str_contains($e->getMessage(), 'Undefined schema')) {
                     try {
                         app(DatabaseConnection::class)->forceRefreshSchemaDeferred([$provider['module'] ?? null]);
                     } catch (Throwable) {
                     }
                 }
-
-                // Schema exception is not critical and can be ignored
-                if (user()->can('admin.boss') && !($e instanceof ORMException)) {
-                    throw $e;
-                }
             }
         }
+
+        self::saveBootTimesStats();
     }
 
     /**
@@ -94,6 +95,90 @@ class ModuleRegister
     public static function getModulesBootTimes(): array
     {
         return self::$modulesBootTimes;
+    }
+
+    /**
+     * Get accumulated boot times statistics
+     */
+    public static function getBootTimesStats(): array
+    {
+        try {
+            if (!function_exists('cache')) {
+                return [];
+            }
+
+            return cache()->get(self::STATS_CACHE_KEY, []);
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Clear boot times statistics
+     */
+    public static function clearBootTimesStats(): void
+    {
+        try {
+            if (function_exists('cache')) {
+                cache()->delete(self::STATS_CACHE_KEY);
+            }
+        } catch (Throwable $e) {
+        }
+    }
+
+    /**
+     * Save boot times to statistics cache
+     */
+    protected static function saveBootTimesStats(): void
+    {
+        if (self::$statsSaved || empty(self::$modulesBootTimes)) {
+            return;
+        }
+
+        self::$statsSaved = true;
+
+        $bootTimes = self::$modulesBootTimes;
+
+        \Flute\Core\Cache\SWRQueue::queue('modules.boot_times', static function () use ($bootTimes): void {
+            try {
+                if (!function_exists('cache')) {
+                    return;
+                }
+
+                $stats = cache()->get(self::STATS_CACHE_KEY, [
+                    'samples' => [],
+                    'modules' => [],
+                    'last_updated' => null,
+                ]);
+
+                $timestamp = time();
+                $stats['samples'][] = [
+                    'time' => $timestamp,
+                    'data' => $bootTimes,
+                    'total' => array_sum($bootTimes),
+                ];
+
+                if (count($stats['samples']) > self::STATS_MAX_SAMPLES) {
+                    $stats['samples'] = array_slice($stats['samples'], -self::STATS_MAX_SAMPLES);
+                }
+
+                foreach ($bootTimes as $module => $time) {
+                    if (!isset($stats['modules'][$module])) {
+                        $stats['modules'][$module] = [];
+                    }
+                    $stats['modules'][$module][] = $time;
+
+                    if (count($stats['modules'][$module]) > self::STATS_MAX_SAMPLES) {
+                        $stats['modules'][$module] = array_slice($stats['modules'][$module], -self::STATS_MAX_SAMPLES);
+                    }
+                }
+
+                $stats['last_updated'] = $timestamp;
+
+                cache()->set(self::STATS_CACHE_KEY, $stats, 86400 * 7);
+            } catch (Throwable) {
+            }
+        });
     }
 
     /**

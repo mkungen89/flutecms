@@ -1,7 +1,9 @@
 var driver = window.driver?.js?.driver;
 var widgetConfigs = [];
 
-var csrfToken = $('meta[name="csrf-token"]').attr('content');
+function csrfToken() {
+    return $('meta[name="csrf-token"]').attr('content');
+}
 
 // document.addEventListener('resume', () => {
 //     window.location.reload();
@@ -20,7 +22,7 @@ htmx.onLoad(() => {
 
     $.ajaxPrefilter(function (options, originalOptions, jqXHR) {
         if (options.type !== 'GET') {
-            jqXHR.setRequestHeader('X-CSRF-Token', csrfToken);
+            jqXHR.setRequestHeader('X-CSRF-Token', csrfToken());
         }
     });
 });
@@ -53,6 +55,60 @@ document.addEventListener('click', function (event) {
     }
 });
 
+function isProfileMainLink(link) {
+    if (!link || link.tagName?.toLowerCase() !== 'a') return false;
+
+    const href = link.getAttribute('href') || '';
+    if (!href || href.startsWith('#') || href.startsWith('javascript:')) return false;
+
+    try {
+        const urlObj = new URL(href, window.location.origin);
+        return urlObj.origin === window.location.origin && urlObj.pathname.startsWith('/profile/');
+    } catch (_) {
+        return false;
+    }
+}
+
+function ensureProfileMainSelect(link) {
+    if (!isProfileMainLink(link)) return;
+
+    const ownTarget = link.getAttribute('hx-target');
+    const inheritedTarget = link.closest('[hx-target]')?.getAttribute('hx-target') || null;
+    const effectiveTarget = ownTarget || inheritedTarget;
+
+    const ownBoost = link.getAttribute('hx-boost');
+    const inheritedBoost = link.closest('[hx-boost]')?.getAttribute('hx-boost') || null;
+    const boostValue = ownBoost || inheritedBoost;
+    const isBoosted = boostValue === '' || boostValue === 'true';
+
+    if (effectiveTarget === '#main' && isBoosted && !link.getAttribute('hx-select')) {
+        link.setAttribute('hx-select', '#main');
+    }
+}
+
+function normalizeProfileMainLinks(root) {
+    if (!root) return;
+
+    if (root.matches?.('a[href]')) {
+        ensureProfileMainSelect(root);
+    }
+
+    root.querySelectorAll?.('a[href]').forEach(ensureProfileMainSelect);
+}
+
+normalizeProfileMainLinks(document);
+
+document.addEventListener('click', function (event) {
+    const link = event.target.closest('a[href]');
+    if (link) {
+        ensureProfileMainSelect(link);
+    }
+}, true);
+
+document.body?.addEventListener('htmx:load', function (event) {
+    normalizeProfileMainLinks(event.detail?.elt || event.target);
+});
+
 
 function setCookie(name, value, days) {
     var expires = '';
@@ -61,7 +117,7 @@ function setCookie(name, value, days) {
         date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
         expires = '; expires=' + date.toUTCString();
     }
-    document.cookie = name + '=' + (value || '') + expires + '; path=/';
+    document.cookie = name + '=' + (value || '') + expires + '; path=/; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
 }
 
 function getCookie(cname) {
@@ -82,7 +138,7 @@ function getCookie(cname) {
 
 function eraseCookie(name) {
     document.cookie =
-        name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+        name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
 }
 
 function debounce(func, delay) {
@@ -189,7 +245,7 @@ async function batchTranslate(elements) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-Token': csrfToken,
+                'X-CSRF-Token': csrfToken(),
             },
             body: JSON.stringify({
                 translations: translationsNeeded.map(
@@ -578,6 +634,23 @@ if ('serviceWorker' in navigator) {
         navigator.serviceWorker
             .register('/sw.js')
             .then((registration) => {
+                registration.update().catch(() => {});
+
+                if (registration.waiting) {
+                    registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                }
+
+                registration.addEventListener('updatefound', () => {
+                    var worker = registration.installing;
+                    if (!worker) return;
+
+                    worker.addEventListener('statechange', () => {
+                        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                            worker.postMessage({ type: 'SKIP_WAITING' });
+                        }
+                    });
+                });
+
                 console.log(
                     'ServiceWorker registration successful with scope: ',
                     registration.scope,

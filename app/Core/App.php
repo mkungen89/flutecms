@@ -1,9 +1,9 @@
 <?php
 
 /**
- * @author Flames <xenozf@gmail.com>
+ * @author Flames <flamesworkk@gmail.com>
  *
- * @copyright 2025 Flute
+ * @copyright 2026 Flute
  */
 
 namespace Flute\Core;
@@ -15,7 +15,6 @@ use DI\NotFoundException;
 use Exception;
 use Flute\Core\Cache\SWRQueue;
 use Flute\Core\Contracts\ServiceProviderInterface;
-use Flute\Core\Database\DatabaseConnection;
 use Flute\Core\Events\ResponseEvent;
 use Flute\Core\ModulesManager\Contracts\ModuleServiceProviderInterface;
 use Flute\Core\Profiling\GlobalProfiler;
@@ -31,6 +30,7 @@ use Flute\Core\Traits\ThemeTrait;
 use Symfony\Component\Console\Application;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 final class App
 {
@@ -41,14 +41,14 @@ final class App
     use LoggerTrait;
     use SingletonTrait;
 
-    public const PERFORMANCE_MODE = "performance";
+    public const PERFORMANCE_MODE = 'performance';
 
-    public const DEFAULT_MODE = "default";
+    public const DEFAULT_MODE = 'default';
 
     /**
      * @var string
      */
-    public const VERSION = "0.1.9";
+    public const VERSION = '1.0.6';
 
     /**
      * Set the base path of the application
@@ -98,9 +98,7 @@ final class App
     public static function getInstance(): App
     {
         if (is_null(self::$instance)) {
-            self::$instance = new self(
-                require BASE_PATH . "vendor/autoload.php",
-            );
+            self::$instance = new self(require BASE_PATH . 'vendor/autoload.php');
         }
 
         return self::$instance;
@@ -126,7 +124,7 @@ final class App
         $this->basePath = $basePath;
 
         $this->containerBuilder->addDefinitions([
-            "base_path" => $this->basePath,
+            'base_path' => $this->basePath,
         ]);
     }
 
@@ -155,15 +153,15 @@ final class App
      */
     public function debug(bool $debug = true): void
     {
-        if (function_exists("ini_set")) {
-            ini_set("display_errors", (string) $debug);
-            ini_set("display_startup_errors", (string) $debug);
+        if (function_exists('ini_set')) {
+            ini_set('display_errors', $debug ? '1' : '0');
+            ini_set('display_startup_errors', $debug ? '1' : '0');
         }
 
-        error_reporting(E_ALL);
+        error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
 
         // We add debug mode to the container
-        $this->bind("debug", (string) $debug);
+        $this->bind('debug', (string) $debug);
     }
 
     /**
@@ -181,7 +179,7 @@ final class App
         try {
             return $this->container->make($abstract, $parameters);
         } catch (NotFoundException $e) {
-            if (function_exists("logs")) {
+            if (function_exists('logs')) {
                 logs()->emergency($e->getMessage());
             }
 
@@ -234,18 +232,14 @@ final class App
 
         try {
             $provider->register(
-                $provider instanceof ServiceProviderInterface
-                    ? $this->getContainerBuilder()
-                    : $this->getContainer(),
+                $provider instanceof ServiceProviderInterface ? $this->getContainerBuilder() : $this->getContainer(),
             );
-        } catch (Exception $e) {
-            if (function_exists("is_debug") && is_debug()) {
+        } catch (\Throwable $e) {
+            if (function_exists('is_debug') && is_debug()) {
                 throw $e;
             }
 
-            if (function_exists("logs")) {
-                logs()->error($e);
-            }
+            \Flute\Core\Support\ExceptionReporter::report($e, 'provider.register');
         }
 
         return $this;
@@ -270,29 +264,39 @@ final class App
 
                 $provider->setApp($this);
                 $provider->boot($this->container);
-                $this->listen = array_merge_recursive(
-                    $this->listen,
-                    $provider->getEventListeners(),
-                );
+                $this->listen = array_merge_recursive($this->listen, $provider->getEventListeners());
 
-                $this->bootTimes[$className] = round(
-                    microtime(true) - $startTime,
-                    3,
-                );
-            } catch (Exception $e) {
-                if (function_exists("is_debug") && is_debug()) {
+                $this->bootTimes[$className] = round(microtime(true) - $startTime, 3);
+            } catch (\Throwable $e) {
+                if (function_exists('is_debug') && is_debug()) {
                     throw $e;
                 }
 
-                if (function_exists("logs")) {
-                    logs()->error($e);
-                }
+                \Flute\Core\Support\ExceptionReporter::report($e, 'provider.boot');
             }
         }
 
         $this->initializeEventListeners();
 
         $this->isBooted = true;
+
+        $this->saveProviderBootTimesStats();
+    }
+
+    /**
+     * Get accumulated provider boot times statistics
+     */
+    public static function getProviderBootTimesStats(): array
+    {
+        try {
+            if (!function_exists('cache')) {
+                return [];
+            }
+
+            return cache()->get('providers.boot_times_stats', []);
+        } catch (Throwable $e) {
+            return [];
+        }
     }
 
     /**
@@ -301,6 +305,11 @@ final class App
     public function getVersion(): string
     {
         return self::VERSION;
+    }
+
+    public function isBooted(): bool
+    {
+        return $this->isBooted;
     }
 
     /**
@@ -327,48 +336,61 @@ final class App
             return;
         }
 
-        if (!defined("FLUTE_ROUTER_START")) {
-            define("FLUTE_ROUTER_START", microtime(true));
+        if (!defined('FLUTE_ROUTER_START')) {
+            define('FLUTE_ROUTER_START', microtime(true));
         }
 
         // Optional global profiler (only runs if enabled in config/profiler.php)
         GlobalProfiler::start();
 
-        $this->get(DatabaseConnection::class)->recompileIfNeeded();
-
-        if (!defined("FLUTE_DB_SETUP_END")) {
-            define("FLUTE_DB_SETUP_END", microtime(true));
+        if (!defined('FLUTE_DB_SETUP_END')) {
+            define('FLUTE_DB_SETUP_END', microtime(true));
         }
 
         /** @var RouterInterface $router */
         $router = $this->get(RouterInterface::class);
 
-        // Split routing and event phases to measure them separately
         $request = $this->get(FluteRequest::class);
+
+        $cachedResponse = $this->tryServePageCache($request);
+        if ($cachedResponse !== null) {
+            GlobalProfiler::stop();
+            $this->compressResponse($cachedResponse, $request);
+            header_remove('X-Powered-By');
+            $cachedResponse->send();
+
+            return;
+        }
+
         $dispatchResult = $router->dispatch($request);
 
-        if (!defined("FLUTE_DISPATCH_END")) {
-            define("FLUTE_DISPATCH_END", microtime(true));
+        if (!defined('FLUTE_DISPATCH_END')) {
+            define('FLUTE_DISPATCH_END', microtime(true));
         }
 
         $res = $this->responseEvent($dispatchResult);
 
-        if (!defined("FLUTE_EVENTS_END")) {
-            define("FLUTE_EVENTS_END", microtime(true));
+        if (!defined('FLUTE_EVENTS_END')) {
+            define('FLUTE_EVENTS_END', microtime(true));
         }
 
-        if (!defined("FLUTE_ROUTER_END")) {
-            define("FLUTE_ROUTER_END", microtime(true));
+        if (!defined('FLUTE_ROUTER_END')) {
+            define('FLUTE_ROUTER_END', microtime(true));
         }
 
         $this->get(FluteEventDispatcher::class)->saveDeferredListenersToCache();
 
-        if (!defined("FLUTE_DEFERRED_SAVE_END")) {
-            define("FLUTE_DEFERRED_SAVE_END", microtime(true));
+        if (!defined('FLUTE_DEFERRED_SAVE_END')) {
+            define('FLUTE_DEFERRED_SAVE_END', microtime(true));
         }
 
-        // Stop profiler before sending response
+        $this->storePageCache($request, $res);
+
         GlobalProfiler::stop();
+
+        $this->compressResponse($res, $request);
+
+        header_remove('X-Powered-By');
 
         $res->send();
 
@@ -394,12 +416,9 @@ final class App
     public function getConsole(): Application
     {
         if ($this->consoleApplication === null) {
-            $this->consoleApplication = new Application(
-                "Flute CLI",
-                self::VERSION,
-            );
+            $this->consoleApplication = new Application('Flute CLI', self::VERSION);
             $this->bind(Application::class, $this->consoleApplication);
-            $this->bind("console", $this->consoleApplication);
+            $this->bind('console', $this->consoleApplication);
         }
 
         return $this->consoleApplication;
@@ -434,6 +453,63 @@ final class App
     }
 
     /**
+     * Save provider boot times to statistics cache
+     */
+    protected function saveProviderBootTimesStats(): void
+    {
+        if (empty($this->bootTimes) || !function_exists('cache')) {
+            return;
+        }
+
+        if (mt_rand(1, 50) !== 1) {
+            return;
+        }
+
+        $bootTimes = $this->bootTimes;
+
+        SWRQueue::queue('app.provider_boot_times', static function () use ($bootTimes): void {
+            try {
+                $cacheKey = 'providers.boot_times_stats';
+                $maxSamples = 100;
+
+                $stats = cache()->get($cacheKey, [
+                    'samples' => [],
+                    'providers' => [],
+                    'last_updated' => null,
+                ]);
+
+                $timestamp = time();
+                $stats['samples'][] = [
+                    'time' => $timestamp,
+                    'data' => $bootTimes,
+                    'total' => array_sum($bootTimes),
+                ];
+
+                if (count($stats['samples']) > $maxSamples) {
+                    $stats['samples'] = array_slice($stats['samples'], -$maxSamples);
+                }
+
+                foreach ($bootTimes as $provider => $time) {
+                    $shortName = substr(strrchr($provider, '\\') ?: $provider, 1);
+                    if (!isset($stats['providers'][$shortName])) {
+                        $stats['providers'][$shortName] = [];
+                    }
+                    $stats['providers'][$shortName][] = $time;
+
+                    if (count($stats['providers'][$shortName]) > $maxSamples) {
+                        $stats['providers'][$shortName] = array_slice($stats['providers'][$shortName], -$maxSamples);
+                    }
+                }
+
+                $stats['last_updated'] = $timestamp;
+
+                cache()->set($cacheKey, $stats, 86400 * 7);
+            } catch (Throwable) {
+            }
+        });
+    }
+
+    /**
      * set the container instance
      */
     protected function _setContainer(): void
@@ -442,17 +518,10 @@ final class App
 
         $containerBuilder->addDefinitions([
             self::class => $this,
-            "app" => \DI\get(self::class),
+            'app' => \DI\get(self::class),
         ]);
 
-        // Enable container optimizations outside CLI
-        if (!(php_sapi_name() === "cli" || defined("STDIN"))) {
-            // In performance mode compile container, always write proxies to disk
-            if (function_exists("is_performance") && is_performance()) {
-                $containerBuilder->enableCompilation(
-                    BASE_PATH . 'storage' . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'cache',
-                );
-            }
+        if (!( php_sapi_name() === 'cli' || defined('STDIN') )) {
             $containerBuilder->writeProxiesToFile(
                 true,
                 BASE_PATH . 'storage' . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'proxies',
@@ -472,7 +541,34 @@ final class App
 
         foreach ($this->listen as $event => $listeners) {
             foreach ($listeners as $listener) {
-                $dispatcher->addListener($event, [new $listener(), "handle"]);
+                try {
+                    $instance = new $listener();
+                    $dispatcher->addListener($event, static function () use ($instance, $listener) {
+                        try {
+                            return $instance->handle(...func_get_args());
+                        } catch (\Throwable $e) {
+                            if (function_exists('is_debug') && is_debug()) {
+                                throw $e;
+                            }
+
+                            \Flute\Core\Support\ExceptionReporter::report($e, 'event.listener', [
+                                'listener' => $listener,
+                            ]);
+
+                            return null;
+                        }
+                    });
+                } catch (\Throwable $e) {
+                    if (function_exists('is_debug') && is_debug()) {
+                        throw $e;
+                    }
+
+                    if (function_exists('logs')) {
+                        logs()->error("Failed to register event listener {$listener}: " . $e->getMessage(), [
+                            'exception' => $e,
+                        ]);
+                    }
+                }
             }
         }
     }
@@ -485,8 +581,197 @@ final class App
      */
     protected function responseEvent(Response $response): Response
     {
-        return $this->get(EventDispatcher::class)
+        return $this
+            ->get(EventDispatcher::class)
             ->dispatch(new ResponseEvent($response), ResponseEvent::NAME)
             ->getResponse();
+    }
+
+    protected function compressResponse(Response $response, FluteRequest $request): void
+    {
+        if (headers_sent() || $response->headers->has('Content-Encoding')) {
+            return;
+        }
+
+        if (is_debug() && !$request->htmx()->isHtmxRequest()) {
+            return;
+        }
+
+        $content = $response->getContent();
+        if ($content === false || strlen($content) < 1024) {
+            return;
+        }
+
+        $contentType = $response->headers->get('Content-Type', 'text/html');
+        $compressible =
+            str_contains($contentType, 'text/')
+            || str_contains($contentType, 'application/json')
+            || str_contains($contentType, 'application/javascript')
+            || str_contains($contentType, 'application/xml')
+            || str_contains($contentType, '+xml')
+            || str_contains($contentType, '+json');
+
+        if (!$compressible) {
+            return;
+        }
+
+        $acceptEncoding = $request->headers->get('Accept-Encoding', '');
+
+        if (str_contains($acceptEncoding, 'gzip') && function_exists('gzencode')) {
+            $compressed = gzencode($content, 6);
+            if ($compressed !== false && strlen($compressed) < strlen($content)) {
+                $response->setContent($compressed);
+                $response->headers->set('Content-Encoding', 'gzip');
+                $this->addVaryHeader($response, 'Accept-Encoding');
+                $response->headers->remove('Content-Length');
+            }
+        } elseif (str_contains($acceptEncoding, 'deflate') && function_exists('gzdeflate')) {
+            $compressed = gzdeflate($content, 6);
+            if ($compressed !== false && strlen($compressed) < strlen($content)) {
+                $response->setContent($compressed);
+                $response->headers->set('Content-Encoding', 'deflate');
+                $this->addVaryHeader($response, 'Accept-Encoding');
+                $response->headers->remove('Content-Length');
+            }
+        }
+    }
+
+    private function addVaryHeader(Response $response, string $header): void
+    {
+        $vary = [];
+        foreach (array_merge($response->getVary(), [$header]) as $value) {
+            foreach (explode(',', (string) $value) as $part) {
+                $part = trim($part);
+                if ($part === '') {
+                    continue;
+                }
+
+                $vary[strtolower($part)] = $part;
+            }
+        }
+
+        $response->headers->remove('Vary');
+        $response->setVary(array_values($vary), false);
+    }
+
+    protected function getPageCacheKey(FluteRequest $request): ?string
+    {
+        if (!is_performance()) {
+            return null;
+        }
+
+        if ($request->getMethod() !== 'GET') {
+            return null;
+        }
+
+        if ($request->hasAuthenticationCookie()) {
+            return null;
+        }
+
+        $uri = $request->getPathInfo();
+
+        if (str_starts_with($uri, '/admin') || str_starts_with($uri, '/api') || str_starts_with($uri, '/live')) {
+            return null;
+        }
+
+        $query = $request->query->all();
+        ksort($query);
+        $queryHash = $query ? '?' . http_build_query($query) : '';
+
+        $variant = 'full';
+        if ($request->htmx()->isHtmxRequest()) {
+            if ($request->isPrefetch()) {
+                return null;
+            }
+
+            $target = (string) $request->htmx()->getTarget();
+            $target = preg_replace('/[^A-Za-z0-9_.:-]/', '', $target) ?: 'default';
+            $variant = 'htmx.' . ( $request->htmx()->isBoosted() ? 'boosted' : 'fragment' ) . '.' . $target;
+        }
+
+        return 'page_cache.' . app()->getLang() . '.' . $variant . '.' . md5($uri . $queryHash);
+    }
+
+    protected function tryServePageCache(FluteRequest $request): ?Response
+    {
+        $key = $this->getPageCacheKey($request);
+        if ($key === null) {
+            return null;
+        }
+
+        try {
+            $cached = cache()->get($key);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (!is_array($cached) || empty($cached['body'])) {
+            return null;
+        }
+
+        $response = new Response($cached['body'], $cached['status'] ?? 200);
+
+        foreach ($cached['headers'] ?? [] as $name => $values) {
+            if ($name === 'cache-control') {
+                continue;
+            }
+            $response->headers->set($name, $values);
+        }
+
+        $response->setCache([
+            'private' => true,
+            'no_cache' => true,
+            'must_revalidate' => true,
+        ]);
+        $response->headers->set('X-Page-Cache', 'HIT');
+        $response->setVary(['HX-Request', 'HX-Boosted', 'HX-Preloaded', 'X-Flute-Prefetch'], false);
+
+        return $response;
+    }
+
+    protected function storePageCache(FluteRequest $request, Response $response): void
+    {
+        $key = $this->getPageCacheKey($request);
+        if ($key === null) {
+            return;
+        }
+
+        if ($response->getStatusCode() !== 200) {
+            return;
+        }
+
+        if ($response->headers->has('Set-Cookie')) {
+            return;
+        }
+
+        $content = $response->getContent();
+        if ($content === false || strlen($content) < 100 || strlen($content) > ( 1024 * 1024 )) {
+            return;
+        }
+
+        $ttl = 30;
+
+        $headers = [];
+        foreach ($response->headers->all() as $name => $values) {
+            if (in_array($name, ['set-cookie', 'x-debug-token', 'x-debug-token-link', 'cache-control'], true)) {
+                continue;
+            }
+            $headers[$name] = $values;
+        }
+
+        SWRQueue::queue('page_cache_store.' . $key, static function () use ($key, $content, $headers, $ttl): void {
+            try {
+                cache()->set(
+                    $key,
+                    [
+                        'body' => $content,
+                        'status' => 200,
+                        'headers' => $headers,
+                    ],
+                    $ttl,
+                );
+            } catch (Throwable) {
+            }
+        });
     }
 }

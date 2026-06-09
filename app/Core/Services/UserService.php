@@ -72,6 +72,16 @@ class UserService
     protected ?int $highestPriority = null;
 
     /**
+     * Prevent repeated logs when a request hits a transient auth/DB failure.
+     */
+    protected bool $permissionFailureLogged = false;
+
+    /**
+     * Prevent repeated logs when auth state cannot be restored for a request.
+     */
+    protected bool $authFailureLogged = false;
+
+    /**
      * Constructor for UserService.
      *
      * Initializes class variables and starts an authentication session.
@@ -108,7 +118,7 @@ class UserService
                 return;
             }
 
-            $this->currentUser = $this->get($userId, false, ['roles', 'roles.permissions', 'socialNetworks', 'socialNetworks.socialNetwork']);
+            $this->currentUser = $this->get($userId, false, ['roles', 'roles.permissions', 'blocksReceived']);
 
             if (!$this->currentUser) {
                 $this->sessionExpired();
@@ -130,7 +140,10 @@ class UserService
             return $this->usersCache[$route];
         }
 
-        $user = User::query()->where(['uri' => $route])->fetchOne();
+        $user = User::query()
+            ->where(['uri' => $route])
+            ->load('blocksReceived')
+            ->fetchOne();
 
         if ($user) {
             $this->usersCache[$user->id] = $user;
@@ -147,8 +160,11 @@ class UserService
      * @param bool $force Force data refresh from the database.
      * @param array $with Load specified relationships.
      */
-    public function get(int $userId, bool $force = false, array $with = ['roles', 'socialNetworks', 'userDevices', 'actionLogs', 'invoices']): ?User
-    {
+    public function get(
+        int $userId,
+        bool $force = false,
+        array $with = ['roles', 'roles.permissions', 'blocksReceived'],
+    ): ?User {
         if (isset($this->usersCache[$userId]) && !$force) {
             return $this->usersCache[$userId];
         }
@@ -175,8 +191,14 @@ class UserService
      */
     public function getCurrentUser(): ?User
     {
-        if (!$this->currentUser) {
-            $this->authSession();
+        try {
+            if (!$this->currentUser) {
+                $this->authSession();
+            }
+        } catch (Throwable $e) {
+            $this->handleAuthStateFailure('Current user restore failed', $e);
+
+            return null;
         }
 
         return $this->currentUser;
@@ -197,8 +219,14 @@ class UserService
      */
     public function isLoggedIn(): bool
     {
-        if (!$this->currentUser) {
-            $this->authSession();
+        try {
+            if (!$this->currentUser) {
+                $this->authSession();
+            }
+        } catch (Throwable $e) {
+            $this->handleAuthStateFailure('Login state restore failed', $e);
+
+            return false;
         }
 
         return $this->currentUser !== null;
@@ -221,7 +249,14 @@ class UserService
             return;
         }
 
-        if (session()->has('user_id')) {
+        $request = request();
+        if (!$request->hasAuthenticationCookie() && empty($this->userToken)) {
+            $this->triedToLogin = true;
+
+            return;
+        }
+
+        if ($request->hasSessionCookie() && session()->has('user_id')) {
             $this->initializeBySession();
         } elseif ($this->userToken) {
             $this->initializeByToken();
@@ -259,30 +294,37 @@ class UserService
      */
     public function can(UserPermission|string|array|User $permissions, ?callable $callback = null): bool
     {
-        $permissions = is_array($permissions) ? $permissions : [$permissions];
+        try {
+            $permissions = is_array($permissions) ? $permissions : [$permissions];
 
-        foreach ($permissions as $permission) {
-            $permissionName = $permission instanceof UserPermission ? $permission->value : $permission;
+            foreach ($permissions as $permission) {
+                $permissionName = $permission instanceof UserPermission ? $permission->value : $permission;
 
-            if ($permissionName instanceof User) {
-                if (!$this->canEditUser($permissionName)) {
-                    return false;
-                }
-            } else {
-                if (!$this->checkUserPermission($permissionName)) {
-                    return false;
+                if ($permissionName instanceof User) {
+                    if (!$this->canEditUser($permissionName)) {
+                        return false;
+                    }
+                } else {
+                    if (!$this->checkUserPermission($permissionName)) {
+                        return false;
+                    }
                 }
             }
-        }
 
-        if ($callback) {
-            try {
-                $callback();
-            } catch (Throwable $e) {
+            if ($callback) {
+                try {
+                    $callback();
+                } catch (Throwable $callbackError) {
+                    logs()->debug('Permission callback failed: ' . $callbackError->getMessage());
+                }
             }
-        }
 
-        return true;
+            return true;
+        } catch (Throwable $e) {
+            $this->handleAuthStateFailure('Permission check failed', $e);
+
+            return false;
+        }
     }
 
     /**
@@ -290,10 +332,18 @@ class UserService
      *
      * @param float $sum Amount to add.
      * @param User|null $user User to add balance to. If null, the current user is used.
+     * @param string|null $source Module/service that initiated the operation (e.g., "payment", "admin", "shop").
+     * @param string|null $description Human-readable description for balance history.
+     * @param BalanceHistoryMeta|null $meta Typed metadata for balance history.
      * @throws Throwable
      */
-    public function topup(float $sum, ?User $user = null): void
-    {
+    public function topup(
+        float $sum,
+        ?User $user = null,
+        ?string $source = null,
+        ?string $description = null,
+        ?BalanceHistoryMeta $meta = null,
+    ): void {
         if ($sum <= 0) {
             throw new InvalidArgumentException('The sum must be a positive number.');
         }
@@ -304,10 +354,109 @@ class UserService
             throw new UserNotFoundException();
         }
 
-        $balanceUser->balance += $sum;
-        transaction($balanceUser)->run();
+        $database = db();
+        $database->begin();
+        try {
+            $balanceUser = User::query()
+                ->forUpdate()
+                ->where(['id' => $balanceUser->id])
+                ->fetchOne();
+
+            $balanceUser->balance += $sum;
+            transaction($balanceUser)->run();
+            $database->commit();
+        } catch (\Throwable $e) {
+            $database->rollback();
+            throw $e;
+        }
+
+        try {
+            app(BalanceHistoryService::class)->topup(
+                $balanceUser,
+                $sum,
+                $balanceUser->balance,
+                $source ?? 'payment',
+                $description,
+                $meta,
+            );
+        } catch (\Throwable $e) {
+            logs()->error('Balance history record failed: ' . $e->getMessage());
+        }
+
+        if (function_exists('notify')) {
+            try {
+                notify('core.balance_topup', $balanceUser, [
+                    'amount' => number_format($sum, 2),
+                    'balance' => number_format($balanceUser->balance, 2),
+                ]);
+            } catch (Throwable $e) {
+                logs()->error('Notification [core.balance_topup] failed: ' . $e->getMessage());
+            }
+        }
 
         // Dispatch user changed event
+        events()->dispatch(new UserChangedEvent($balanceUser), UserChangedEvent::NAME);
+    }
+
+    /**
+     * Refunds a specified amount to the user's balance.
+     *
+     * Unlike topup(), this does NOT send a "Balance topped up" notification
+     * and records the operation as a refund in balance history.
+     *
+     * @param float $sum Amount to refund.
+     * @param User|null $user User to refund balance to. If null, the current user is used.
+     * @param string|null $source Module/service that initiated the refund (e.g., "shop").
+     * @param string|null $description Human-readable description for balance history.
+     * @param BalanceHistoryMeta|null $meta Typed metadata for balance history.
+     */
+    public function refund(
+        float $sum,
+        ?User $user = null,
+        ?string $source = null,
+        ?string $description = null,
+        ?BalanceHistoryMeta $meta = null,
+    ): void {
+        if ($sum <= 0) {
+            throw new InvalidArgumentException('The sum must be a positive number.');
+        }
+
+        $balanceUser = $user ?? $this->getCurrentUser();
+
+        if (!$balanceUser) {
+            throw new UserNotFoundException();
+        }
+
+        $database = db();
+        $database->begin();
+        try {
+            $balanceUser = User::query()
+                ->forUpdate()
+                ->where(['id' => $balanceUser->id])
+                ->fetchOne();
+
+            $balanceUser->balance += $sum;
+            transaction($balanceUser)->run();
+            $database->commit();
+        } catch (\Throwable $e) {
+            $database->rollback();
+            throw $e;
+        }
+
+        try {
+            app(BalanceHistoryService::class)->refund(
+                $balanceUser,
+                $sum,
+                $balanceUser->balance,
+                $source ?? 'refund',
+                $description,
+                $meta,
+            );
+        } catch (\Throwable $e) {
+            logs()->error('Balance history record failed: ' . $e->getMessage());
+        }
+
+        // Dispatch user changed event (no notification for refunds)
         events()->dispatch(new UserChangedEvent($balanceUser), UserChangedEvent::NAME);
     }
 
@@ -316,11 +465,21 @@ class UserService
      *
      * @param float $sum Amount to deduct.
      * @param User|null $user User to deduct balance from. If null, the current user is used.
+     * @param string|null $source Module/service that initiated the operation (e.g., "shop", "clans", "admin").
+     * @param string|null $description Human-readable description for balance history.
+     * @param BalanceHistoryMeta|null $meta Typed metadata for balance history.
      * @throws BalanceNotEnoughException
      * @throws Throwable
      */
-    public function unbalance(float $sum, ?User $user = null): void
-    {
+    public function unbalance(
+        float $sum,
+        ?User $user = null,
+        ?string $source = null,
+        ?string $description = null,
+        ?BalanceHistoryMeta $meta = null,
+    ): void {
+        $sum = $this->normalizeMoneyAmount($sum);
+
         if ($sum <= 0) {
             throw new InvalidArgumentException('The sum must be a positive number.');
         }
@@ -331,14 +490,47 @@ class UserService
             throw new UserNotFoundException();
         }
 
-        if ($balanceUser->balance < $sum) {
-            $neededSum = $sum - $balanceUser->balance;
+        // Re-fetch with row lock to prevent race conditions
+        $database = db();
+        $database->begin();
+        try {
+            $balanceUser = User::query()
+                ->forUpdate()
+                ->where(['id' => $balanceUser->id])
+                ->fetchOne();
 
-            throw (new BalanceNotEnoughException())->setNeededSum($neededSum);
+            $balanceMinor = $this->moneyToMinorUnits((float) $balanceUser->balance);
+            $sumMinor = $this->moneyToMinorUnits($sum);
+
+            if ($balanceMinor < $sumMinor) {
+                $neededSum = $this->minorUnitsToMoney($sumMinor - $balanceMinor);
+                $database->rollback();
+
+                throw ( new BalanceNotEnoughException() )->setNeededSum($neededSum);
+            }
+
+            $balanceUser->balance -= $sum;
+            transaction($balanceUser)->run();
+            $database->commit();
+        } catch (BalanceNotEnoughException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            $database->rollback();
+            throw $e;
         }
 
-        $balanceUser->balance -= $sum;
-        transaction($balanceUser)->run();
+        try {
+            app(BalanceHistoryService::class)->purchase(
+                $balanceUser,
+                $sum,
+                $balanceUser->balance,
+                $source ?? 'system',
+                $description,
+                $meta,
+            );
+        } catch (\Throwable $e) {
+            logs()->error('Balance history record failed: ' . $e->getMessage());
+        }
 
         // Dispatch user changed event
         events()->dispatch(new UserChangedEvent($balanceUser), UserChangedEvent::NAME);
@@ -365,29 +557,35 @@ class UserService
      */
     public function getHighestPriority(?User $user = null): int
     {
-        $userToCheck = $user ?? $this->currentUser;
+        try {
+            $userToCheck = $user ?? $this->currentUser;
 
-        if (!$userToCheck) {
+            if (!$userToCheck) {
+                return 0;
+            }
+
+            if ($userToCheck === $this->currentUser && $this->highestPriority !== null) {
+                return $this->highestPriority;
+            }
+
+            $highestPriority = 0;
+
+            foreach ($userToCheck->roles as $role) {
+                if ($role->priority > $highestPriority) {
+                    $highestPriority = $role->priority;
+                }
+            }
+
+            if ($userToCheck === $this->currentUser) {
+                $this->highestPriority = $highestPriority;
+            }
+
+            return $highestPriority;
+        } catch (Throwable $e) {
+            $this->handleAuthStateFailure('Highest role priority lookup failed', $e);
+
             return 0;
         }
-
-        if ($userToCheck === $this->currentUser && $this->highestPriority !== null) {
-            return $this->highestPriority;
-        }
-
-        $highestPriority = 0;
-
-        foreach ($userToCheck->roles as $role) {
-            if ($role->priority > $highestPriority) {
-                $highestPriority = $role->priority;
-            }
-        }
-
-        if ($userToCheck === $this->currentUser) {
-            $this->highestPriority = $highestPriority;
-        }
-
-        return $highestPriority;
     }
 
     /**
@@ -400,7 +598,8 @@ class UserService
         $currentUserHighestPriority = $this->getHighestPriority();
         $userToEditHighestPriority = $this->getHighestPriority($userToEdit);
 
-        return $currentUserHighestPriority > $userToEditHighestPriority || $this->can(UserPermission::ADMIN_BOSS->value);
+        return $currentUserHighestPriority >= $userToEditHighestPriority
+        || $this->can(UserPermission::ADMIN_BOSS->value);
     }
 
     /**
@@ -422,21 +621,27 @@ class UserService
      */
     public function hasRole(string $role): bool
     {
-        if (!$this->isLoggedIn()) {
+        try {
+            if (!$this->isLoggedIn()) {
+                return false;
+            }
+
+            if ($this->rolesCache !== null) {
+                return isset($this->rolesCache[$role]);
+            }
+
+            $this->rolesCache = [];
+
+            foreach ($this->currentUser->roles as $userRole) {
+                $this->rolesCache[$userRole->name] = true;
+            }
+
+            return isset($this->rolesCache[$role]);
+        } catch (Throwable $e) {
+            $this->handleAuthStateFailure('Role check failed', $e);
+
             return false;
         }
-
-        if ($this->rolesCache !== null) {
-            return in_array($role, $this->rolesCache, true);
-        }
-
-        $this->rolesCache = [];
-
-        foreach ($this->currentUser->roles as $userRole) {
-            $this->rolesCache[] = $userRole->name;
-        }
-
-        return in_array($role, $this->rolesCache, true);
     }
 
     /**
@@ -446,11 +651,17 @@ class UserService
      */
     public function hasSocialNetwork(string $key): bool
     {
-        if (!$this->isLoggedIn()) {
+        try {
+            if (!$this->isLoggedIn()) {
+                return false;
+            }
+
+            return !empty($this->currentUser->getSocialNetwork($key));
+        } catch (Throwable $e) {
+            $this->handleAuthStateFailure('Social network check failed', $e);
+
             return false;
         }
-
-        return !empty($this->currentUser->getSocialNetwork($key));
     }
 
     /**
@@ -460,11 +671,35 @@ class UserService
      */
     public function hasEnoughBalance(float $sum): bool
     {
-        if (!$this->isLoggedIn()) {
+        try {
+            if (!$this->isLoggedIn()) {
+                return false;
+            }
+
+            $balanceMinor = $this->moneyToMinorUnits((float) ( $this->currentUser->balance ?? 0 ));
+            $sumMinor = $this->moneyToMinorUnits($sum);
+
+            return $balanceMinor >= $sumMinor;
+        } catch (Throwable $e) {
+            $this->handleAuthStateFailure('Balance check failed', $e);
+
             return false;
         }
+    }
 
-        return ($this->currentUser->balance ?? 0) >= $sum;
+    private function normalizeMoneyAmount(float $amount): float
+    {
+        return $this->minorUnitsToMoney($this->moneyToMinorUnits($amount));
+    }
+
+    private function moneyToMinorUnits(float $amount): int
+    {
+        return (int) round($amount * 100);
+    }
+
+    private function minorUnitsToMoney(int $amount): float
+    {
+        return round($amount / 100, 2);
     }
 
     /**
@@ -543,6 +778,8 @@ class UserService
         $this->rolesCache = null;
         $this->highestPriority = null;
         $this->triedToLogin = false;
+        $this->authFailureLogged = false;
+        $this->permissionFailureLogged = false;
     }
 
     /**
@@ -581,15 +818,23 @@ class UserService
             }
 
             if (config('auth.check_ip')) {
-                if ($tokenInfo->userDevice->ip !== request()->ip()) {
-                    logs()->warning('auth.token.ip_mismatch', ['expected' => $tokenInfo->userDevice->ip, 'actual' => request()->ip()]);
+                $clientIp = request()->getClientIp();
+                if ($tokenInfo->userDevice->ip !== $clientIp) {
+                    logs()->warning('auth.token.ip_mismatch', [
+                        'expected' => $tokenInfo->userDevice->ip,
+                        'actual' => $clientIp,
+                    ]);
                     $this->sessionExpired();
 
                     return;
                 }
             }
 
-            $this->currentUser = $this->get((int) $tokenInfo->user->id, false, ['roles', 'roles.permissions', 'socialNetworks', 'socialNetworks.socialNetwork']);
+            $this->currentUser = $this->get(
+                (int) $tokenInfo->user->id,
+                false,
+                ['roles', 'roles.permissions', 'blocksReceived'],
+            );
 
             if (!$this->currentUser) {
                 $this->sessionExpired();
@@ -599,14 +844,14 @@ class UserService
 
             session()->set('user_id', $tokenInfo->user->id);
 
-            $dt = (int) round((microtime(true) - $t0) * 1000);
+            $dt = (int) round(( microtime(true) - $t0 ) * 1000);
             if ($dt >= 20) {
                 logs()->info('auth.token.initialize_success', ['ms' => $dt, 'user_id' => (int) $tokenInfo->user->id]);
             } else {
                 logs()->debug('auth.token.initialize_success', ['ms' => $dt, 'user_id' => (int) $tokenInfo->user->id]);
             }
         } catch (Throwable $e) {
-            logs()->error($e);
+            logs()->warning('auth.token.initialize_failed', ['reason' => $e->getMessage()]);
             $this->sessionExpired();
         }
     }
@@ -641,13 +886,12 @@ class UserService
 
         $this->permissionsCache = [];
 
-        // Ensure roles and permissions are already loaded to prevent N+1 queries
         if (!isset($this->currentUser->roles[0]->permissions)) {
             $this->currentUser = $this->get($this->currentUser->id, true, ['roles', 'roles.permissions']);
         }
 
         foreach ($this->currentUser->getPermissions() as $permission) {
-            $this->permissionsCache[] = $permission->name;
+            $this->permissionsCache[$permission->name] = true;
         }
 
         return $this->permissionsCache;
@@ -655,12 +899,40 @@ class UserService
 
     protected function checkUserPermission(string $permission)
     {
-        if (!$this->isLoggedIn()) {
+        try {
+            if (!$this->isLoggedIn()) {
+                return false;
+            }
+
+            $permissions = $this->getPermissions();
+
+            return isset($permissions[UserPermission::ADMIN_BOSS->value]) || isset($permissions[$permission]);
+        } catch (Throwable $e) {
+            if (!$this->permissionFailureLogged) {
+                logs('database')->warning('Permission check failed: ' . $e->getMessage(), [
+                    'permission' => $permission,
+                ]);
+
+                $this->permissionFailureLogged = true;
+            }
+
             return false;
         }
+    }
 
-        $permissions = $this->getPermissions();
+    protected function handleAuthStateFailure(string $message, Throwable $e): void
+    {
+        $this->currentUser = null;
+        $this->permissionsCache = null;
+        $this->rolesCache = null;
+        $this->highestPriority = null;
+        $this->triedToLogin = true;
 
-        return in_array(UserPermission::ADMIN_BOSS->value, $permissions, true) || in_array($permission, $permissions, true);
+        if ($this->authFailureLogged) {
+            return;
+        }
+
+        logs('database')->warning($message . ': ' . $e->getMessage());
+        $this->authFailureLogged = true;
     }
 }

@@ -2,15 +2,16 @@
 
 namespace Flute\Core\Update\Services;
 
-use Exception;
 use Flute\Core\App;
 use Flute\Core\Markdown\Parser;
 use Flute\Core\ModulesManager\ModuleManager;
+use Flute\Core\Services\FluteApiClient;
+use Flute\Core\Support\FileUploader;
 use Flute\Core\Theme\ThemeManager;
 use Flute\Core\Update\Updaters\ModuleUpdater;
 use Flute\Core\Update\Updaters\ThemeUpdater;
-use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
+use Throwable;
 
 class UpdateService
 {
@@ -24,16 +25,12 @@ class UpdateService
      */
     private const CACHE_DURATION = 1440; // 1 day
 
-    /**
-     * Update API URL
-     */
-    private const UPDATE_API_URL = 'https://flute-cms.com/api';
-
-    /**
-     * Local API Update
-     */
-    // private const LOCAL_API_UPDATE_URL = 'http://localhost:3000/api';
-    private const LOCAL_API_UPDATE_URL = 'https://flute-cms.com/api';
+    private const TRUSTED_FLUTE_DOWNLOAD_HOSTS = [
+        'flute-cms.com',
+        'api.flute-cms.com',
+        'market.flute-cms.com',
+        'mirror.flute-cms.com',
+    ];
 
     /**
      */
@@ -56,11 +53,17 @@ class UpdateService
      */
     protected Parser $markdownParser;
 
+    private ?array $freshUpdatesCache = null;
+    private ?float $freshUpdatesFetchedAt = null;
+
     /**
      * UpdateService constructor.
      */
-    public function __construct(ModuleManager $moduleManager, ThemeManager $themeManager, ?Parser $markdownParser = null)
-    {
+    public function __construct(
+        ModuleManager $moduleManager,
+        ThemeManager $themeManager,
+        ?Parser $markdownParser = null,
+    ) {
         $this->moduleManager = $moduleManager;
         $this->themeManager = $themeManager;
         $this->markdownParser = $markdownParser ?? new Parser();
@@ -79,6 +82,128 @@ class UpdateService
     }
 
     /**
+     * Get current channel
+     */
+    public function getChannel(): string
+    {
+        return $this->channel;
+    }
+
+    /**
+     * Fetch updates for a specific channel without changing the active one
+     */
+    public function getUpdatesForChannel(string $channel, bool $forceRefresh = false): array
+    {
+        $original = $this->channel;
+        $this->channel = in_array($channel, ['stable', 'early'], true) ? $channel : 'stable';
+
+        try {
+            return $this->getAvailableUpdates($forceRefresh);
+        } finally {
+            $this->channel = $original;
+        }
+    }
+
+    /**
+     * Fetch all available engine versions from /api/engine-updates,
+     * filtered by channel, and formatted to match the update card structure.
+     */
+    public function getAllVersionsForChannel(string $channel): array
+    {
+        $channel = in_array($channel, ['stable', 'early'], true) ? $channel : 'stable';
+        $cacheKey = self::CACHE_KEY . '_catalog_' . $channel;
+
+        return cache()->callback($cacheKey, fn() => $this->fetchVersionCatalog($channel), self::CACHE_DURATION);
+    }
+
+    private function fetchVersionCatalog(string $channel): array
+    {
+        try {
+            $apiKey = config('app.flute_key');
+
+            if (empty($apiKey)) {
+                return [];
+            }
+
+            $api = new FluteApiClient(timeout: 10, connectTimeout: 5);
+
+            $response = $api->get('/api/engine-updates', [
+                'headers' => [
+                    'Accept' => 'application/json',
+                    'User-Agent' => 'Flute-CMS/' . App::VERSION,
+                ],
+                'query' => [
+                    'channel' => strtoupper($channel),
+                    'accessKey' => $apiKey,
+                    'nocache' => time(),
+                ],
+            ]);
+
+            if ($response->getStatusCode() !== 200) {
+                return [];
+            }
+
+            $versions = json_decode($response->getBody(), true);
+
+            if (!is_array($versions) || empty($versions)) {
+                return [];
+            }
+
+            $filtered = array_values(array_filter($versions, static fn(array $v) => $v['isPublic'] ?? false));
+
+            if (empty($filtered)) {
+                return [];
+            }
+
+            $latest = array_shift($filtered);
+
+            $cms = [
+                'version' => $latest['version'] ?? '',
+                'current_version' => App::VERSION,
+                'release_date' => isset($latest['releaseDate'])
+                    ? date(default_date_format(true), strtotime($latest['releaseDate']))
+                    : null,
+                'changelog' => $latest['changelog'] ?? '',
+                'download_url' => $latest['downloadUrl'] ?? '',
+                'previous_versions' => [],
+            ];
+
+            if (!empty($cms['changelog'])) {
+                $cms['changelog_html'] = $this->markdownParser->parse($cms['changelog'], false, false);
+            }
+
+            foreach ($filtered as $v) {
+                $prev = [
+                    'version' => $v['version'] ?? '',
+                    'release_date' => isset($v['releaseDate'])
+                        ? date(default_date_format(true), strtotime($v['releaseDate']))
+                        : null,
+                    'changelog' => $v['changelog'] ?? '',
+                    'download_url' => $v['downloadUrl'] ?? '',
+                ];
+
+                if (!empty($prev['changelog'])) {
+                    $prev['changelog_html'] = $this->markdownParser->parse($prev['changelog'], false, false);
+                }
+
+                $cms['previous_versions'][] = $prev;
+            }
+
+            return [
+                'cms' => $cms,
+                'modules' => [],
+                'themes' => [],
+            ];
+        } catch (\Throwable $e) {
+            logs()->error('Failed to fetch version catalog: ' . $e->getMessage());
+
+            \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'update.catalog']);
+        }
+
+        return [];
+    }
+
+    /**
      * Enable or disable mock data (for previews/tests)
      */
     public function enableMockData(bool $enable): void
@@ -93,7 +218,7 @@ class UpdateService
      */
     public function getAvailableUpdates(bool $forceRefresh = false): array
     {
-        $cacheKey = self::CACHE_KEY . '_' . $this->channel . ($this->useMockData ? '_mock' : '');
+        $cacheKey = self::CACHE_KEY . '_' . $this->channel . ( $this->useMockData ? '_mock' : '' );
 
         if ($forceRefresh) {
             cache()->delete($cacheKey);
@@ -101,7 +226,7 @@ class UpdateService
             return $this->fetchUpdatesFromApi();
         }
 
-        return cache()->callback($cacheKey, fn () => $this->fetchUpdatesFromApi(), self::CACHE_DURATION);
+        return cache()->callback($cacheKey, fn() => $this->fetchUpdatesFromApi(), self::CACHE_DURATION);
     }
 
     /**
@@ -145,8 +270,10 @@ class UpdateService
     {
         cache()->delete(self::CACHE_KEY . '_' . $this->channel);
         cache()->delete(self::CACHE_KEY . '_' . $this->channel . '_mock');
-
-        $this->getAvailableUpdates(true);
+        cache()->delete(self::CACHE_KEY . '_catalog_stable');
+        cache()->delete(self::CACHE_KEY . '_catalog_early');
+        $this->freshUpdatesCache = null;
+        $this->freshUpdatesFetchedAt = null;
 
         // if (function_exists('opcache_reset')) {
         //     opcache_reset();
@@ -161,17 +288,17 @@ class UpdateService
     public function downloadUpdate(string $type, ?string $identifier = null, ?string $version = null): ?string
     {
         if (function_exists('set_time_limit')) {
-            @set_time_limit(0);
+            @set_time_limit(300);
         }
         if (function_exists('ignore_user_abort')) {
             @ignore_user_abort(true);
         }
         if (function_exists('ini_set')) {
-            @ini_set('memory_limit', '-1');
+            @ini_set('memory_limit', '512M');
         }
 
         try {
-            $updates = $this->getAvailableUpdates();
+            $updates = $this->getFreshUpdatesForDownload();
 
             $downloadUrl = null;
             $latestVersion = null;
@@ -185,7 +312,7 @@ class UpdateService
             }
 
             if (empty($downloadUrl)) {
-                logs()->error("Download URL not found for {$type} " . ($identifier ?? ''));
+                logs()->error("Download URL not found for {$type} " . ( $identifier ?? '' ));
 
                 return null;
             }
@@ -195,33 +322,78 @@ class UpdateService
                 mkdir($tempDir, 0o755, true);
             }
 
-            $fileName = $tempDir . '/' . ($identifier ?? 'cms') . '-' . ($version ?? $latestVersion) . '.zip';
+            $fileName =
+                $tempDir
+                . '/'
+                . $this->sanitizeDownloadPart($identifier ?? 'cms')
+                . '-'
+                . $this->sanitizeDownloadPart($version ?? $latestVersion ?? 'latest')
+                . '.zip';
 
-            $client = new Client(['timeout' => 120, 'verify' => !config('app.debug')]);
+            $api = new FluteApiClient(timeout: 120, connectTimeout: 10);
 
-            $baseUrl = '';
-            if (!preg_match('/^https?:\/\//', $downloadUrl)) {
-                $baseUrl = (str_contains((string) config('app.url'), 'localhost') ? self::LOCAL_API_UPDATE_URL : self::UPDATE_API_URL);
+            $isAbsoluteUrl = (bool) preg_match('/^https?:\/\//', $downloadUrl);
+            $parsedDownloadUrl = parse_url($downloadUrl);
+            $queryParams = [];
+            if (isset($parsedDownloadUrl['query'])) {
+                parse_str($parsedDownloadUrl['query'], $queryParams);
             }
 
-            // parse ?token
-            $token = explode('?', $downloadUrl)[1];
-            $token = explode('=', $token)[1];
+            $hasJwtToken = !empty($queryParams['token']);
 
-            $client->request('GET', $baseUrl . str_replace('api/', '', $downloadUrl), [
+            if ($isAbsoluteUrl) {
+                $fullUrl = $downloadUrl;
+            } else {
+                $path = $parsedDownloadUrl['path'] ?? $downloadUrl;
+                $fullUrl = rtrim($api->getActiveBaseUrl(), '/') . '/' . ltrim($path, '/');
+            }
+
+            $this->assertDownloadUrlAllowed($fullUrl);
+
+            $guzzleOptions = [
                 'headers' => [
                     'User-Agent' => 'Flute-CMS/' . App::VERSION,
                 ],
                 'sink' => $fileName,
-                'query' => [
-                    'accessKey' => config('app.flute_key'),
-                    'versionId' => $version ?? $latestVersion,
-                    'token' => $token,
+                'http_errors' => false,
+                'allow_redirects' => [
+                    'max' => 5,
+                    'strict' => false,
+                    'referer' => false,
+                    'track_redirects' => true,
+                    'on_redirect' => function ($request, $response, $uri): void {
+                        $this->assertDownloadUrlAllowed((string) $uri);
+                    },
                 ],
-            ]);
+            ];
 
-            if (!file_exists($fileName) || mime_content_type($fileName) !== 'application/zip') {
-                logs()->error("Downloaded file is not a valid ZIP archive: {$fileName}");
+            if (!$isAbsoluteUrl) {
+                $requestQuery = [];
+                if ($hasJwtToken) {
+                    $requestQuery['token'] = $queryParams['token'];
+                } else {
+                    $requestQuery['accessKey'] = config('app.flute_key');
+                    $requestQuery['versionId'] = $version ?? $latestVersion;
+                }
+                $guzzleOptions['query'] = $requestQuery;
+            }
+
+            $response = $api->getClient()->request('GET', $fullUrl, $guzzleOptions);
+
+            $statusCode = $response->getStatusCode();
+            if ($statusCode >= 400) {
+                $body = is_file($fileName) ? (string) @file_get_contents($fileName, false, null, 0, 512) : '';
+                logs()->error("Update download returned HTTP {$statusCode} for {$type}/{$identifier}: {$body}", [
+                    'url' => $fullUrl,
+                ]);
+                @unlink($fileName);
+
+                return null;
+            }
+
+            if (!$this->isSafeUpdateZipArchive($fileName, $type)) {
+                $contentType = $response->getHeaderLine('Content-Type');
+                logs()->error("Downloaded file is not a valid ZIP archive: {$fileName} (Content-Type: {$contentType})");
                 @unlink($fileName);
 
                 return null;
@@ -231,11 +403,135 @@ class UpdateService
         } catch (GuzzleException $e) {
             logs()->error('Failed to download update: ' . $e->getMessage());
 
+            \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'update.download']);
+
             if (is_debug()) {
                 throw $e;
             }
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             logs()->error('Error processing update download: ' . $e->getMessage());
+
+            \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'update.download']);
+
+            if (is_debug()) {
+                throw $e;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Download a specific CMS version from the engine catalog.
+     *
+     * @return string|null Path to downloaded file
+     */
+    public function downloadVersionFromCatalog(string $version): ?string
+    {
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(300);
+        }
+        if (function_exists('ignore_user_abort')) {
+            @ignore_user_abort(true);
+        }
+        if (function_exists('ini_set')) {
+            @ini_set('memory_limit', '512M');
+        }
+
+        try {
+            $apiKey = config('app.flute_key');
+
+            if (empty($apiKey)) {
+                logs()->error('Flute API key is empty, cannot download version');
+
+                return null;
+            }
+
+            $api = new FluteApiClient(timeout: 120, connectTimeout: 10);
+
+            $downloadUrl = $this->findCatalogVersionDownloadUrl($version) ?? '/api/engine/download';
+            $parsedUrl = parse_url($downloadUrl);
+            $urlQuery = [];
+            if (isset($parsedUrl['query']) && is_string($parsedUrl['query'])) {
+                parse_str($parsedUrl['query'], $urlQuery);
+            }
+
+            $isAbsoluteUrl = (bool) preg_match('/^https?:\/\//', $downloadUrl);
+            $hasJwtToken = !empty($urlQuery['token']);
+
+            if ($isAbsoluteUrl) {
+                $fullUrl = $downloadUrl;
+            } else {
+                $path = $parsedUrl['path'] ?? '/api/engine/download';
+                $fullUrl = rtrim($api->getActiveBaseUrl(), '/') . '/' . ltrim($path, '/');
+            }
+
+            $this->assertDownloadUrlAllowed($fullUrl);
+
+            $tempDir = storage_path('app/temp/updates');
+            if (!is_dir($tempDir)) {
+                mkdir($tempDir, 0o755, true);
+            }
+
+            $safeVersion = preg_replace('/[^a-zA-Z0-9._\-]/', '_', $version);
+            $fileName = $tempDir . '/cms-' . $safeVersion . '.zip';
+
+            $guzzleOptions = [
+                'headers' => [
+                    'User-Agent' => 'Flute-CMS/' . App::VERSION,
+                ],
+                'sink' => $fileName,
+                'http_errors' => false,
+                'allow_redirects' => [
+                    'max' => 5,
+                    'strict' => false,
+                    'referer' => false,
+                    'track_redirects' => true,
+                    'on_redirect' => function ($request, $response, $uri): void {
+                        $this->assertDownloadUrlAllowed((string) $uri);
+                    },
+                ],
+            ];
+
+            if (!$isAbsoluteUrl) {
+                $requestQuery = [];
+                if ($hasJwtToken) {
+                    $requestQuery['token'] = $urlQuery['token'];
+                } else {
+                    $requestQuery = array_merge($urlQuery, [
+                        'version' => $version,
+                        'accessKey' => $apiKey,
+                    ]);
+                }
+                $guzzleOptions['query'] = $requestQuery;
+            }
+
+            $response = $api->getClient()->request('GET', $fullUrl, $guzzleOptions);
+
+            $statusCode = $response->getStatusCode();
+            if ($statusCode >= 400) {
+                $body = is_file($fileName) ? (string) @file_get_contents($fileName, false, null, 0, 512) : '';
+                logs()->error("Catalog download returned HTTP {$statusCode} for version {$version}: {$body}", [
+                    'url' => $fullUrl,
+                ]);
+                @unlink($fileName);
+
+                return null;
+            }
+
+            if (!$this->isSafeUpdateZipArchive($fileName, 'cms')) {
+                $contentType = $response->getHeaderLine('Content-Type');
+                logs()->error("Downloaded catalog file is not a valid ZIP: {$fileName} (Content-Type: {$contentType})");
+                @unlink($fileName);
+
+                return null;
+            }
+
+            return $fileName;
+        } catch (\Throwable $e) {
+            logs()->error('Failed to download version from catalog: ' . $e->getMessage());
+
+            \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'update.catalog.download']);
 
             if (is_debug()) {
                 throw $e;
@@ -257,6 +553,29 @@ class UpdateService
     }
 
     /**
+     * Return fresh API data with in-memory cache (4 min) so that
+     * download_url JWT tokens (TTL 5 min) stay valid across a batch
+     * of downloadUpdate() calls.
+     */
+    private function getFreshUpdatesForDownload(): array
+    {
+        $now = microtime(true);
+
+        if (
+            $this->freshUpdatesCache !== null
+            && $this->freshUpdatesFetchedAt !== null
+            && ( $now - $this->freshUpdatesFetchedAt ) < 240
+        ) {
+            return $this->freshUpdatesCache;
+        }
+
+        $this->freshUpdatesCache = $this->fetchUpdatesFromApi();
+        $this->freshUpdatesFetchedAt = $now;
+
+        return $this->freshUpdatesCache;
+    }
+
+    /**
      * Fetch updates from external API
      */
     private function fetchUpdatesFromApi(): array
@@ -266,7 +585,6 @@ class UpdateService
         }
 
         try {
-            $client = new Client(['timeout' => 10, 'verify' => !config('app.debug')]);
             $apiKey = config('app.flute_key');
 
             if (empty($apiKey)) {
@@ -275,9 +593,9 @@ class UpdateService
                 return [];
             }
 
-            $url = (str_contains((string) config('app.url'), 'localhost') ? self::LOCAL_API_UPDATE_URL : self::UPDATE_API_URL) . '/updates';
+            $api = new FluteApiClient(timeout: 10, connectTimeout: 5);
 
-            $response = $client->request('GET', $url, [
+            $response = $api->get('/api/updates', [
                 'headers' => [
                     'Accept' => 'application/json',
                     'User-Agent' => 'Flute-CMS/' . App::VERSION,
@@ -291,33 +609,20 @@ class UpdateService
                     'themes' => json_encode($this->getInstalledThemes()),
                     'accessKey' => $apiKey,
                     'phpVersion' => $this->getPHPVersion(),
-                    'branch' => $this->channel,
+                    'branch' => strtoupper($this->channel),
                     'nocache' => time(),
                 ],
             ]);
-
 
             if ($response->getStatusCode() === 200) {
                 $data = json_decode($response->getBody(), true);
 
                 if (is_array($data)) {
-                    $data = $this->parseMarkdownChangelogs($data);
-
-                    return $data;
+                    return $this->parseMarkdownChangelogs($data);
                 }
             }
-        } catch (GuzzleException $e) {
-            // if (is_debug()) {
-            //     throw $e;
-            // }
-
+        } catch (\Throwable $e) {
             logs()->error('Failed to fetch updates: ' . $e->getMessage());
-        } catch (Exception $e) {
-            // if (is_debug()) {
-            //     throw $e;
-            // }
-
-            logs()->error('Error processing updates: ' . $e->getMessage());
         }
 
         return [];
@@ -397,8 +702,11 @@ class UpdateService
             if (!empty($data['cms']['previous_versions'])) {
                 foreach ($data['cms']['previous_versions'] as $key => $version) {
                     if (!empty($version['changelog'])) {
-                        $data['cms']['previous_versions'][$key]['changelog_html'] =
-                            $this->markdownParser->parse($version['changelog'], false, false);
+                        $data['cms']['previous_versions'][$key]['changelog_html'] = $this->markdownParser->parse(
+                            $version['changelog'],
+                            false,
+                            false,
+                        );
                     }
                 }
             }
@@ -407,15 +715,21 @@ class UpdateService
         if (!empty($data['modules']) && is_array($data['modules'])) {
             foreach ($data['modules'] as $moduleId => $module) {
                 if (!empty($module['changelog'])) {
-                    $data['modules'][$moduleId]['changelog_html'] =
-                        $this->markdownParser->parse($module['changelog'], false, false);
+                    $data['modules'][$moduleId]['changelog_html'] = $this->markdownParser->parse(
+                        $module['changelog'],
+                        false,
+                        false,
+                    );
                 }
 
                 if (!empty($module['previous_versions'])) {
                     foreach ($module['previous_versions'] as $vKey => $version) {
                         if (!empty($version['changelog'])) {
-                            $data['modules'][$moduleId]['previous_versions'][$vKey]['changelog_html'] =
-                                $this->markdownParser->parse($version['changelog'], false, false);
+                            $data['modules'][$moduleId]['previous_versions'][$vKey]['changelog_html'] = $this->markdownParser->parse(
+                                $version['changelog'],
+                                false,
+                                false,
+                            );
                         }
                     }
                 }
@@ -425,15 +739,21 @@ class UpdateService
         if (!empty($data['themes']) && is_array($data['themes'])) {
             foreach ($data['themes'] as $themeId => $theme) {
                 if (!empty($theme['changelog'])) {
-                    $data['themes'][$themeId]['changelog_html'] =
-                        $this->markdownParser->parse($theme['changelog'], false, false);
+                    $data['themes'][$themeId]['changelog_html'] = $this->markdownParser->parse(
+                        $theme['changelog'],
+                        false,
+                        false,
+                    );
                 }
 
                 if (!empty($theme['previous_versions'])) {
                     foreach ($theme['previous_versions'] as $vKey => $version) {
                         if (!empty($version['changelog'])) {
-                            $data['themes'][$themeId]['previous_versions'][$vKey]['changelog_html'] =
-                                $this->markdownParser->parse($version['changelog'], false, false);
+                            $data['themes'][$themeId]['previous_versions'][$vKey]['changelog_html'] = $this->markdownParser->parse(
+                                $version['changelog'],
+                                false,
+                                false,
+                            );
                         }
                     }
                 }
@@ -487,5 +807,166 @@ class UpdateService
     private function getPHPVersion(): string
     {
         return substr(PHP_VERSION, 0, 3);
+    }
+
+    private function findCatalogVersionDownloadUrl(string $version): ?string
+    {
+        $catalog = $this->getAllVersionsForChannel($this->channel);
+        $cms = $catalog['cms'] ?? null;
+
+        if (!is_array($cms)) {
+            return null;
+        }
+
+        if (( $cms['version'] ?? null ) === $version && !empty($cms['download_url'])) {
+            return (string) $cms['download_url'];
+        }
+
+        $previous = $cms['previous_versions'] ?? [];
+        if (!is_array($previous)) {
+            return null;
+        }
+
+        foreach ($previous as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            if (( $entry['version'] ?? null ) === $version && !empty($entry['download_url'])) {
+                return (string) $entry['download_url'];
+            }
+        }
+
+        return null;
+    }
+
+    private function isValidZipArchive(string $fileName): bool
+    {
+        if (!is_file($fileName) || !is_readable($fileName)) {
+            return false;
+        }
+
+        $size = @filesize($fileName);
+        if (!is_int($size) || $size < 22) {
+            return false;
+        }
+
+        if (class_exists(\ZipArchive::class)) {
+            $zip = new \ZipArchive();
+            $status = $zip->open($fileName, \ZipArchive::CHECKCONS);
+            if ($status === true) {
+                $zip->close();
+
+                return true;
+            }
+        }
+
+        $handle = @fopen($fileName, 'rb');
+        if ($handle === false) {
+            return false;
+        }
+
+        $signature = (string) fread($handle, 4);
+        fclose($handle);
+
+        return in_array($signature, ["PK\x03\x04", "PK\x05\x06", "PK\x07\x08"], true);
+    }
+
+    private function isSafeUpdateZipArchive(string $fileName, string $type): bool
+    {
+        if (!$this->isValidZipArchive($fileName)) {
+            return false;
+        }
+
+        $maxTotalSize = match ($type) {
+            'cms' => 350 * 1024 * 1024,
+            'module', 'theme' => 150 * 1024 * 1024,
+            default => 250 * 1024 * 1024,
+        };
+
+        try {
+            app(FileUploader::class)->inspectZipArchive($fileName, [
+                'max_entries' => 12000,
+                'max_total_size' => $maxTotalSize,
+                'min_compression_ratio' => 0.001,
+            ]);
+
+            return true;
+        } catch (Throwable $e) {
+            logs()->error('Downloaded update ZIP failed safety inspection: ' . $e->getMessage(), [
+                'file' => $fileName,
+                'type' => $type,
+            ]);
+
+            return false;
+        }
+    }
+
+    private function sanitizeDownloadPart(?string $value): string
+    {
+        $value = trim((string) $value);
+        $value = preg_replace('/[^a-zA-Z0-9._\-]/', '_', $value) ?? '';
+
+        return $value !== '' ? $value : 'package';
+    }
+
+    private function assertDownloadUrlAllowed(string $url): void
+    {
+        $parts = parse_url($url);
+        if (!is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
+            throw new \RuntimeException('Update download URL is not allowed.');
+        }
+
+        $scheme = strtolower((string) $parts['scheme']);
+        $host = strtolower((string) $parts['host']);
+        $allowHttp = function_exists('is_debug') && is_debug() || (bool) config('app.development_mode', false);
+
+        if ($scheme !== 'https' && !( $scheme === 'http' && $allowHttp )) {
+            throw new \RuntimeException('Update download URL is not allowed.');
+        }
+
+        $trustedHosts = $this->getTrustedDownloadHosts();
+        if (!isset($trustedHosts[$host])) {
+            throw new \RuntimeException('Update download URL is not allowed.');
+        }
+    }
+
+    /**
+     * @return array<string,bool>
+     */
+    private function getTrustedDownloadHosts(): array
+    {
+        $hosts = [];
+        $sources = [
+            config('app.flute_market_url', 'https://flute-cms.com'),
+            ...( is_array(config('app.flute_market_mirrors', [])) ? config('app.flute_market_mirrors', []) : [] ),
+            ...(
+                is_array(config('app.flute_market_download_hosts', []))
+                    ? config('app.flute_market_download_hosts', [])
+                    : []
+            ),
+        ];
+
+        foreach ($sources as $source) {
+            if (!is_string($source) || $source === '') {
+                continue;
+            }
+
+            $host = $source;
+            if (str_contains($source, '://')) {
+                $parsed = parse_url($source);
+                $host = is_array($parsed) && !empty($parsed['host']) ? (string) $parsed['host'] : '';
+            }
+
+            if ($host !== '') {
+                $hosts[strtolower($host)] = true;
+            }
+        }
+
+        foreach (self::TRUSTED_FLUTE_DOWNLOAD_HOSTS as $host) {
+            $hosts[strtolower($host)] = true;
+        }
+
+        return $hosts;
     }
 }

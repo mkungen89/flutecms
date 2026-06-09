@@ -10,14 +10,31 @@ use Illuminate\Support\Collection;
 use MadeSimple\Arrays\ArrDots;
 use Nette\Utils\AssertionException;
 use Nette\Utils\Validators;
+use Symfony\Component\HttpFoundation\IpUtils;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Session\SessionInterface;
 
 class FluteRequest extends Request
 {
+    /**
+     * Must match RequestServiceProvider::PRIVATE_SUBNET_CIDRS (private hops for URL / TLS inference).
+     */
+    private const PRIVATE_PEER_CIDRS = [
+        '127.0.0.1',
+        '::1',
+        '10.0.0.0/8',
+        '172.16.0.0/12',
+        '192.168.0.0/16',
+        'fc00::/7',
+    ];
+
+    private ?HtmxRequest $htmxRequest = null;
+
+    private ?array $jsonInputCache = null;
+
     public function htmx(): HtmxRequest
     {
-        return new HtmxRequest($this->headers);
+        return $this->htmxRequest ??= new HtmxRequest($this->headers);
     }
 
     public function isBoost(): bool
@@ -30,12 +47,37 @@ class FluteRequest extends Request
         return $this->htmx()->isHtmxRequest() && !$this->htmx()->isBoosted();
     }
 
+    public function isPrefetch(): bool
+    {
+        return $this->htmx()->isPrefetch();
+    }
+
+    public function hasSessionCookie(): bool
+    {
+        $sessionConfig = (array) config('app.session', []);
+        $sessionName = (string) ( $sessionConfig['name'] ?? 'flute_session' );
+
+        return $sessionName !== '' && $this->cookies->has($sessionName);
+    }
+
+    public function hasRememberToken(): bool
+    {
+        return $this->cookies->has('remember_token');
+    }
+
+    public function hasAuthenticationCookie(): bool
+    {
+        return $this->hasSessionCookie() || $this->hasRememberToken();
+    }
+
     /**
      * Determine if the current request expects a JSON response.
      */
     public function expectsJson(): bool
     {
-        return $this->headers->get('Accept') === 'application/json';
+        $accept = (string) $this->headers->get('Accept', '');
+
+        return stripos($accept, 'application/json') !== false;
     }
 
     /**
@@ -43,7 +85,9 @@ class FluteRequest extends Request
      */
     public function isJson(): bool
     {
-        return $this->headers->get('Content-Type') === 'application/json';
+        $contentType = (string) $this->headers->get('Content-Type', '');
+
+        return stripos($contentType, 'application/json') === 0;
     }
 
     /**
@@ -73,7 +117,7 @@ class FluteRequest extends Request
     /**
      * Retrieve the current authenticated user.
      */
-    public function user(): User
+    public function user(): ?User
     {
         return user()->getCurrentUser();
     }
@@ -97,6 +141,31 @@ class FluteRequest extends Request
     public function isMethod(string $method): bool
     {
         return $this->getMethod() === strtoupper($method);
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * After trusted-proxy headers, treat the request as HTTPS when app.url is https, the Host matches
+     * it, and the immediate peer is local/private (typical nginx/php-fpm or Docker bridge) so generated
+     * URLs match TLS terminated upstream even if no X-Forwarded-Proto reaches PHP.
+     */
+    public function isSecure(): bool
+    {
+        if (parent::isSecure()) {
+            return true;
+        }
+
+        $appUrl = (string) config('app.url', '');
+        if ($appUrl === '' || !str_starts_with($appUrl, 'https://')) {
+            return false;
+        }
+
+        if (!$this->_hostMatchesConfiguredAppUrl()) {
+            return false;
+        }
+
+        return $this->_requestArrivedViaPrivateOrLocalInterface();
     }
 
     /**
@@ -128,8 +197,7 @@ class FluteRequest extends Request
         $data = array_merge($this->attributes->all(), $this->query->all(), $this->request->all());
 
         if ($this->isJson()) {
-            $jsonData = json_decode($this->getContent(), true) ?? [];
-            $data = array_merge($data, $jsonData);
+            $data = array_merge($data, $this->jsonInput());
         }
 
         if ($key === null) {
@@ -137,6 +205,17 @@ class FluteRequest extends Request
         }
 
         return ArrDots::get($data, $key, $default);
+    }
+
+    private function jsonInput(): array
+    {
+        if ($this->jsonInputCache !== null) {
+            return $this->jsonInputCache;
+        }
+
+        $decoded = json_decode($this->getContent(), true, 32);
+
+        return $this->jsonInputCache = is_array($decoded) ? $decoded : [];
     }
 
     /**
@@ -243,7 +322,7 @@ class FluteRequest extends Request
         }
 
         if (is_url($uri)) {
-            return $this->getSchemeAndHttpHost().$this->getPathInfo() === $uri;
+            return $this->getSchemeAndHttpHost() . $this->getPathInfo() === $uri;
         }
 
         return $this->getPathInfo() === $uri;
@@ -288,6 +367,43 @@ class FluteRequest extends Request
     public function __get($name)
     {
         return $this->input($name);
+    }
+
+    private function _hostMatchesConfiguredAppUrl(): bool
+    {
+        $appUrl = (string) config('app.url', '');
+        $expectedHost = parse_url($appUrl, PHP_URL_HOST);
+        if (!$expectedHost || !is_string($expectedHost)) {
+            return false;
+        }
+
+        $host = $this->_requestHostForUrlMatch();
+
+        return $host !== null && strcasecmp($host, $expectedHost) === 0;
+    }
+
+    private function _requestHostForUrlMatch(): ?string
+    {
+        try {
+            return $this->getHost();
+        } catch (\Throwable) {
+            $raw = (string) $this->headers->get('Host', '');
+            if ($raw === '') {
+                return null;
+            }
+
+            return strtolower((string) preg_replace('/:\d+$/', '', trim($raw)));
+        }
+    }
+
+    private function _requestArrivedViaPrivateOrLocalInterface(): bool
+    {
+        $remote = (string) $this->server->get('REMOTE_ADDR', '');
+        if ($remote === '') {
+            return true;
+        }
+
+        return IpUtils::checkIp($remote, self::PRIVATE_PEER_CIDRS);
     }
 
     /**

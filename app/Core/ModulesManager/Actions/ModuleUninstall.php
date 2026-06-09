@@ -11,6 +11,8 @@ use RuntimeException;
 
 class ModuleUninstall implements ModuleActionInterface
 {
+    use Concerns\FlushesTranslationCache;
+
     protected $moduleManager;
 
     public function action(ModuleInformation &$module, ?ModuleManager $moduleManager = null): bool
@@ -23,12 +25,12 @@ class ModuleUninstall implements ModuleActionInterface
             throw new RuntimeException("Module wasn't found in the system");
         }
 
-        $hasComposerJson = fs()->exists(path('app/Modules/'.$module->key.'/composer.json'));
+        $hasComposerJson = fs()->exists(path('app/Modules/' . $module->key . '/composer.json'));
 
         if ($moduleGet->status !== 'notinstalled') {
             $directory = sprintf('app/Modules/%s/database/migrations', $module->key);
 
-            if (fs()->exists(BASE_PATH.$directory)) {
+            if (fs()->exists(BASE_PATH . $directory)) {
                 app(DatabaseConnection::class)->rollbackMigrations($directory);
             }
         }
@@ -53,18 +55,21 @@ class ModuleUninstall implements ModuleActionInterface
             $this->moduleManager->runComposerInstall(null, true);
         }
 
-        app(DatabaseConnection::class)->forceRefreshSchemaDeferred();
+        $this->moduleManager->clearCache();
+        app(DatabaseConnection::class)->forceRefreshSchema([]);
+
+        $this->flushCompiledTranslations();
 
         return true;
     }
 
     protected function uninstall(ModuleInformation $moduleInformation): void
     {
-        $module = Module::findOne(["key" => $moduleInformation->key]);
+        $module = Module::findOne(['key' => $moduleInformation->key]);
 
         $module->delete();
 
-        fs()->remove(BASE_PATH.'app/Modules/'.$moduleInformation->key);
+        fs()->remove(BASE_PATH . 'app/Modules/' . $moduleInformation->key);
 
         logs('modules')->info("Module {$module->key} was deleted from the Flute!");
     }

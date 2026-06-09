@@ -9,6 +9,7 @@ use Symfony\Component\Mailer\Mailer;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mailer\Transport;
 use Symfony\Component\Mime\Email;
+use Throwable;
 
 /**
  * Class EmailService
@@ -42,7 +43,7 @@ class EmailService
             $this->configureMail();
 
             $defaultDomain = parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'localhost';
-            $fromEmail = $this->mailConfig['from'] ?? ('no-reply@' . $defaultDomain);
+            $fromEmail = $this->mailConfig['from'] ?? 'no-reply@' . $defaultDomain;
 
             $email = (new Email())
                 ->from($fromEmail)
@@ -51,7 +52,7 @@ class EmailService
                 ->html($body);
 
             $this->mailer->send($email);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             logs()->error("Email send failed: {$e->getMessage()}");
 
             throw $e;
@@ -66,13 +67,21 @@ class EmailService
         try {
             $user = $event->getUser();
 
+            if (!$this->hasValidRecipient($user->email ?? null)) {
+                logs()->warning('Email reset skipped: user has no valid email.', [
+                    'user_id' => $user->id ?? null,
+                ]);
+
+                return;
+            }
+
             $template = template()->render('flute::emails.reset', [
-                'url' => url('reset/' . $event->getToken()->token),
+                'url' => url('reset/' . $event->getToken()->token)->get(),
                 'name' => $user->name,
             ]);
 
             $this->send($user->email, __('auth.reset.subject'), $template);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             logs()->error("Email reset failed: {$e->getMessage()}");
         }
     }
@@ -89,17 +98,30 @@ class EmailService
         try {
             $user = $event->getUser();
 
-            $verificationToken = auth()->createVerificationToken($user)->token;
+            if (!$this->hasValidRecipient($user->email ?? null)) {
+                logs()->warning('Email registration skipped: user has no valid email.', [
+                    'user_id' => $user->id ?? null,
+                ]);
+
+                return;
+            }
+
+            $verificationToken = auth()->createVerificationToken($user)->rawToken;
 
             $template = template()->render('flute::emails.confirmation', [
-                'url' => url('confirm/' . $verificationToken),
+                'url' => url('confirm/' . $verificationToken)->get(),
                 'name' => $user->name,
             ]);
 
             $this->send($user->email, __('auth.confirmation.subject'), $template);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             logs()->error("Email registration failed: {$e->getMessage()}");
         }
+    }
+
+    private function hasValidRecipient(?string $email): bool
+    {
+        return $email !== null && filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
     }
 
     /**
@@ -118,21 +140,21 @@ class EmailService
             throw new Exception('SMTP is disabled.');
         }
 
-        $host = (string) ($this->mailConfig['host'] ?? '');
+        $host = (string) ( $this->mailConfig['host'] ?? '' );
         if ($host === '') {
             throw new Exception('SMTP host is not configured.');
         }
 
-        $port = (int) ($this->mailConfig['port'] ?? 0);
+        $port = (int) ( $this->mailConfig['port'] ?? 0 );
         if ($port < 1 || $port > 65535) {
             $port = 0;
         }
 
-        $secure = strtolower((string) ($this->mailConfig['secure'] ?? 'tls'));
+        $secure = strtolower((string) ( $this->mailConfig['secure'] ?? 'tls' ));
         $scheme = $secure === 'ssl' ? 'smtps' : 'smtp';
 
-        $username = (string) ($this->mailConfig['username'] ?? '');
-        $password = (string) ($this->mailConfig['password'] ?? '');
+        $username = (string) ( $this->mailConfig['username'] ?? '' );
+        $password = (string) ( $this->mailConfig['password'] ?? '' );
 
         $timeout = $this->mailConfig['timeout'] ?? 5;
         $timeout = is_numeric($timeout) ? (float) $timeout : 5.0;
@@ -144,7 +166,7 @@ class EmailService
             'timeout' => $timeout,
         ];
 
-        $authMode = (string) ($this->mailConfig['auth_mode'] ?? '');
+        $authMode = (string) ( $this->mailConfig['auth_mode'] ?? '' );
         if ($authMode !== '') {
             $query['auth_mode'] = $authMode;
         }

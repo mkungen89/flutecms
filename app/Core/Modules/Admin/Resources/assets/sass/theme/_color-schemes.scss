@@ -1,18 +1,16 @@
-// Default color scheme is already defined in _variables.scss
+﻿
 
 @function hexToRGB($hex) {
     @return red($hex), green($hex), blue($hex);
 }
 
-// Blue color scheme
-// Calmer, less saturated schemes
 :root[data-color-scheme="blue"][data-theme=light] {
-    --accent: #3B82F6; // Tailwind blue-500
-    --primary: #1E40AF; // blue-800
-    
+    --accent: #3B82F6;
+    --primary: #1E40AF;
+
     --accent-rgb: #{hexToRGB(#4285F4)};
     --primary-rgb: #{hexToRGB(#0A3880)};
-    
+
     --accent-50: #e8f0fe;
     --accent-100: #c6dafc;
     --accent-200: #a1c2fa;
@@ -24,7 +22,7 @@
     --accent-800: #2a56c6;
     --accent-900: #e8f0fe;
     --accent-950: #c6dafc;
-    
+
     --primary-50: #e3f2fd;
     --primary-100: #bbdefb;
     --primary-200: #90caf9;
@@ -41,10 +39,10 @@
 :root[data-color-scheme="blue"][data-theme=dark] {
     --accent: #60A5FA;
     --primary: #1D4ED8;
-    
+
     --accent-rgb: #{hexToRGB(#5E97F6)};
     --primary-rgb: #{hexToRGB(#1565C0)};
-    
+
     --accent-50: #e8f0fe;
     --accent-100: #c6dafc;
     --accent-200: #a1c2fa;
@@ -56,7 +54,7 @@
     --accent-800: #2a56c6;
     --accent-900: #0d2570;
     --accent-950: #071a4a;
-    
+
     --primary-50: #e3f2fd;
     --primary-100: #bbdefb;
     --primary-200: #90caf9;
@@ -70,14 +68,13 @@
     --primary-950: #031229;
 }
 
-// Purple color scheme
 :root[data-color-scheme="purple"][data-theme=light] {
-    --accent: #8B5CF6; // violet-500
-    --primary: #6D28D9; // violet-700
-    
+    --accent: #8B5CF6;
+    --primary: #6D28D9;
+
     --accent-rgb: #{hexToRGB(#9C27B0)};
     --primary-rgb: #{hexToRGB(#4A148C)};
-    
+
     --accent-50: #f3e5f5;
     --accent-100: #e1bee7;
     --accent-200: #ce93d8;
@@ -89,7 +86,7 @@
     --accent-800: #6a1b9a;
     --accent-900: #f3e5f5;
     --accent-950: #e1bee7;
-    
+
     --primary-50: #f3e5f5;
     --primary-100: #e1bee7;
     --primary-200: #ce93d8;
@@ -104,12 +101,12 @@
 }
 
 :root[data-color-scheme="purple"][data-theme=dark] {
-    --accent: #A78BFA; // violet-400
-    --primary: #7C3AED; // violet-600
-    
+    --accent: #A78BFA;
+    --primary: #7C3AED;
+
     --accent-rgb: #{hexToRGB(#CE93D8)};
     --primary-rgb: #{hexToRGB(#6A1B9A)};
-    
+
     --accent-50: #f3e5f5;
     --accent-100: #e1bee7;
     --accent-200: #ce93d8;
@@ -121,7 +118,7 @@
     --accent-800: #6a1b9a;
     --accent-900: #3a0c6e;
     --accent-950: #2a0850;
-    
+
     --primary-50: #f3e5f5;
     --primary-100: #e1bee7;
     --primary-200: #ce93d8;
@@ -135,14 +132,13 @@
     --primary-950: #190632;
 }
 
-// Orange color scheme
 :root[data-color-scheme="orange"][data-theme=light] {
-    --accent: #F59E0B; // amber-500
-    --primary: #B45309; // amber-700
-    
+    --accent: #F59E0B;
+    --primary: #B45309;
+
     --accent-rgb: #{hexToRGB(#FF9800)};
     --primary-rgb: #{hexToRGB(#E65100)};
-    
+
     --accent-50: #fff3e0;
     --accent-100: #ffe0b2;
     --accent-200: #ffcc80;
@@ -154,7 +150,7 @@
     --accent-800: #ef6c00;
     --accent-900: #fff3e0;
     --accent-950: #ffe0b2;
-    
+
     --primary-50: #fff3e0;
     --primary-100: #ffe0b2;
     --primary-200: #ffcc80;
@@ -169,12 +165,12 @@
 }
 
 :root[data-color-scheme="orange"][data-theme=dark] {
-    --accent: #FBBF24; // amber-400
-    --primary: #D97706; // amber-600
-    
+    --accent: #FBBF24;
+    --primary: #D97706;
+
     --accent-rgb: #{hexToRGB(#FFAB40)};
     --primary-rgb: #{hexToRGB(#EF6C00)};
-    
+
     --accent-50: #fff3e0;
     --accent-100: #ffe0b2;
     --accent-200: #ffcc80;
@@ -186,7 +182,7 @@
     --accent-800: #ef6c00;
     --accent-900: #bf4600;
     --accent-950: #9f3c00;
-    
+
     --primary-50: #fff3e0;
     --primary-100: #ffe0b2;
     --primary-200: #ffcc80;
@@ -200,14 +196,13 @@
     --primary-950: #2a0850;
 }
 
-// Red color scheme
 :root[data-color-scheme="red"][data-theme=light] {
-    --accent: #EF4444; // red-500
-    --primary: #B91C1C; // red-700
-    
+    --accent: #EF4444;
+    --primary: #B91C1C;
+
     --accent-rgb: #{hexToRGB(#F44336)};
     --primary-rgb: #{hexToRGB(#B71C1C)};
-    
+
     --accent-50: #ffebee;
     --accent-100: #ffcdd2;
     --accent-200: #ef9a9a;
@@ -219,7 +214,7 @@
     --accent-800: #c62828;
     --accent-900: #ffebee;
     --accent-950: #ffcdd2;
-    
+
     --primary-50: #ffebee;
     --primary-100: #ffcdd2;
     --primary-200: #ef9a9a;
@@ -234,12 +229,12 @@
 }
 
 :root[data-color-scheme="red"][data-theme=dark] {
-    --accent: #F87171; // red-400
-    --primary: #DC2626; // red-600
-    
+    --accent: #F87171;
+    --primary: #DC2626;
+
     --accent-rgb: #{hexToRGB(#EF5350)};
     --primary-rgb: #{hexToRGB(#C62828)};
-    
+
     --accent-50: #ffebee;
     --accent-100: #ffcdd2;
     --accent-200: #ef9a9a;
@@ -251,7 +246,7 @@
     --accent-800: #c62828;
     --accent-900: #891515;
     --accent-950: #6d1111;
-    
+
     --primary-50: #ffebee;
     --primary-100: #ffcdd2;
     --primary-200: #ef9a9a;

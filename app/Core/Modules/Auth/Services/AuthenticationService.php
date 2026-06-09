@@ -36,11 +36,10 @@ use Nette\Schema\Expect;
 use Nette\Schema\Processor;
 use Nette\Schema\Schema;
 use Nette\Schema\ValidationException;
-
-use function random_bytes;
-
 use Symfony\Component\HttpFoundation\Session\SessionInterface;
 use Throwable;
+
+use function random_bytes;
 
 class AuthenticationService
 {
@@ -64,7 +63,7 @@ class AuthenticationService
         ConfigurationService $config,
         FluteRequest $request,
         SessionInterface $session,
-        CookieService $cookie
+        CookieService $cookie,
     ) {
         $this->validationProcessor = new Processor();
         $this->config = $config;
@@ -122,6 +121,7 @@ class AuthenticationService
         $this->throttle('login');
 
         $validationResult = $this->validationProcessor->process($this->getAuthValidator(), $credentials);
+        $this->throttle('login_account', 5, 60, 5, (string) $validationResult->login);
 
         events()->dispatch(new UserAuthenticatingEvent($credentials), UserAuthenticatingEvent::NAME);
 
@@ -199,7 +199,11 @@ class AuthenticationService
             return null;
         }
 
-        $existingTokens = RememberToken::findAll(['user_id' => $user->id, 'userDevice_id' => $device->id, 'userDevice.ip' => $this->request->getClientIp()]);
+        $existingTokens = RememberToken::findAll([
+            'user_id' => $user->id,
+            'userDevice_id' => $device->id,
+            'userDevice.ip' => $this->request->getClientIp(),
+        ]);
 
         foreach ($existingTokens as $token) {
             transaction($token, 'delete')->run();
@@ -220,7 +224,7 @@ class AuthenticationService
             value: $rememberToken,
             expire: $this->config->get('auth.remember_me_duration'),
             httpOnly: true,
-            sameSite: 'Strict'
+            sameSite: 'Strict',
         );
 
         return $rememberToken;
@@ -245,9 +249,11 @@ class AuthenticationService
             $userDevice->user = $user;
             $userDevice->deviceDetails = $deviceDetails;
             $userDevice->ip = $ip;
-
-            transaction($userDevice)->run();
+        } else {
+            $userDevice->touch();
         }
+
+        transaction($userDevice)->run();
 
         return $this->rememberUser($user, $userDevice);
     }
@@ -269,7 +275,7 @@ class AuthenticationService
         }
 
         $verificationToken = VerificationToken::query()
-            ->where(['token' => $token])
+            ->where(['token' => hash('sha256', $token)])
             ->load(['user', 'user.roles'])
             ->fetchOne();
 
@@ -312,7 +318,7 @@ class AuthenticationService
 
         $verificationToken = new VerificationToken();
         $verificationToken->user = $user;
-        $verificationToken->token = $verificationTokenValue;
+        $verificationToken->token = hash('sha256', $verificationTokenValue);
         $verificationToken->expiresAt = $expiresAt->toDateTimeImmutable();
 
         try {
@@ -320,6 +326,9 @@ class AuthenticationService
         } catch (Throwable $e) {
             throw $e;
         }
+
+        // Store raw token for URL (entity->token contains hash for DB)
+        $verificationToken->rawToken = $verificationTokenValue;
 
         return $verificationToken;
     }
@@ -329,7 +338,7 @@ class AuthenticationService
      */
     public function logout(): void
     {
-        if ($this->config->get('auth.remember_me') && $token = $this->cookie->get('remember_token')) {
+        if ($this->config->get('auth.remember_me') && ( $token = $this->cookie->get('remember_token') )) {
             $rememberToken = RememberToken::findOne(['token' => hash('sha256', $token)]);
 
             if ($rememberToken) {
@@ -338,6 +347,7 @@ class AuthenticationService
         }
 
         $this->session->clear();
+        $this->session->migrate(true);
         $this->cookie->remove('remember_token');
 
         user()->clearCurrentUser();
@@ -366,11 +376,9 @@ class AuthenticationService
             throw new UserNotFoundException();
         }
 
-        $passwordResetTokenValue = $this->generateRandomToken();
-
         $passwordResetToken = new PasswordResetToken();
         $passwordResetToken->user = $user;
-        $passwordResetToken->token = $passwordResetTokenValue;
+        $passwordResetToken->token = $this->generateRandomToken();
         $passwordResetToken->expiry = $expiresAt->toDateTimeImmutable();
 
         try {
@@ -379,7 +387,10 @@ class AuthenticationService
             throw $e;
         }
 
-        events()->dispatch(new PasswordResetRequestedEvent($user, $passwordResetToken), PasswordResetRequestedEvent::NAME);
+        events()->dispatch(
+            new PasswordResetRequestedEvent($user, $passwordResetToken),
+            PasswordResetRequestedEvent::NAME,
+        );
 
         return $passwordResetToken;
     }
@@ -426,10 +437,29 @@ class AuthenticationService
         $user = $passwordResetToken->user;
         $user->setPassword($newPassword);
 
+        $database = db();
+        $database->begin();
+
         try {
             transaction($passwordResetToken, 'delete')->run();
             transaction($user)->run();
+
+            $existingTokens = RememberToken::findAll(['user_id' => $user->id]);
+            foreach ($existingTokens as $existingToken) {
+                transaction($existingToken, 'delete')->run();
+            }
+
+            $database->commit();
+
+            // Notifications outside transaction
+            if (function_exists('notify')) {
+                notify('core.password_changed', $user, [
+                    'time' => date('d.m.Y H:i'),
+                ]);
+            }
         } catch (Throwable $e) {
+            $database->rollback();
+
             throw $e;
         }
     }
@@ -443,15 +473,20 @@ class AuthenticationService
      * @param int $burstiness The maximum number of requests in a burst.
      * @throws TooManyRequestsException
      */
-    protected function throttle(string $key, int $maxRequest = 5, int $perMinute = 60, int $burstiness = 5): void
-    {
+    protected function throttle(
+        string $key,
+        int $maxRequest = 5,
+        int $perMinute = 60,
+        int $burstiness = 5,
+        ?string $subject = null,
+    ): void {
+        $scope = ['action' => $key, 'ip' => $this->request->getClientIp()];
+        if ($subject !== null && $subject !== '') {
+            $scope['subject'] = hash('sha256', mb_strtolower(trim($subject)));
+        }
+
         try {
-            throttler()->throttle(
-                ['action' => $key, 'ip' => $this->request->getClientIp()],
-                $maxRequest,
-                $perMinute,
-                $burstiness
-            );
+            throttler()->throttle($scope, $maxRequest, $perMinute, $burstiness);
         } catch (TooManyRequestsException $e) {
             throw $e;
         }
@@ -535,6 +570,9 @@ class AuthenticationService
      */
     protected function setCurrentUser(User $user): void
     {
+        $this->session->migrate(true);
+        $this->session->remove('auth_token');
+
         $this->session->set('user_id', $user->id);
         $this->session->set('just_logged_in_at', time());
 
@@ -603,13 +641,6 @@ class AuthenticationService
         $user->avatar = $this->config->get('profile.default_avatar');
         $user->banner = $this->config->get('profile.default_banner');
         $user->verified = !$this->config->get('auth.registration.confirm_email');
-
-        foreach ($userData as $key => $value) {
-            if (property_exists($user, $key) && in_array($key, ['email', 'login', 'name', 'password'])) {
-                continue;
-            }
-            $user->$key = $value;
-        }
 
         $user->setPassword($userData->password);
 

@@ -10,6 +10,8 @@ use RuntimeException;
 
 class ModuleDisable implements ModuleActionInterface
 {
+    use Concerns\FlushesTranslationCache;
+
     public function action(ModuleInformation &$module, ?ModuleManager $moduleManager = null): bool
     {
         $mm = $moduleManager ?? app(ModuleManager::class);
@@ -21,11 +23,11 @@ class ModuleDisable implements ModuleActionInterface
         }
 
         if ($moduleGet->status === 'notinstalled') {
-            throw new RuntimeException("Module is not installed in the system");
+            throw new RuntimeException('Module is not installed in the system');
         }
 
         if ($moduleGet->status === 'disabled') {
-            throw new RuntimeException("Module already disabled");
+            throw new RuntimeException('Module already disabled');
         }
 
         $this->disable($moduleGet);
@@ -35,13 +37,15 @@ class ModuleDisable implements ModuleActionInterface
 
     protected function disable(ModuleInformation $moduleInformation): void
     {
-        $module = Module::findOne(["key" => $moduleInformation->key]);
+        $module = Module::findOne(['key' => $moduleInformation->key]);
 
         $module->status = ModuleManager::DISABLED;
 
         $module->save();
 
         logs('modules')->info("Module {$module->key} was disabled in the Flute!");
+
+        $this->flushCompiledTranslations();
     }
 
     protected function e(ModuleInformation $moduleInformation)

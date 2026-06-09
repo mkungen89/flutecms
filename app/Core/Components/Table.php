@@ -131,13 +131,14 @@ abstract class Table extends FluteComponent
         $this->search = request()->input('search', $this->search);
 
         if (is_null($this->sortField) && !empty($this->columns())) {
-            $defaultSortColumn = array_filter($this->columns(), static fn ($column) => isset($column['defaultSort']) && $column['defaultSort'] === true);
+            $defaultSortColumn = array_filter(
+                $this->columns(),
+                static fn($column) => isset($column['defaultSort']) && $column['defaultSort'] === true,
+            );
 
             $defaultSortColumn = !empty($defaultSortColumn) ? reset($defaultSortColumn) : null;
 
-            $this->sortField = $defaultSortColumn
-                ? $defaultSortColumn['field']
-                : $this->columns()[0]['field'];
+            $this->sortField = $defaultSortColumn ? $defaultSortColumn['field'] : $this->columns()[0]['field'];
 
             $this->sortDirection = $defaultSortColumn && isset($defaultSortColumn['defaultDirection'])
                 ? $defaultSortColumn['defaultDirection']
@@ -198,7 +199,7 @@ abstract class Table extends FluteComponent
     {
         $this->page = max(1, $page);
 
-        $queryParams = request()->all();
+        $queryParams = $this->getCleanQueryParams();
         $queryParams['page'] = $page;
 
         $this->response->header(HtmxResponse::HX_PUSH_URL, url()->addParams($queryParams)->get());
@@ -209,12 +210,33 @@ abstract class Table extends FluteComponent
         $this->search = request()->input('search', $this->search);
         $this->page = 1;
 
-        $queryParams = request()->all();
+        $queryParams = $this->getCleanQueryParams();
         $queryParams['search'] = $this->search;
         $queryParams['page'] = 1;
 
         // Search typing shouldn't spam browser history; replace is more intuitive.
         $this->response->header(HtmxResponse::HX_REPLACE_URL, url()->addParams($queryParams)->get());
+    }
+
+    /**
+     * Get query params without Yoyo/HTMX internal parameters.
+     *
+     * @return array<string, mixed>
+     */
+    protected function getCleanQueryParams(): array
+    {
+        $params = request()->all();
+
+        unset(
+            $params['_controller'],
+            $params['_route'],
+            $params['_middleware'],
+            $params['yoyo-id'],
+            $params['actionArgs'],
+            $params['component'],
+        );
+
+        return $params;
     }
 
     /**
@@ -239,13 +261,16 @@ abstract class Table extends FluteComponent
         $pagination = $this->getPaginatedData();
         $rows = array_map([$this, 'formatRow'], $pagination['rows']);
 
-        $displayColumns = array_map(static fn ($column) => array_merge($column, [
-            'class' => $column['class'] ?? '',
-            'width' => $column['width'] ?? '',
-            'tooltip' => $column['tooltip'] ?? '',
-            'visible' => $column['visible'] ?? true,
-            'searchable' => $column['searchable'] ?? false,
-        ]), array_filter($this->columns(), static fn ($column) => !isset($column['visible']) || $column['visible']));
+        $displayColumns = array_map(
+            static fn($column) => array_merge($column, [
+                'class' => $column['class'] ?? '',
+                'width' => $column['width'] ?? '',
+                'tooltip' => $column['tooltip'] ?? '',
+                'visible' => $column['visible'] ?? true,
+                'searchable' => $column['searchable'] ?? false,
+            ]),
+            array_filter($this->columns(), static fn($column) => !isset($column['visible']) || $column['visible']),
+        );
 
         return $this->view('flute::partials.modules.table', [
             'columns' => $displayColumns,
@@ -300,7 +325,13 @@ abstract class Table extends FluteComponent
         }
 
         if ($this->search) {
-            $searchableColumns = array_filter($this->columns(), static fn ($column) => ($column['searchable'] ?? false) && (!empty($column['field']) || !empty($column['searchFields'])));
+            $searchableColumns = array_filter(
+                $this->columns(),
+                static fn($column) => (
+                    ( $column['searchable'] ?? false )
+                    && ( !empty($column['field']) || !empty($column['searchFields']) )
+                ),
+            );
 
             if (!empty($searchableColumns)) {
                 $query->where(function ($q) use ($searchableColumns) {
@@ -314,12 +345,13 @@ abstract class Table extends FluteComponent
                             }
                         }
 
+                        $escapedSearch = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $searchValue);
                         if (!empty($column['searchFields']) && is_array($column['searchFields'])) {
                             foreach ($column['searchFields'] as $field) {
-                                $q->orWhere($field, 'like', '%' . $searchValue . '%');
+                                $q->orWhere($field, 'like', '%' . $escapedSearch . '%');
                             }
                         } elseif (!empty($column['field'])) {
-                            $q->orWhere($column['field'], 'like', '%' . $searchValue . '%');
+                            $q->orWhere($column['field'], 'like', '%' . $escapedSearch . '%');
                         }
                     }
                 });
@@ -328,12 +360,20 @@ abstract class Table extends FluteComponent
 
         if (!empty($this->sortField)) {
             $column = collect($this->columns())->firstWhere('field', $this->sortField);
-            if ($column && ($column['allowSort'] ?? true)) {
-                $query->orderBy($this->sortField, $this->sortDirection);
+            if ($column && ( $column['allowSort'] ?? true )) {
+                $direction = strtolower($this->sortDirection) === 'desc' ? 'desc' : 'asc';
+                $query->orderBy($this->getColumnSortField($column), $direction);
             }
         }
 
         return $query;
+    }
+
+    protected function getColumnSortField(array $column): string
+    {
+        $sortField = $column['sortField'] ?? $column['field'] ?? '';
+
+        return is_string($sortField) && $sortField !== '' ? $sortField : (string) ( $column['field'] ?? '' );
     }
 
     /**
@@ -347,17 +387,23 @@ abstract class Table extends FluteComponent
 
         foreach ($this->additionalFilters as $field => $value) {
             if (!empty($value)) {
-                $filtered = array_filter($filtered, static fn ($item) => isset($item[$field]) && $item[$field] == $value);
+                $filtered = array_filter(
+                    $filtered,
+                    static fn($item) => isset($item[$field]) && (string) $item[$field] === (string) $value,
+                );
             }
         }
 
         if (!empty($this->search)) {
-            $searchableColumns = array_filter($this->columns(), static fn ($column) => ($column['searchable'] ?? false) && !empty($column['field']));
+            $searchableColumns = array_filter(
+                $this->columns(),
+                static fn($column) => ( $column['searchable'] ?? false ) && !empty($column['field']),
+            );
 
             $filtered = array_filter($filtered, function ($item) use ($searchableColumns) {
                 foreach ($searchableColumns as $column) {
                     $field = $column['field'];
-                    if (isset($item[$field]) && stripos($item[$field], $this->search) !== false) {
+                    if (isset($item[$field]) && stripos((string) $item[$field], $this->search) !== false) {
                         return true;
                     }
                 }
@@ -368,24 +414,28 @@ abstract class Table extends FluteComponent
 
         if (!empty($this->sortField)) {
             $column = collect($this->columns())->firstWhere('field', $this->sortField);
-            if ($column && ($column['allowSort'] ?? true)) {
+            if ($column && ( $column['allowSort'] ?? true )) {
                 if (isset($column['sortFunction']) && is_callable($column['sortFunction'])) {
-                    usort($filtered, fn ($a, $b) => call_user_func($column['sortFunction'], $a, $b, $this->sortDirection));
+                    usort($filtered, fn($a, $b) => call_user_func(
+                        $column['sortFunction'],
+                        $a,
+                        $b,
+                        $this->sortDirection,
+                    ));
                 } else {
                     usort($filtered, function ($a, $b) {
                         $valueA = $a[$this->sortField] ?? null;
                         $valueB = $b[$this->sortField] ?? null;
 
-                        if ($valueA == $valueB) {
+                        if ($valueA === $valueB) {
                             return 0;
                         }
 
                         if ($this->sortDirection === 'asc') {
-                            return ($valueA < $valueB) ? -1 : 1;
+                            return $valueA < $valueB ? -1 : 1;
                         }
 
-                        return ($valueA > $valueB) ? -1 : 1;
-
+                        return $valueA > $valueB ? -1 : 1;
                     });
                 }
             }
@@ -403,15 +453,35 @@ abstract class Table extends FluteComponent
     protected function getPaginatedData(): array
     {
         if ($this->select) {
-            $query = $this->buildQuery();
+            $runQuery = function () {
+                $query = $this->buildQuery();
+                $total = $query->count();
+                $pages = max(ceil($total / $this->perPage), 1);
+                $currentPage = min($this->page, $pages);
+                $data = $query
+                    ->offset(( $currentPage - 1 ) * $this->perPage)
+                    ->limit($this->perPage)
+                    ->fetchAll();
 
-            $total = $query->count();
-            $pages = max(ceil($total / $this->perPage), 1);
-            $currentPage = min($this->page, $pages);
+                return [$total, $pages, $currentPage, $data];
+            };
 
-            $data = $query->offset(($currentPage - 1) * $this->perPage)
-                ->limit($this->perPage)
-                ->fetchAll();
+            try {
+                [$total, $pages, $currentPage, $data] = $runQuery();
+            } catch (\Throwable $e) {
+                $isSqlError = $e instanceof \PDOException || str_contains((string) $e->getMessage(), 'SQLSTATE');
+
+                if (!$isSqlError || $this->sortField === null) {
+                    throw $e;
+                }
+
+                logs()->warning('Table sort fallback: ' . $e->getMessage(), [
+                    'sortField' => $this->sortField,
+                    'component' => static::class,
+                ]);
+                $this->sortField = null;
+                [$total, $pages, $currentPage, $data] = $runQuery();
+            }
 
             $data = $this->processData($data);
 
@@ -432,7 +502,7 @@ abstract class Table extends FluteComponent
             $pages = max(ceil($total / $this->perPage), 1);
             $currentPage = min($this->page, $pages);
 
-            $offset = ($currentPage - 1) * $this->perPage;
+            $offset = ( $currentPage - 1 ) * $this->perPage;
             $data = array_slice($filteredData, $offset, $this->perPage);
 
             return [

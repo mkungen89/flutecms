@@ -4,13 +4,25 @@ namespace Flute\Core\Validator;
 
 use Countable;
 use DateTime;
-use Exception;
 use Flute\Core\Validator\Support\ValidatorStr;
 use InvalidArgumentException;
 use MadeSimple\Arrays\ArrDots;
+use Throwable;
 
 class FluteValidate
 {
+    /**
+     * Validates that a string is a safe SQL identifier (table/column name).
+     */
+    private static function validateIdentifier(string $identifier): void
+    {
+        if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_.]*$/', $identifier)) {
+            throw new InvalidArgumentException(
+                "Invalid SQL identifier: '{$identifier}'. Only alphanumeric characters, underscores, and dots are allowed.",
+            );
+        }
+    }
+
     /**
      */
     public static function addRuleSet(FluteValidator $validator)
@@ -23,60 +35,47 @@ class FluteValidate
             ->addRule('required-with-all', [static::class, 'requiredWithAll'])
             ->addRule('required-with-any', [static::class, 'requiredWithAny'])
             ->addRule('required-without', [static::class, 'requiredWithout'])
-
             ->addRule('equals', [static::class, 'equals'])
             ->addRule('not-equals', [static::class, 'notEquals'])
             ->addRule('identical', [static::class, 'identical'])
             ->addRule('not-identical', [static::class, 'notIdentical'])
-
             ->addRule('in', [static::class, 'in'])
             ->addRule('not-in', [static::class, 'notIn'])
             ->addRule('contains', [static::class, 'contains'])
             ->addRule('contains-only', [static::class, 'containsOnly'])
             ->addRule('min-arr-count', [static::class, 'minArrCount'])
             ->addRule('max-arr-count', [static::class, 'maxArrCount'])
-
             ->addRule('min', [static::class, 'min'])
             ->addRule('max', [static::class, 'max'])
             ->addRule('greater-than', [static::class, 'greaterThan'])
             ->addRule('less-than', [static::class, 'lessThan'])
-
             ->addRule('alpha', [static::class, 'alpha'])
             ->addRule('alpha-numeric', [static::class, 'alphaNumeric'])
             ->addRule('min-str-len', [static::class, 'minStrLen'])
             ->addRule('max-str-len', [static::class, 'maxStrLen'])
             ->addRule('str-len', [static::class, 'strLen'])
             ->addRule('human-name', [static::class, 'humanName'])
-
             ->addRule('is', [static::class, 'is'])
-
             ->addRule('email', [static::class, 'email'])
             ->addRule('date', [static::class, 'date'])
             ->addRule('datetime', [static::class, 'datetime'])
             ->addRule('url', [static::class, 'url'])
             ->addRule('uuid', [static::class, 'uuid'])
-
             ->addRule('card-number', [static::class, 'cardNumber'])
-
             ->addRule('regex', [static::class, 'regex'])
             ->addRule('not-regex', [static::class, 'notRegex'])
-
             ->addRule('confirmed', [static::class, 'confirmed'])
-
             ->addRule('unique', [static::class, 'unique'])
-
             ->addRule('nullable', [static::class, 'nullable'])
             ->addRule('image', [static::class, 'image'])
             ->addRule('mimes', [static::class, 'mimes'])
             ->addRule('max-file-size', [static::class, 'maxFileSize'])
-
             ->addRule('boolean', [static::class, 'boolean'])
             ->addRule('integer', [static::class, 'integer'])
             ->addRule('string', [static::class, 'string'])
             ->addRule('array', [static::class, 'arrayRule'])
             ->addRule('timezone', [static::class, 'timezone'])
             ->addRule('exists', [static::class, 'exists'])
-
             ->addRule('numeric', [static::class, 'numeric'])
             ->addRule('after', [static::class, 'after']);
     }
@@ -127,8 +126,14 @@ class FluteValidate
                     continue;
                 }
 
-                $date1 = DateTime::createFromFormat('Y-m-d H:i:s', $value) ?: DateTime::createFromFormat('Y-m-d', $value);
-                $date2 = DateTime::createFromFormat('Y-m-d H:i:s', $compareValue) ?: DateTime::createFromFormat('Y-m-d', $compareValue);
+                $date1 = DateTime::createFromFormat('Y-m-d H:i:s', $value) ?: DateTime::createFromFormat(
+                    'Y-m-d',
+                    $value,
+                );
+                $date2 = DateTime::createFromFormat('Y-m-d H:i:s', $compareValue) ?: DateTime::createFromFormat(
+                    'Y-m-d',
+                    $compareValue,
+                );
 
                 if (!$date1 || !$date2 || $date1 <= $date2) {
                     $validator->addError($attribute, $rule, [
@@ -145,7 +150,7 @@ class FluteValidate
                             ':date' => $comparison,
                         ]);
                     }
-                } catch (Exception $e) {
+                } catch (Throwable $e) {
                     if (is_debug()) {
                         throw $e;
                     }
@@ -175,7 +180,7 @@ class FluteValidate
                 continue;
             }
 
-            if (is_int($value) && ($value === 1 || $value === 0)) {
+            if (is_int($value) && ( $value === 1 || $value === 0 )) {
                 continue;
             }
 
@@ -331,14 +336,18 @@ class FluteValidate
 
             $isValidImage = false;
 
-            if (is_object($value) && method_exists($value, 'getMimeType') && method_exists($value, 'getClientOriginalExtension')) {
+            if (
+                is_object($value)
+                && method_exists($value, 'getMimeType')
+                && method_exists($value, 'getClientOriginalExtension')
+            ) {
                 $mimeType = strtolower($value->getMimeType());
                 $extension = strtolower($value->getClientOriginalExtension());
 
                 if (in_array($mimeType, $allowedMimeTypes) && in_array($extension, $allowedExtensions)) {
                     $isValidImage = true;
                 }
-            } elseif (is_string($value)) {
+            } elseif (is_string($value) && is_file($value)) {
                 $imageInfo = @getimagesize($value);
 
                 if ($imageInfo !== false) {
@@ -359,6 +368,11 @@ class FluteValidate
                     if (in_array($imageType, [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP])) {
                         $isValidImage = true;
                     }
+                }
+            } elseif (is_string($value)) {
+                $extension = strtolower(pathinfo(parse_url($value, PHP_URL_PATH) ?: $value, PATHINFO_EXTENSION));
+                if (in_array($extension, $allowedExtensions)) {
+                    $isValidImage = true;
                 }
             }
 
@@ -556,7 +570,10 @@ class FluteValidate
                 }
 
                 $attribute = $isWild ? ValidatorStr::overlapLeftMerge($overlap, $fieldAttribute, $pattern) : $pattern;
-                $validator->addError($attribute, $rule, [':field' => $fieldAttribute, '%value' => implode(',', $values)]);
+                $validator->addError($attribute, $rule, [
+                    ':field' => $fieldAttribute,
+                    '%value' => implode(',', $values),
+                ]);
             }
 
             return;
@@ -649,7 +666,9 @@ class FluteValidate
             foreach (FluteValidator::getValues($data, $parameters[$longest]) as $attribute => $value) {
                 $required = true;
                 foreach ($parameters as $k => $field) {
-                    $fieldAttribute = $overlaps[$k] ? ValidatorStr::overlapLeftMerge($overlaps[$k], $attribute, $field) : $field;
+                    $fieldAttribute = $overlaps[$k]
+                        ? ValidatorStr::overlapLeftMerge($overlaps[$k], $attribute, $field)
+                        : $field;
                     $fieldValue = ArrDots::get($data, $fieldAttribute);
                     $required = $required && static::isFilled($fieldValue);
                     if (!$required) {
@@ -668,14 +687,14 @@ class FluteValidate
             return;
         }
 
-
-
         // Check value is required and not null
         foreach (FluteValidator::getValues($data, $pattern) as $attribute => $value) {
             // Check that all "required with" fields are present and not null
             $required = true;
             foreach ($parameters as $k => $field) {
-                $fieldAttribute = $overlaps[$k] ? ValidatorStr::overlapLeftMerge($overlaps[$k], $attribute, $field) : $field;
+                $fieldAttribute = $overlaps[$k]
+                    ? ValidatorStr::overlapLeftMerge($overlaps[$k], $attribute, $field)
+                    : $field;
                 $fieldValue = ArrDots::get($data, $fieldAttribute);
                 $required = $required && static::isFilled($fieldValue);
                 if (!$required) {
@@ -716,16 +735,19 @@ class FluteValidate
         // If the pattern field does not exist
         if (!ArrDots::has($data, $pattern, $validator::WILD)) {
             // Check that any "required with" fields are present and not null
-            $required = array_reduce($parameters, static function ($required, $field) use ($validator, $data) {
-                if (!$required && ArrDots::has($data, $field, $validator::WILD)) {
-                    foreach (FluteValidator::getValues($data, $field) as $value) {
-                        $required = $required || static::isFilled($value);
+            $required = array_reduce(
+                $parameters,
+                static function ($required, $field) use ($validator, $data) {
+                    if (!$required && ArrDots::has($data, $field, $validator::WILD)) {
+                        foreach (FluteValidator::getValues($data, $field) as $value) {
+                            $required = $required || static::isFilled($value);
+                        }
                     }
 
-                }
-
-                return $required;
-            }, false);
+                    return $required;
+                },
+                false,
+            );
 
             if ($required) {
                 $validator->addError($pattern, $rule);
@@ -734,14 +756,14 @@ class FluteValidate
             return;
         }
 
-
-
         // Check value is required and not null
         foreach (FluteValidator::getValues($data, $pattern) as $attribute => $value) {
             // Check that any "required with" fields are present and not null
             $required = false;
             foreach ($parameters as $k => $field) {
-                $fieldAttribute = $overlaps[$k] ? ValidatorStr::overlapLeftMerge($overlaps[$k], $attribute, $field) : $field;
+                $fieldAttribute = $overlaps[$k]
+                    ? ValidatorStr::overlapLeftMerge($overlaps[$k], $attribute, $field)
+                    : $field;
                 $fieldValue = ArrDots::get($data, $fieldAttribute);
                 $required = $required || static::isFilled($fieldValue);
                 if ($required) {
@@ -1075,7 +1097,7 @@ class FluteValidate
         $min = $parameters[0];
 
         foreach (FluteValidator::getValues($data, $pattern) as $attribute => $value) {
-            if (null === $value || ($value != '0' && empty($value))) {
+            if (null === $value || $value != '0' && empty($value)) {
                 continue;
             }
 
@@ -1100,7 +1122,7 @@ class FluteValidate
         $max = $parameters[0];
 
         foreach (FluteValidator::getValues($data, $pattern) as $attribute => $value) {
-            if (null === $value || ($value != '0' && empty($value))) {
+            if (null === $value || $value != '0' && empty($value)) {
                 continue;
             }
 
@@ -1326,9 +1348,7 @@ class FluteValidate
             if (null === $value || empty($value)) {
                 continue;
             }
-            if (
-                preg_match('/^([\p{L}\p{N} _\'.-])+$/u', $value) === 1
-            ) {
+            if (preg_match('/^([\p{L}\p{N} _\'.-])+$/u', $value) === 1) {
                 continue;
             }
 
@@ -1438,7 +1458,7 @@ class FluteValidate
             } else {
                 try {
                     new DateTime($value);
-                } catch (Exception $e) {
+                } catch (Throwable $e) {
                     $validator->addError($attribute, $rule);
                 }
             }
@@ -1517,7 +1537,7 @@ class FluteValidate
             for ($i = 0; $i < $numberLength; $i++) {
                 $digit = $number[$i];
                 // Multiply alternate digits by two
-                if ($i % 2 == $parity) {
+                if (( $i % 2 ) == $parity) {
                     $digit *= 2;
                     // If the sum is two digits, add them together (in effect)
                     if ($digit > 9) {
@@ -1529,7 +1549,7 @@ class FluteValidate
             }
 
             // If the total mod 10 equals 0, the number is valid
-            if ($total % 10 == 0) {
+            if (( $total % 10 ) == 0) {
                 continue;
             }
 
@@ -1600,6 +1620,7 @@ class FluteValidate
     public static function unique(FluteValidator $validator, $data, $pattern, $rule, $parameters)
     {
         $table = $parameters[0];
+        self::validateIdentifier($table);
 
         foreach (FluteValidator::getValues($data, $pattern) as $attribute => $value) {
             if (null === $value || $value === '') {
@@ -1609,9 +1630,11 @@ class FluteValidate
             $attributeParts = explode('.', $attribute);
             $defaultColumn = end($attributeParts);
             $column = $parameters[1] ?? $defaultColumn;
+            self::validateIdentifier($column);
 
             $except = $parameters[2] ?? null;
             $idColumn = $parameters[3] ?? 'id';
+            self::validateIdentifier($idColumn);
 
             $query = db()->select()->from($table)->where($column, $value);
 
@@ -1638,13 +1661,19 @@ class FluteValidate
     public static function exists(FluteValidator $validator, $data, $pattern, $rule, $parameters)
     {
         if (count($parameters) < 2) {
-            throw new InvalidArgumentException("Правило 'exists' требует как минимум два параметра: таблица и столбец.");
+            throw new InvalidArgumentException(
+                "Правило 'exists' требует как минимум два параметра: таблица и столбец.",
+            );
         }
 
         $table = $parameters[0];
         $column = $parameters[1];
         $except = $parameters[2] ?? null;
         $idColumn = $parameters[3] ?? 'id';
+
+        self::validateIdentifier($table);
+        self::validateIdentifier($column);
+        self::validateIdentifier($idColumn);
 
         foreach (FluteValidator::getValues($data, $pattern) as $attribute => $value) {
             if (is_null($value) || $value === '') {
@@ -1699,9 +1728,11 @@ class FluteValidate
         }
 
         return !(
-            (is_null($value)) ||
-            (is_string($value) && $value === '') ||
-            ((is_array($value) || is_a($value, Countable::class)) && empty($value))
+            is_null($value)
+            || is_string($value)
+            && $value === ''
+            || ( is_array($value) || is_a($value, Countable::class) )
+            && empty($value)
         );
     }
 }

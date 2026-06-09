@@ -8,6 +8,7 @@ use Cycle\Annotated\Annotation\Entity;
 use Cycle\Annotated\Annotation\Relation\ManyToMany;
 use DateTimeImmutable;
 use Cycle\ORM\Entity\Behavior;
+use Throwable;
 
 #[Entity]
 #[Behavior\CreatedAt(
@@ -20,6 +21,13 @@ use Cycle\ORM\Entity\Behavior;
 )]
 class ApiKey extends ActiveRecord
 {
+    private const HASH_PREFIX = 'sha256:';
+
+    private const LAST_USED_TOUCH_TTL = 60;
+
+    /** @var array<string,int> */
+    private static array $lastUsedTouches = [];
+
     #[Column(type: "primary")]
     public int $id;
 
@@ -61,8 +69,11 @@ class ApiKey extends ActiveRecord
 
     public function hasPermissionByName(string $permissionName): bool
     {
-        if ($permissionName !== 'admin.boss' && $this->hasPermissionByName('admin.boss')) {
-            return true;
+        if ($permissionName !== 'admin.boss') {
+            $isBoss = collect($this->permissions)->contains(fn(Permission $p) => $p->name === 'admin.boss');
+            if ($isBoss) {
+                return true;
+            }
         }
 
         return collect($this->permissions)->contains(function (Permission $permission) use ($permissionName) {
@@ -83,9 +94,107 @@ class ApiKey extends ActiveRecord
         );
     }
 
-    public function updateLastUsed(): void
+    public function updateLastUsed(int $throttleSeconds = self::LAST_USED_TOUCH_TTL): void
     {
-        $this->lastUsedAt = new DateTimeImmutable();
+        if ($throttleSeconds > 0 && $this->recentlyTouched($throttleSeconds)) {
+            return;
+        }
+
+        $now = new DateTimeImmutable();
+        $this->lastUsedAt = $now;
         $this->saveOrFail();
+        $this->rememberTouch($now->getTimestamp(), $throttleSeconds);
+    }
+
+    public static function hashPlainKey(string $plainKey): string
+    {
+        return self::HASH_PREFIX . hash('sha256', $plainKey);
+    }
+
+    public static function findByPlainKey(string $plainKey, bool $migrateLegacy = false): ?self
+    {
+        if ($plainKey === '') {
+            return null;
+        }
+
+        $apiKey = self::findOne(['key' => self::hashPlainKey($plainKey)]);
+        if ($apiKey instanceof self) {
+            return $apiKey;
+        }
+
+        $legacyHash = hash('sha256', $plainKey);
+        $apiKey = self::findOne(['key' => $legacyHash]);
+        if ($apiKey instanceof self) {
+            if ($migrateLegacy) {
+                $apiKey->key = self::hashPlainKey($plainKey);
+                $apiKey->saveOrFail();
+            }
+
+            return $apiKey;
+        }
+
+        if (self::looksLikeStoredHash($plainKey)) {
+            return null;
+        }
+
+        $apiKey = self::findOne(['key' => $plainKey]);
+        if ($apiKey instanceof self && $migrateLegacy) {
+            $apiKey->key = self::hashPlainKey($plainKey);
+            $apiKey->saveOrFail();
+        }
+
+        return $apiKey instanceof self ? $apiKey : null;
+    }
+
+    public static function looksLikeStoredHash(string $value): bool
+    {
+        return str_starts_with($value, self::HASH_PREFIX) || preg_match('/^[a-f0-9]{64}$/i', $value) === 1;
+    }
+
+    private function recentlyTouched(int $throttleSeconds): bool
+    {
+        $now = time();
+
+        if ($this->lastUsedAt && $now - $this->lastUsedAt->getTimestamp() < $throttleSeconds) {
+            return true;
+        }
+
+        $key = $this->touchCacheKey();
+        $lastTouched = self::$lastUsedTouches[$key] ?? 0;
+        if ($lastTouched > 0 && $now - $lastTouched < $throttleSeconds) {
+            return true;
+        }
+
+        if (!function_exists('cache')) {
+            return false;
+        }
+
+        try {
+            $cached = (int) cache()->get($key, 0);
+
+            return $cached > 0 && $now - $cached < $throttleSeconds;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function rememberTouch(int $timestamp, int $ttl): void
+    {
+        $key = $this->touchCacheKey();
+        self::$lastUsedTouches[$key] = $timestamp;
+
+        if (!function_exists('cache')) {
+            return;
+        }
+
+        try {
+            cache()->set($key, $timestamp, max(1, $ttl));
+        } catch (Throwable) {
+        }
+    }
+
+    private function touchCacheKey(): string
+    {
+        return 'api_key.last_used_touch.' . ( $this->id ?? md5($this->key) );
     }
 }

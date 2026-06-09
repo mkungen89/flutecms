@@ -24,33 +24,31 @@ class FileSystemService extends Filesystem
             return;
         }
 
-        $this->mkdir($cacheDir);
-
-        $handle = @fopen($lockFile, 'c+');
-        if ($handle === false) {
-            $this->generateHelpersCache($helpersPath, $cacheFile);
-            $this->writeHelpersCacheMeta($helpersPath, $metaFile);
+        try {
+            $this->mkdir($cacheDir);
+        } catch (Throwable) {
+            $this->loadHelpersDirectly($helpersPath);
 
             return;
         }
 
-        $gotLock = @flock($handle, LOCK_EX | LOCK_NB);
-        if (!$gotLock) {
-            $maxWait = 2.0;
-            $waited = 0.0;
+        // Use FileLockService for concurrent access protection
+        $handle = FileLockService::acquireLockWithWait($lockFile, 2.0);
 
-            while ($waited < $maxWait) {
-                if ($this->tryLoadCache($cacheFile, $metaFile, $helpersPath)) {
-                    @fclose($handle);
-
-                    return;
-                }
-
-                usleep(100000);
-                $waited += 0.1;
+        if ($handle === false) {
+            // Could not acquire lock, try to load cache anyway or generate without lock
+            if ($this->tryLoadCache($cacheFile, $metaFile, $helpersPath)) {
+                return;
             }
 
-            $gotLock = @flock($handle, LOCK_EX);
+            try {
+                $this->generateHelpersCache($helpersPath, $cacheFile);
+                $this->writeHelpersCacheMeta($helpersPath, $metaFile);
+            } catch (Throwable) {
+                $this->loadHelpersDirectly($helpersPath);
+            }
+
+            return;
         }
 
         try {
@@ -60,9 +58,10 @@ class FileSystemService extends Filesystem
 
             $this->generateHelpersCache($helpersPath, $cacheFile);
             $this->writeHelpersCacheMeta($helpersPath, $metaFile);
+        } catch (Throwable) {
+            $this->loadHelpersDirectly($helpersPath);
         } finally {
-            @flock($handle, LOCK_UN);
-            @fclose($handle);
+            FileLockService::releaseLock($handle);
         }
     }
 
@@ -80,7 +79,7 @@ class FileSystemService extends Filesystem
             throw new Exception(sprintf('Configuration file "%s" is not writable.', $filePath));
         }
 
-        $configString = "<?php\n\nreturn " . var_export($newConfig, true) . ";";
+        $configString = "<?php\n\nreturn " . var_export($newConfig, true) . ';';
         $this->dumpFile($filePath, $configString);
 
         if (function_exists('opcache_invalidate')) {
@@ -113,7 +112,11 @@ class FileSystemService extends Filesystem
         }
 
         $uniqueUseStatements = array_unique($useStatements);
-        $cacheContent = "<?php if(!defined('FLUTE_HELPERS_OK')){define('FLUTE_HELPERS_OK','1');}" . implode("", $uniqueUseStatements) . "" . str_replace('<?php', '', $cacheContent);
+        $cacheContent =
+            "<?php if(!defined('FLUTE_HELPERS_OK')){define('FLUTE_HELPERS_OK','1');}"
+            . implode('', $uniqueUseStatements)
+            . ''
+            . str_replace('<?php', '', $cacheContent);
 
         $this->dumpFile($cacheFile, $cacheContent);
         require_once $cacheFile;
@@ -172,10 +175,14 @@ class FileSystemService extends Filesystem
      */
     private function removeComments(string $content): string
     {
-        return preg_replace([
-            '/\/\*.*?\*\//s',
-            '/\/\/[^\r\n]*/',
-        ], '', $content);
+        return preg_replace(
+            [
+                '/\/\*.*?\*\//s',
+                '/\/\/[^\r\n]*/',
+            ],
+            '',
+            $content,
+        );
     }
 
     /**
@@ -284,5 +291,15 @@ class FileSystemService extends Filesystem
         }
 
         return hash('sha256', implode("\n", $parts));
+    }
+
+    private function loadHelpersDirectly(string $helpersDir): void
+    {
+        $finder = new Finder();
+        $finder->files()->ignoreDotFiles(true)->in($helpersDir)->name('*.php')->sortByName();
+
+        foreach ($finder as $file) {
+            require_once $file->getRealPath();
+        }
     }
 }

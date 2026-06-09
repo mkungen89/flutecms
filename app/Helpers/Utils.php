@@ -9,8 +9,6 @@ use Flute\Core\Support\UrlSupport;
 use Flute\Core\Validator\FluteValidator;
 use Nette\Utils\Validators;
 use Symfony\Component\HttpKernel\Exception\HttpException;
-use xPaw\SourceQuery\SourceQuery;
-
 // Spizdil s laravel
 if (!function_exists("tap")) {
     function tap($value, $callback)
@@ -165,10 +163,10 @@ if (!function_exists('is_debug')) {
         }
 
         $debug = (bool) app('debug');
-        $user_ip = request()->ip();
+        $debugIps = config('app.debug_ips');
 
-        if (in_array($user_ip, config('app.debug_ips'))) {
-            return true;
+        if (!empty($debugIps) && is_array($debugIps)) {
+            return in_array(request()->ip(), $debugIps);
         }
 
         return $debug;
@@ -202,10 +200,27 @@ if (!function_exists('is_admin_path')) {
     }
 }
 
-if (!function_exists("abort_if")) {
-    function abort_if(bool $condition, int $code = 403, string $message = "")
+if (!function_exists("abort_unless")) {
+    /**
+     * Abort unless the given condition is true.
+     * Throws HttpException when condition is FALSE.
+     */
+    function abort_unless(bool $condition, int $code = 403, string $message = ""): void
     {
         if (!$condition) {
+            throw new HttpException($code, $message);
+        }
+    }
+}
+
+if (!function_exists("abort_if")) {
+    /**
+     * Abort if the given condition is true.
+     * Throws HttpException when condition is TRUE.
+     */
+    function abort_if(bool $condition, int $code = 403, string $message = ""): void
+    {
+        if ($condition) {
             throw new HttpException($code, $message);
         }
     }
@@ -243,9 +258,9 @@ if (!function_exists('now')) {
 }
 
 if (!function_exists('e')) {
-    function e(string $value)
+    function e(?string $value)
     {
-        return htmlspecialchars($value, ENT_QUOTES, 'UTF-8', false);
+        return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8', false);
     }
 }
 
@@ -280,13 +295,12 @@ if (!function_exists('table_lang')) {
 }
 
 if (!function_exists('sq')) {
-    function sq(string $ip, int $port, int $timeout = 3, int $engine = 1)
+    /**
+     * @deprecated Use ServerQueryService instead
+     */
+    function sq(string $ip, int $port, int $timeout = 3, string $mod = 'source'): \Flute\Core\ServerQuery\QueryResult
     {
-        $Query = new SourceQuery();
-
-        $Query->Connect($ip, $port, $timeout, $engine);
-
-        return $Query;
+        return app(\Flute\Core\ServerQuery\ServerQueryService::class)->queryRaw($ip, $port, $mod, $timeout);
     }
 }
 
@@ -328,8 +342,16 @@ if (!function_exists('validator')) {
 if (!function_exists('carbon')) {
     function carbon($time = null)
     {
-        Carbon::setLocale(translation()->getLocale());
-        CarbonInterval::setLocale(translation()->getLocale());
+        $locale = translation()->getLocale();
+
+        // Our i18n uses "br" for Brazilian Portuguese, but Carbon treats "br" as Breton.
+        // Map to a Carbon-compatible locale to avoid output like "3 miz 'zo".
+        if ($locale === 'br') {
+            $locale = 'pt_BR';
+        }
+
+        Carbon::setLocale($locale);
+        CarbonInterval::setLocale($locale);
 
         return Carbon::parse($time);
     }
@@ -340,7 +362,7 @@ if (!function_exists('html_attributes')) {
     {
         $html = '';
         foreach ($attributes as $key => $value) {
-            $html .= ' ' . htmlspecialchars($key) . '="' . htmlspecialchars($value) . '"';
+            $html .= ' ' . htmlspecialchars((string) $key) . '="' . htmlspecialchars((string) ($value ?? '')) . '"';
         }
 
         return $html;

@@ -3,12 +3,12 @@
 namespace Flute\Core\Modules\Auth\Components;
 
 use Clickfwd\Yoyo\Component;
-use Exception;
 use Flute\Core\Exceptions\PasswordResetTokenExpiredException;
 use Flute\Core\Exceptions\PasswordResetTokenNotFoundException;
 use Flute\Core\Exceptions\TooManyRequestsException;
 use Flute\Core\Exceptions\UserNotFoundException;
 use Nette\Schema\ValidationException;
+use Throwable;
 
 class PasswordResetTokenComponent extends Component
 {
@@ -50,7 +50,7 @@ class PasswordResetTokenComponent extends Component
                 $this->redirect('/');
             } catch (TooManyRequestsException $e) {
                 toast()->error(__('auth.too_many_requests'))->push();
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 logs()->error($e);
 
                 toast()->error(is_debug() ? $e->getMessage() : __('def.unknown_error'))->push();
@@ -61,7 +61,7 @@ class PasswordResetTokenComponent extends Component
     public function render()
     {
         return $this->view('flute::components.reset.reset-token', [
-            'token' => request()->input('token'),
+            'token' => $this->token,
         ]);
     }
 

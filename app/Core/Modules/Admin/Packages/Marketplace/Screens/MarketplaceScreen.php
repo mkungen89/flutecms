@@ -4,14 +4,18 @@ namespace Flute\Admin\Packages\Marketplace\Screens;
 
 use Exception;
 use Flute\Admin\Packages\Marketplace\Services\MarketplaceService;
+use Flute\Admin\Packages\Marketplace\Services\ModuleCategoryService;
 use Flute\Admin\Packages\Marketplace\Services\ModuleInstallerService;
 use Flute\Admin\Platform\Actions\Button;
 use Flute\Admin\Platform\Layouts\LayoutFactory;
 use Flute\Admin\Platform\Screen;
 use Flute\Core\ModulesManager\ModuleManager;
+use Throwable;
 
 class MarketplaceScreen extends Screen
 {
+    public ?string $permission = 'admin.modules';
+
     /**
      * @var array
      */
@@ -38,9 +42,24 @@ class MarketplaceScreen extends Screen
     public $statusFilter = '';
 
     /**
+     * @var string
+     */
+    public $categoryFilter = '';
+
+    /**
      * @var array
      */
     public $categories = [];
+
+    /**
+     * @var string
+     */
+    public $sortBy = 'featured';
+
+    /**
+     * @var string
+     */
+    public $viewMode = 'grid';
 
     /**
      * @var bool
@@ -83,6 +102,16 @@ class MarketplaceScreen extends Screen
     protected $moduleManager;
 
     /**
+     * @var ModuleCategoryService
+     */
+    protected $categoryService;
+
+    /**
+     * @var array All modules before filtering (for category counts)
+     */
+    protected array $allModulesUnfiltered = [];
+
+    /**
      * Mount the screen
      */
     public function mount(): void
@@ -91,14 +120,16 @@ class MarketplaceScreen extends Screen
 
         $this->marketplaceService = app(MarketplaceService::class);
         $this->moduleManager = app(ModuleManager::class);
+        $this->categoryService = app(ModuleCategoryService::class);
 
         $req = request();
-        $this->searchQuery = (string) $req->input('q', '');
+        $this->searchQuery = (string) $req->input('searchQuery', $req->input('q', ''));
         $this->selectedCategory = (string) $req->input('category', '');
-        $this->priceFilter = (string) $req->input('price', ''); // '', 'free', 'paid'
-        $this->statusFilter = (string) $req->input('status', ''); // '', 'installed','notinstalled','update'
-
-        $this->categories = $this->getCategories();
+        $this->priceFilter = (string) $req->input('priceFilter', $req->input('price', ''));
+        $this->statusFilter = (string) $req->input('statusFilter', $req->input('status', ''));
+        $this->categoryFilter = (string) $req->input('categoryFilter', '');
+        $this->sortBy = (string) $req->input('sortBy', 'featured');
+        $this->viewMode = (string) session()->get('mp_view_mode', 'grid');
 
         $this->loadModules();
     }
@@ -126,15 +157,26 @@ class MarketplaceScreen extends Screen
     }
 
     /**
+     * Yoyo handler: switch view mode (grid/list)
+     */
+    public function setViewMode(string $mode): void
+    {
+        $this->viewMode = in_array($mode, ['grid', 'list']) ? $mode : 'grid';
+        session()->set('mp_view_mode', $this->viewMode);
+    }
+
+    /**
      * Yoyo handler: apply filters from current request payload
      */
     public function handleFilters(): void
     {
         $req = request();
-        $this->searchQuery = (string) $req->input('q', '');
+        $this->searchQuery = (string) $req->input('searchQuery', $req->input('q', ''));
         $this->selectedCategory = (string) $req->input('category', '');
-        $this->priceFilter = (string) $req->input('price', '');
-        $this->statusFilter = (string) $req->input('status', '');
+        $this->priceFilter = (string) $req->input('priceFilter', $req->input('price', ''));
+        $this->statusFilter = (string) $req->input('statusFilter', $req->input('status', ''));
+        $this->categoryFilter = (string) $req->input('categoryFilter', '');
+        $this->sortBy = (string) $req->input('sortBy', 'featured');
 
         $this->loadModules();
     }
@@ -148,6 +190,8 @@ class MarketplaceScreen extends Screen
         $this->selectedCategory = '';
         $this->priceFilter = '';
         $this->statusFilter = '';
+        $this->categoryFilter = '';
+        $this->sortBy = 'featured';
 
         $this->loadModules();
     }
@@ -169,8 +213,9 @@ class MarketplaceScreen extends Screen
 
                 $moduleKey = $module['name'];
 
-                $module['isInstalled'] = $this->moduleManager->issetModule($moduleKey) &&
-                    $this->moduleManager->getModule($moduleKey)->status !== 'notinstalled';
+                $module['isInstalled'] =
+                    $this->moduleManager->issetModule($moduleKey)
+                    && $this->moduleManager->getModule($moduleKey)->status !== 'notinstalled';
 
                 if ($module['isInstalled'] && isset($module['currentVersion'])) {
                     $installedModule = $this->moduleManager->getModule($moduleKey);
@@ -178,15 +223,15 @@ class MarketplaceScreen extends Screen
                     $module['needsUpdate'] = version_compare(
                         $module['currentVersion'],
                         $module['installedVersion'],
-                        '>'
+                        '>',
                     );
                 }
             }
 
             $this->applyLocalFilters();
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             logs()->error($e);
-            $this->flashMessage($e->getMessage(), 'error');
+            $this->flashMessage(__('def.internal_server_error'), 'error');
         }
 
         $this->isLoading = false;
@@ -199,6 +244,8 @@ class MarketplaceScreen extends Screen
      */
     public function installModule(string $slug)
     {
+        $this->ensureServicesInitialized();
+
         if (function_exists('set_time_limit')) {
             @set_time_limit(0);
         }
@@ -213,7 +260,7 @@ class MarketplaceScreen extends Screen
             $allModules = $this->marketplaceService->getModules('', '', true);
             $moduleData = null;
             foreach ($allModules as $m) {
-                if (($m['slug'] ?? '') === $slug) {
+                if (( $m['slug'] ?? '' ) === $slug) {
                     $moduleData = $m;
 
                     break;
@@ -228,13 +275,13 @@ class MarketplaceScreen extends Screen
             // Step 1: Download module, handle expired token
             try {
                 $download = $moduleInstaller->downloadModule($module);
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 if ($e->getMessage() === 'MARKETPLACE_BAD_REQUEST') {
                     $this->marketplaceService->clearCache();
                     $allModules = $this->marketplaceService->getModules('', '', true);
                     $moduleData = null;
                     foreach ($allModules as $m) {
-                        if (($m['slug'] ?? '') === $slug) {
+                        if (( $m['slug'] ?? '' ) === $slug) {
                             $moduleData = $m;
 
                             break;
@@ -248,9 +295,9 @@ class MarketplaceScreen extends Screen
 
                     try {
                         $download = $moduleInstaller->downloadModule($module);
-                    } catch (Exception $e2) {
+                    } catch (Throwable $e2) {
                         logs()->error($e2);
-                        $this->flashMessage($e2->getMessage(), 'error');
+                        $this->flashMessage(__('def.internal_server_error'), 'error');
                         $this->isLoading = false;
 
                         return;
@@ -280,8 +327,11 @@ class MarketplaceScreen extends Screen
             // Шаг 5: Обновление зависимостей Composer
             try {
                 $moduleInstaller->updateComposerDependencies();
-            } catch (Exception $e) {
-                $moduleInstaller->rollbackInstallation($installResult['moduleFolder'], $installResult['backupDir'] ?? null);
+            } catch (Throwable $e) {
+                $moduleInstaller->rollbackInstallation(
+                    $installResult['moduleFolder'],
+                    $installResult['backupDir'] ?? null,
+                );
 
                 throw $e;
             }
@@ -307,21 +357,26 @@ class MarketplaceScreen extends Screen
                     $moduleActions->activateModule($moduleInfo, $moduleManager);
                 }
             } else {
-                throw new Exception(__('admin-marketplace.messages.install_failed') . ': Модуль не найден после копирования файлов');
+                throw new Exception(
+                    __('admin-marketplace.messages.install_failed') . ': Модуль не найден после копирования файлов',
+                );
             }
 
             $this->flashMessage(__('admin-marketplace.messages.module_installed'), 'success');
 
             $this->loadModules();
-
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             logs()->error($e);
-            $this->flashMessage($e->getMessage(), 'error');
+            $this->flashMessage(__('def.internal_server_error'), 'error');
         } finally {
-            $moduleInstaller->finishInstallation();
+            if (isset($moduleInstaller)) {
+                $moduleInstaller->finishInstallation();
+            }
             $this->moduleManager->clearCache();
             $this->moduleManager->refreshModules();
-            $this->loadModules();
+            $this->marketplaceService->clearModuleCache($slug);
+            $this->invalidateCompiledAssets();
+            $this->loadModules(true);
         }
 
         $this->isLoading = false;
@@ -332,40 +387,37 @@ class MarketplaceScreen extends Screen
      */
     public function layout(): array
     {
+        $allModulesForCategories = !empty($this->allModulesUnfiltered) ? $this->allModulesUnfiltered : $this->modules;
+        $categoriesWithCounts = $this->categoryService->getCategoriesWithCounts($allModulesForCategories);
+
+        $modulesWithMeta = array_map(function ($module) {
+            $module['_category'] = $this->categoryService->getModuleCategory($module);
+            $module['_shortDesc'] = $this->categoryService->getShortDescription($module['description'] ?? '');
+
+            return $module;
+        }, $this->modules);
+
         return [
-            LayoutFactory::columns([
-                LayoutFactory::view('admin-marketplace::marketplace.module-list', [
-                    'modules' => $this->modules,
-                    'isLoading' => $this->isLoading,
-                    'moduleManager' => $this->moduleManager,
-                    'searchQuery' => $this->searchQuery,
-                    'selectedCategory' => $this->selectedCategory,
-                    'priceFilter' => $this->priceFilter,
-                    'statusFilter' => $this->statusFilter,
-                    'categories' => $this->categories,
-                ]),
+            LayoutFactory::view('admin-marketplace::marketplace.module-list', [
+                'modules' => $modulesWithMeta,
+                'isLoading' => $this->isLoading,
+                'moduleManager' => $this->moduleManager,
+                'searchQuery' => $this->searchQuery,
+                'priceFilter' => $this->priceFilter,
+                'statusFilter' => $this->statusFilter,
+                'categoryFilter' => $this->categoryFilter,
+                'sortBy' => $this->sortBy,
+                'viewMode' => $this->viewMode,
+                'categoriesWithCounts' => $categoriesWithCounts,
             ]),
         ];
     }
 
-    /**
-     * Get module categories for filtering
-     *
-     * @return array
-     */
-    public function getCategories()
-    {
-        try {
-            return $this->marketplaceService->getCategories();
-        } catch (Exception $e) {
-            logs()->error($e);
-
-            return [];
-        }
-    }
-
-    protected function waitForInstalledModuleKey(ModuleManager $moduleManager, string $moduleFolder, int $timeoutSeconds = 15): ?string
-    {
+    protected function waitForInstalledModuleKey(
+        ModuleManager $moduleManager,
+        string $moduleFolder,
+        int $timeoutSeconds = 20,
+    ): ?string {
         $moduleFolder = trim($moduleFolder);
         if ($moduleFolder === '') {
             return null;
@@ -375,28 +427,127 @@ class MarketplaceScreen extends Screen
         $normalized = preg_replace('#/+#', '/', $normalized) ?? $normalized;
         $normalized = trim($normalized, '/');
 
-        $candidates = array_values(array_unique(array_filter([
-            $moduleFolder,
-            $normalized,
-            basename($normalized),
-            explode('/', $normalized)[0] ?? null,
-        ], static fn ($v) => is_string($v) && $v !== '')));
+        $candidates = array_values(array_unique(array_filter(
+            [
+                $moduleFolder,
+                $normalized,
+                basename($normalized),
+                explode('/', $normalized)[0] ?? null,
+            ],
+            static fn($v) => is_string($v) && $v !== '',
+        )));
+
+        $modulesPath = path('app/Modules');
 
         $start = microtime(true);
-        while ((microtime(true) - $start) < $timeoutSeconds) {
+        $attemptCount = 0;
+        while (( microtime(true) - $start ) < $timeoutSeconds) {
+            $attemptCount++;
             clearstatcache(true);
-            $moduleManager->refreshModules();
 
             foreach ($candidates as $candidate) {
-                if ($moduleManager->issetModule($candidate)) {
+                $moduleJsonPath = $modulesPath . DIRECTORY_SEPARATOR . $candidate . DIRECTORY_SEPARATOR . 'module.json';
+                if (!is_file($moduleJsonPath) || !is_readable($moduleJsonPath)) {
+                    continue;
+                }
+
+                $content = @file_get_contents($moduleJsonPath);
+                if ($content === false || strlen($content) <= 10) {
+                    continue;
+                }
+
+                $decoded = @json_decode($content, true);
+                $moduleKey = $candidate;
+
+                if (is_array($decoded) && !empty($decoded['name']) && is_string($decoded['name'])) {
+                    $moduleKey = $decoded['name'];
+                }
+
+                $moduleManager->clearCache();
+                $moduleManager->forceReloadModulesJson();
+
+                $this->ensureModuleInDatabase($moduleManager, $moduleKey, $decoded);
+
+                $moduleManager->refreshModules();
+
+                if ($moduleManager->issetModule($moduleKey)) {
+                    return $moduleKey;
+                }
+
+                if ($moduleKey !== $candidate && $moduleManager->issetModule($candidate)) {
                     return $candidate;
+                }
+
+                foreach ($moduleManager->getModules() as $key => $info) {
+                    if (strcasecmp($key, $candidate) === 0 || strcasecmp($key, $moduleKey) === 0) {
+                        return $key;
+                    }
                 }
             }
 
-            usleep(250000);
+            if ($attemptCount <= 3) {
+                usleep(500000);
+            } else {
+                usleep(250000);
+            }
         }
 
         return null;
+    }
+
+    protected function ensureModuleInDatabase(ModuleManager $moduleManager, string $moduleKey, ?array $moduleJson): void
+    {
+        if ($moduleManager->issetModule($moduleKey)) {
+            return;
+        }
+
+        try {
+            $existing = \Flute\Core\Database\Entities\Module::findOne(['key' => $moduleKey]);
+            if ($existing !== null) {
+                return;
+            }
+
+            $module = new \Flute\Core\Database\Entities\Module();
+            $module->key = $moduleKey;
+            $module->name = $moduleJson['name'] ?? $moduleKey;
+            $module->description = $moduleJson['description'] ?? '';
+            $module->installedVersion = $moduleJson['version'] ?? '0.0.0';
+            $module->status = \Flute\Core\ModulesManager\ModuleManager::NOTINSTALLED;
+            $module->save();
+        } catch (\Throwable $e) {
+            logs('modules')->warning("Could not auto-register module {$moduleKey} in database: " . $e->getMessage());
+        }
+    }
+
+    protected function invalidateCompiledAssets(): void
+    {
+        try {
+            $filesystem = new \Symfony\Component\Filesystem\Filesystem();
+
+            foreach ([
+                public_path('assets/css/cache'),
+                public_path('assets/css/cache_stale'),
+                public_path('assets/js/cache'),
+                public_path('assets/js/cache_stale'),
+            ] as $dir) {
+                if (is_dir($dir)) {
+                    $filesystem->remove($dir);
+                    @mkdir($dir, 0o775, true);
+                }
+            }
+
+            $viewFiles = glob(storage_path('app/views/*'));
+            if ($viewFiles) {
+                $filesystem->remove($viewFiles);
+            }
+
+            $translationFiles = glob(storage_path('app/translations/*'));
+            if ($translationFiles) {
+                $filesystem->remove($translationFiles);
+            }
+        } catch (Throwable $e) {
+            logs('marketplace')->warning('Marketplace asset invalidation failed: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -408,13 +559,22 @@ class MarketplaceScreen extends Screen
             return;
         }
 
+        $this->allModulesUnfiltered = $this->modules;
+
         $filteredModules = $this->modules;
+
+        if (!empty($this->categoryFilter) && $this->categoryFilter !== 'all') {
+            $filteredModules = array_filter(
+                $filteredModules,
+                fn($module) => $this->categoryService->getModuleCategory($module) === $this->categoryFilter,
+            );
+        }
 
         if (!empty($this->priceFilter)) {
             $filteredModules = array_filter($filteredModules, function ($module) {
                 $isPaid = !empty($module['isPaid']);
 
-                return ($this->priceFilter === 'paid' && $isPaid) || ($this->priceFilter === 'free' && !$isPaid);
+                return $this->priceFilter === 'paid' && $isPaid || $this->priceFilter === 'free' && !$isPaid;
             });
         }
 
@@ -436,19 +596,54 @@ class MarketplaceScreen extends Screen
         }
 
         if (!empty($this->searchQuery)) {
-            $filteredModules = array_filter($filteredModules, fn ($module) => str_contains(strtolower((string)($module['name'] ?? '')), strtolower((string)$this->searchQuery)));
+            $search = strtolower((string) $this->searchQuery);
+            $filteredModules = array_filter(
+                $filteredModules,
+                static fn($module) => (
+                    str_contains(strtolower((string) ( $module['name'] ?? '' )), $search)
+                    || str_contains(strtolower((string) ( $module['description'] ?? '' )), $search)
+                ),
+            );
         }
 
-        usort($filteredModules, static function ($a, $b) {
-            $ap = !empty($a['isPaid']);
-            $bp = !empty($b['isPaid']);
-            if ($ap === $bp) {
-                return 0;
-            }
+        $sortBy = $this->sortBy;
+        usort($filteredModules, static function ($a, $b) use ($sortBy) {
+            switch ($sortBy) {
+                case 'name':
+                    return strcasecmp($a['name'] ?? '', $b['name'] ?? '');
+                case 'free_first':
+                    $ap = !empty($a['isPaid']) ? 1 : 0;
+                    $bp = !empty($b['isPaid']) ? 1 : 0;
 
-            return $ap ? -1 : 1;
+                    return $ap - $bp;
+                case 'featured':
+                default:
+                    $ap = !empty($a['isPaid']) ? 1 : 0;
+                    $bp = !empty($b['isPaid']) ? 1 : 0;
+                    if ($ap !== $bp) {
+                        return $bp - $ap;
+                    }
+
+                    return strcasecmp($a['name'] ?? '', $b['name'] ?? '');
+            }
         });
 
         $this->modules = array_values($filteredModules);
+    }
+
+    /**
+     * Ensure services are initialized (for Yoyo actions)
+     */
+    protected function ensureServicesInitialized(): void
+    {
+        if (!isset($this->marketplaceService)) {
+            $this->marketplaceService = app(MarketplaceService::class);
+        }
+        if (!isset($this->moduleManager)) {
+            $this->moduleManager = app(ModuleManager::class);
+        }
+        if (!isset($this->categoryService)) {
+            $this->categoryService = app(ModuleCategoryService::class);
+        }
     }
 }

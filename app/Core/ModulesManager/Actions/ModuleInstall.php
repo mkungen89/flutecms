@@ -14,9 +14,12 @@ use Flute\Core\ModulesManager\ModuleManager;
 use Flute\Core\Support\AbstractModuleInstaller;
 use Flute\Core\Theme\ThemeManager;
 use RuntimeException;
+use Throwable;
 
 class ModuleInstall implements ModuleActionInterface
 {
+    use Concerns\FlushesTranslationCache;
+
     protected ModuleManager $moduleManager;
 
     protected ModuleDependencies $moduleDependencies;
@@ -47,7 +50,7 @@ class ModuleInstall implements ModuleActionInterface
         if (fs()->exists(BASE_PATH . $directory)) {
             try {
                 app(DatabaseConnection::class)->runMigrations($directory);
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 app(DatabaseConnection::class)->rollbackMigrations($directory);
 
                 throw $e;
@@ -78,6 +81,8 @@ class ModuleInstall implements ModuleActionInterface
 
         $this->moduleManager->runComposerInstall($module);
 
+        $this->flushCompiledTranslations();
+
         app(DatabaseConnection::class)->forceRefreshSchemaDeferred([$module->key]);
 
         return true;
@@ -94,9 +99,15 @@ class ModuleInstall implements ModuleActionInterface
             /** @var ThemeManager $themeManager */
             $themeManager = app(ThemeManager::class);
 
-            $this->moduleDependencies->checkDependencies($module->dependencies, $this->moduleManager->getActive(), $themeManager->getThemeInfo());
+            $this->moduleDependencies->checkDependencies(
+                $module->dependencies,
+                $this->moduleManager->getActive(),
+                $themeManager->getThemeInfo(),
+            );
         } catch (ModuleDependencyException $e) {
-            logs('modules')->emergency("Flute module \"" . $module->key . "\" dependency check failed - " . $e->getMessage());
+            logs('modules')->emergency(
+                'Flute module "' . $module->key . '" dependency check failed - ' . $e->getMessage(),
+            );
 
             throw new ModuleDependencyException($e->getMessage());
         }
@@ -104,7 +115,7 @@ class ModuleInstall implements ModuleActionInterface
 
     protected function initDb(ModuleInformation $moduleInformation): void
     {
-        $module = Module::findOne(["key" => $moduleInformation->key]);
+        $module = Module::findOne(['key' => $moduleInformation->key]);
 
         $module->status = ModuleManager::DISABLED;
         $module->installedVersion = $moduleInformation->version;

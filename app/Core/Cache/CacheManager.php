@@ -63,7 +63,7 @@ class CacheManager
     public function getAdapter(): AbstractCacheDriver
     {
         if ($this->adapter === null) {
-            throw new RuntimeException("Cache adapter has not been created yet.");
+            throw new RuntimeException('Cache adapter has not been created yet.');
         }
 
         return $this->adapter;
@@ -73,26 +73,40 @@ class CacheManager
     {
         $epoch = $this->readEpoch();
 
-        $base = (string) ($config['namespace'] ?? '');
+        $base = (string) ( $config['namespace'] ?? '' );
         $base = preg_replace('/\\.e\\d+$/', '', $base) ?: '';
         $base = trim((string) $base, '.');
 
-        $config['namespace'] = ($base === '' ? 'e' . $epoch : $base . '.e' . $epoch);
+        $config['namespace'] = $base === '' ? 'e' . $epoch : $base . '.e' . $epoch;
 
         return $config;
     }
 
+    private static ?int $epochCache = null;
+
     private function readEpoch(): int
     {
-        $epochFile = defined('BASE_PATH')
-            ? BASE_PATH . 'storage/app/cache_epoch'
-            : 'cache_epoch';
+        if (isset($GLOBALS['flute_cache_epoch']) && is_int($GLOBALS['flute_cache_epoch'])) {
+            self::$epochCache = $GLOBALS['flute_cache_epoch'];
+
+            return self::$epochCache;
+        }
+
+        if (self::$epochCache !== null) {
+            return self::$epochCache;
+        }
+
+        $epochFile = defined('BASE_PATH') ? BASE_PATH . 'storage/app/cache_epoch' : 'cache_epoch';
 
         $content = @file_get_contents($epochFile);
         if (!is_string($content) || $content === '') {
+            self::$epochCache = 0;
+
             return 0;
         }
 
-        return (int) trim($content);
+        self::$epochCache = (int) trim($content);
+
+        return self::$epochCache;
     }
 }

@@ -1,12 +1,11 @@
-$checkbox-size: 22px;
+﻿$checkbox-size: 22px;
 
 .checkbox {
     &__field {
         position: absolute;
         opacity: 0;
 
-        // Text
-        &+label {
+&+label {
             display: inline-block;
             position: relative;
             cursor: pointer;
@@ -16,8 +15,7 @@ $checkbox-size: 22px;
             color: var(--text-200);
             @include transition(color);
 
-            // Checkbox
-            &:before {
+&:before {
                 position: absolute;
                 display: block;
                 left: 0;
@@ -35,8 +33,8 @@ $checkbox-size: 22px;
             &:after {
                 position: absolute;
                 display: block;
-                top: 4px;
-                left: 8px;
+                top: var(--space-2xs);
+                left: var(--space-xs);
                 content: "";
                 width: 6px;
                 height: 10px;
@@ -84,8 +82,7 @@ $checkbox-size: 22px;
             }
         }
 
-        // Disabled Checked
-        &:checked:disabled {
+&:checked:disabled {
             &+label {
                 &:before {}
 

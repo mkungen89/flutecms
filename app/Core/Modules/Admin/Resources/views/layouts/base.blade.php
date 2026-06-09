@@ -15,22 +15,18 @@
 @endif
 
 <!-- ID need for correct htmx swap -->
-@php
-    $dirtyConfig = is_array($screenDirty ?? null) ? $screenDirty : null;
-    $dirtyEnabled = (bool) ($dirtyConfig['enabled'] ?? false);
-@endphp
-
-<div
-    id="screen-container"
-    @if($dirtyEnabled)
-        data-dirty-enabled="true"
-        data-dirty-config='@json($dirtyConfig)'
+<div id="screen-container" hx-encoding="multipart/form-data">
+    @if (! empty($screenStateHmac))
+        <input type="hidden" name="_stateHmac" value="{{ $screenStateHmac }}">
+        @foreach ($screenSignedValues ?? [] as $propName => $propValue)
+            <input type="hidden" name="{{ $propName }}" value="{{ $propValue }}">
+        @endforeach
     @endif
->
     @section('title', (string) __($screenName ?? ''))
     @section('description', (string) __($screenDescription ?? ''))
 
     @if ($screenName || $screenDescription || ! empty($screenCommandBar))
+        <div class="base-legend-sentinel"></div>
         <legend class="base-legend">
             <div>
                 <h4>{{ __($screenName ?? '') }} @if ($screenPopover)
@@ -61,8 +57,4 @@
     <div id="modals-container" @if (user()->device()->isMobile()) hx-swap="outerHTML" @endif>
         @stack('modals-container')
     </div>
-
-    @if($dirtyEnabled)
-        @include('admin::partials.dirty', ['config' => $dirtyConfig])
-    @endif
 </div>

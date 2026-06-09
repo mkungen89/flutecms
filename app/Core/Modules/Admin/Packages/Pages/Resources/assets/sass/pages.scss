@@ -1,9 +1,8 @@
-// Variables
+﻿
 $transition-speed: var(--transition);
 $border-radius: 8px;
 $spacing-unit: 1rem;
 
-// Mixins
 @mixin flex-center {
     display: flex;
     align-items: center;
@@ -22,7 +21,6 @@ $spacing-unit: 1rem;
     }
 }
 
-// Page Info
 .page-info {
     &-route {
         font-family: monospace;
@@ -49,7 +47,6 @@ $spacing-unit: 1rem;
     }
 }
 
-// Page Blocks
 .page-blocks {
     &-header {
         display: flex;
@@ -138,7 +135,6 @@ $spacing-unit: 1rem;
     }
 }
 
-// JSON Editor
 .json-editor {
     &-container {
         position: relative;
@@ -175,7 +171,6 @@ $spacing-unit: 1rem;
     }
 }
 
-// Route Input
 .route-input {
     &-container {
         position: relative;
@@ -197,7 +192,6 @@ $spacing-unit: 1rem;
     }
 }
 
-// Permissions
 .page-permissions {
     &-grid {
         display: grid;

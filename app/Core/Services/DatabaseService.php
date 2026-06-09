@@ -11,6 +11,13 @@ class DatabaseService
 {
     public array $cachedConnections;
 
+    private static array $modesCache = [];
+
+    public static function flushModesCache(): void
+    {
+        self::$modesCache = [];
+    }
+
     /**
      * Retrieves server modes based on provided mods.
      *
@@ -50,7 +57,9 @@ class DatabaseService
             ->fetchOne();
 
         if (!$this->isValidMode($mode)) {
-            throw new Exception("Database mode '{$mode->dbname}' or server '{$mode->server->name}' does not exist.");
+            $name = $mode?->dbname ?? '(unknown)';
+            $server = $mode?->server?->name ?? '(unknown)';
+            throw new Exception("Database mode '{$name}' or server '{$server}' does not exist.");
         }
 
         return $mode;
@@ -65,8 +74,7 @@ class DatabaseService
      */
     public function getPrimaryConnection(string|array $mods = []): array
     {
-        $databaseConnection = DatabaseConnection::query()
-            ->with('server');
+        $databaseConnection = DatabaseConnection::query()->with('server');
 
         if (is_array($mods)) {
             $databaseConnection->where('mod', 'IN', new Parameter($mods));
@@ -77,11 +85,11 @@ class DatabaseService
         $databaseConnection = $databaseConnection->fetchOne();
 
         if (!$databaseConnection) {
-            throw new Exception("No DatabaseConnection entries found for the specified mods.");
+            throw new Exception('No DatabaseConnection entries found for the specified mods.');
         }
 
         if (!$databaseConnection->server) {
-            throw new Exception("No server associated with the primary DatabaseConnection.");
+            throw new Exception('No server associated with the primary DatabaseConnection.');
         }
 
         return [
@@ -138,13 +146,46 @@ class DatabaseService
     private function fetchModes(string|array $criteria): array
     {
         $mods = is_array($criteria) ? $criteria : [$criteria];
+        sort($mods);
+
+        $cacheKey = implode('|', $mods);
+        if (isset(self::$modesCache[$cacheKey])) {
+            return self::$modesCache[$cacheKey];
+        }
 
         $query = DatabaseConnection::query()->with('server');
         if ($mods) {
             $query->where('mod', 'IN', new Parameter($mods));
         }
 
-        return $query->fetchAll();
+        $modes = $query->fetchAll();
+        $this->hydrateServerConnections($modes);
+
+        return self::$modesCache[$cacheKey] = $modes;
+    }
+
+    /**
+     * @param array<int, DatabaseConnection> $modes
+     */
+    private function hydrateServerConnections(array $modes): void
+    {
+        $connectionsByServer = [];
+
+        foreach ($modes as $mode) {
+            if (!$mode->server) {
+                continue;
+            }
+
+            $connectionsByServer[$mode->server->id][] = $mode;
+        }
+
+        foreach ($modes as $mode) {
+            if (!$mode->server) {
+                continue;
+            }
+
+            $mode->server->dbconnections = $connectionsByServer[$mode->server->id] ?? [];
+        }
     }
 
     /**

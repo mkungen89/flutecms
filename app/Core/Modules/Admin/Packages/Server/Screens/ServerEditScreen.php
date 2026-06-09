@@ -2,23 +2,28 @@
 
 namespace Flute\Admin\Packages\Server\Screens;
 
-use Exception;
+use Flute\Admin\Packages\MainSettings\Services\MainSettingsPackageService;
 use Flute\Admin\Packages\Server\Services\AdminServersService;
 use Flute\Admin\Platform\Actions\Button;
 use Flute\Admin\Platform\Actions\DropDown;
 use Flute\Admin\Platform\Actions\DropDownItem;
+use Flute\Admin\Platform\Fields\ButtonGroup;
 use Flute\Admin\Platform\Fields\Input;
 use Flute\Admin\Platform\Fields\Select;
 use Flute\Admin\Platform\Fields\Tab;
 use Flute\Admin\Platform\Fields\TD;
-use Flute\Admin\Platform\Fields\Toggle;
 use Flute\Admin\Platform\Layouts\LayoutFactory;
 use Flute\Admin\Platform\Repository;
 use Flute\Admin\Platform\Screen;
 use Flute\Admin\Platform\Support\Color;
 use Flute\Core\Database\Entities\DatabaseConnection;
 use Flute\Core\Database\Entities\Server;
+use Flute\Core\Rcon\RconService;
+use Flute\Core\ServerQuery\ServerQueryService;
+use Flute\Core\Services\DatabaseService;
 use Illuminate\Support\Str;
+use PDO;
+use Throwable;
 
 class ServerEditScreen extends Screen
 {
@@ -39,9 +44,19 @@ class ServerEditScreen extends Screen
      */
     public $serversService;
 
-    public $ranksFormats = ['webp' => 'webp', 'png' => 'png', 'svg' => 'svg', 'jpg' => 'jpg', 'gif' => 'gif', 'jpeg' => 'jpeg'];
+    public $ranksFormats = [
+        'webp' => 'webp',
+        'png' => 'png',
+        'jpg' => 'jpg',
+        'gif' => 'gif',
+        'jpeg' => 'jpeg',
+    ];
 
     public bool $isEditMode = false;
+
+    public ?array $serverStatus = null;
+
+    public array $rconHistory = [];
 
     private $availableDrivers = null;
 
@@ -51,20 +66,23 @@ class ServerEditScreen extends Screen
     public function mount(): void
     {
         $this->serversService = app(AdminServersService::class);
-        $this->serverId = (int) request()->input('id');
+        $this->serverId = (int) ( request()->input('id') ?: $this->serverId );
 
         if ($this->serverId) {
             $this->initServer();
             $this->isEditMode = true;
+            $this->rconHistory = session()->get("rcon_history_{$this->serverId}", []);
         } else {
             $this->name = __('admin-server.title.create');
             $this->description = __('admin-server.title.description');
         }
 
-        breadcrumb()
-            ->add(__('def.admin_panel'), url('/admin'))
-            ->add(__('admin-server.title.list'), url('/admin/servers'))
-            ->add($this->serverId ? $this->server->name : __('admin-server.title.create'));
+        breadcrumb()->add(__('def.admin_panel'), url('/admin'))->add(
+            __('admin-server.title.list'),
+            url('/admin/servers'),
+        )->add($this->serverId ? $this->server->name : __('admin-server.title.create'));
+
+        $this->loadJS('app/Core/Modules/Admin/Packages/Server/Resources/assets/js/rank-upload.js');
     }
 
     /**
@@ -73,9 +91,7 @@ class ServerEditScreen extends Screen
     public function commandBar(): array
     {
         $buttons = [
-            Button::make(__('admin-server.buttons.cancel'))
-                ->type(Color::OUTLINE_PRIMARY)
-                ->redirect('/admin/servers'),
+            Button::make(__('admin-server.buttons.cancel'))->type(Color::OUTLINE_PRIMARY)->redirect('/admin/servers'),
         ];
 
         if (user()->can('admin.servers')) {
@@ -105,12 +121,16 @@ class ServerEditScreen extends Screen
                 ->icon('ph.bold.database-bold')
                 ->layouts([$this->dbConnectionsLayout()])
                 ->badge(sizeof($this->dbConnections ?? []));
+
+            if ($this->server && !empty($this->server->rcon)) {
+                $tabs[] = Tab::make(__('admin-server.rcon.title'))
+                    ->icon('ph.bold.terminal-bold')
+                    ->layouts([$this->rconTabLayout()]);
+            }
         }
 
         return [
-            LayoutFactory::tabs($tabs)
-                ->slug('server-edit')
-                ->pills(),
+            LayoutFactory::tabs($tabs)->slug('server-edit')->pills(),
         ];
     }
 
@@ -122,45 +142,69 @@ class ServerEditScreen extends Screen
         $databaseOptions = $this->getDatabaseOptions();
         $availableDrivers = $this->getAvailableDrivers();
         $selectedDriver = request()->input('custom_mod');
+        $selectedDb = request()->input('dbname', '');
 
-        $fields = [
-            LayoutFactory::field(
-                Select::make('custom_mod')
-                    ->options($availableDrivers)
-                    ->allowEmpty()
-                    ->yoyo()
-                    ->placeholder(__('admin-server.db_connection.fields.mod.placeholder'))
-                    ->value($selectedDriver)
-            )
-                ->label(__('admin-server.db_connection.fields.mod.label'))
-                ->small(__('admin-server.db_connection.fields.mod.help'))
-                ->required(),
+        $currentStep = 1;
+        if ($selectedDriver) {
+            $currentStep = 2;
+        }
+        if ($selectedDriver && $selectedDb) {
+            $currentStep = 3;
+        }
 
-            LayoutFactory::field(
+        $fields = [];
+
+        $fields[] = LayoutFactory::view('admin-server::db-connections.steps-header', [
+            'currentStep' => $currentStep,
+            'description' => $currentStep === 1 ? __('admin-server.db_connection.add.description') : null,
+        ]);
+
+        if (empty($databaseOptions) && !$selectedDriver) {
+            $fields[] = LayoutFactory::view('admin-server::db-connections.empty');
+        }
+
+        $fields[] = LayoutFactory::field(
+            Select::make('custom_mod')
+                ->options($availableDrivers)
+                ->allowEmpty()
+                ->yoyo()
+                ->placeholder(__('admin-server.db_connection.fields.mod.placeholder'))
+                ->value($selectedDriver),
+        )
+            ->label(__('admin-server.db_connection.fields.mod.label'))
+            ->small(__('admin-server.db_connection.fields.mod.help'))
+            ->required();
+
+        if ($selectedDriver) {
+            $dbHelpParts = [__('admin-server.db_connection.fields.dbname.help')];
+
+            $fields[] = LayoutFactory::field(
                 Select::make('dbname')
                     ->options($databaseOptions)
                     ->allowEmpty()
-                    ->value(request()->input('dbname', ''))
-                    ->placeholder(__('admin-server.db_connection.fields.dbname.placeholder'))
+                    ->yoyo()
+                    ->value($selectedDb)
+                    ->placeholder(__('admin-server.db_connection.fields.dbname.placeholder')),
             )
                 ->label(__('admin-server.db_connection.fields.dbname.label'))
-                ->required(),
-        ];
+                ->small(implode(' ', $dbHelpParts))
+                ->required();
 
-        if ($selectedDriver) {
-            $driverView = $this->getDriverView($selectedDriver);
+            if ($selectedDb) {
+                $driverView = $this->getDriverView($selectedDriver);
 
-            if (view()->exists($driverView)) {
-                $fields[] = LayoutFactory::view($driverView, [
-                    'settings' => [],
-                    'driverName' => $selectedDriver,
-                ]);
+                if (view()->exists($driverView)) {
+                    $fields[] = LayoutFactory::view($driverView, [
+                        'settings' => [],
+                        'driverName' => $selectedDriver,
+                    ]);
+                }
             }
         }
 
         return LayoutFactory::modal($parameters, $fields)
             ->title(__('admin-server.db_connection.add.title'))
-            ->applyButton(__('admin-server.buttons.add'))
+            ->applyButton(__('admin-server.db_connection.add.button'))
             ->method('addDbConnection');
     }
 
@@ -173,7 +217,7 @@ class ServerEditScreen extends Screen
         $connection = DatabaseConnection::findByPK($connectionId);
 
         if (!$connection) {
-            $this->flashMessage(__('admin-server.messages.connection_not_found'), 'danger');
+            $this->flashMessage(__('admin-server.messages.connection_not_found'), 'error');
 
             return;
         }
@@ -191,7 +235,7 @@ class ServerEditScreen extends Screen
                     ->allowEmpty()
                     ->value(request()->input('custom_mod', $isCustomDriver ? 'custom' : $connection->mod))
                     ->yoyo()
-                    ->placeholder(__('admin-server.db_connection.fields.mod.placeholder'))
+                    ->placeholder(__('admin-server.db_connection.fields.mod.placeholder')),
             )
                 ->label(__('admin-server.db_connection.fields.mod.label'))
                 ->small(__('admin-server.db_connection.fields.mod.help'))
@@ -202,12 +246,12 @@ class ServerEditScreen extends Screen
                     ->options($databaseOptions)
                     ->allowEmpty()
                     ->value(request()->input('dbname', $connection->dbname))
-                    ->placeholder(__('admin-server.db_connection.fields.dbname.placeholder'))
+                    ->placeholder(__('admin-server.db_connection.fields.dbname.placeholder')),
             )
                 ->label(__('admin-server.db_connection.fields.dbname.label'))
+                ->small(__('admin-server.db_connection.fields.dbname.help'))
                 ->required(),
         ];
-
 
         if ($selectedDriver) {
             $driverView = $this->getDriverView($selectedDriver);
@@ -227,11 +271,187 @@ class ServerEditScreen extends Screen
     }
 
     /**
+     * Модальное окно для добавления подключения к БД из интеграций.
+     */
+    public function addDatabaseModal(Repository $parameters)
+    {
+        if (!user()->can('admin.boss')) {
+            $this->flashMessage(__('def.permission_denied'), 'error');
+
+            return null;
+        }
+
+        $defaultConnection = config('database.connections.default');
+
+        $explode = explode('\\', $defaultConnection->driver);
+        $driver = str_replace('driver', '', strtolower(end($explode)));
+        $supportsMysqlOptions = $driver === 'mysql';
+        $supportsReconnect = in_array($driver, ['mysql', 'postgres'], true);
+
+        return LayoutFactory::modal($parameters, [
+            LayoutFactory::view('admin-server::db-connections.create-note'),
+            LayoutFactory::field(
+                ButtonGroup::make('driver')
+                    ->options([
+                        'mysql' => [
+                            'label' => 'MySQL',
+                            'icon' => 'ph.bold.database-bold',
+                        ],
+                        'postgres' => [
+                            'label' => 'PostgreSQL',
+                            'icon' => 'ph.bold.database-bold',
+                        ],
+                    ])
+                    ->value($driver)
+                    ->color('accent'),
+            )
+                ->label(__('admin-main-settings.labels.db_driver'))
+                ->required(),
+            LayoutFactory::field(
+                Input::make('databaseName')
+                    ->type('text')
+                    ->value(request()->input('databaseName', ''))
+                    ->placeholder(__('admin-main-settings.placeholders.database_name')),
+            )
+                ->label(__('admin-main-settings.labels.database_name'))
+                ->required(),
+            LayoutFactory::field(
+                Input::make('host')
+                    ->type('text')
+                    ->value(request()->input('host', $defaultConnection->connection->host))
+                    ->placeholder(__('admin-main-settings.placeholders.db_host')),
+            )
+                ->label(__('admin-main-settings.labels.host'))
+                ->required(),
+            LayoutFactory::field(
+                Input::make('port')
+                    ->type('number')
+                    ->value(request()->input('port', $defaultConnection->connection->port))
+                    ->placeholder(__('admin-main-settings.placeholders.db_port')),
+            )
+                ->label(__('admin-main-settings.labels.port'))
+                ->required(),
+            LayoutFactory::field(
+                Input::make('user')
+                    ->type('text')
+                    ->value(request()->input('user', ''))
+                    ->placeholder(__('admin-main-settings.placeholders.db_user')),
+            )
+                ->label(__('admin-main-settings.labels.user'))
+                ->required(),
+            LayoutFactory::field(
+                Input::make('database')
+                    ->type('text')
+                    ->value(request()->input('database', ''))
+                    ->placeholder(__('admin-main-settings.placeholders.db_database')),
+            )
+                ->label(__('admin-main-settings.labels.database'))
+                ->required(),
+            LayoutFactory::field(
+                Input::make('password')
+                    ->type('password')
+                    ->value(request()->input('password', ''))
+                    ->placeholder(__('admin-main-settings.placeholders.db_password')),
+            )->label(__('admin-main-settings.labels.password')),
+            LayoutFactory::field(
+                ButtonGroup::make('persistent')
+                    ->options([
+                        '0' => ['label' => __('def.off'), 'icon' => 'ph.bold.x-bold'],
+                        '1' => ['label' => __('def.on'), 'icon' => 'ph.bold.check-bold'],
+                    ])
+                    ->value(request()->input('persistent', '0'))
+                    ->color('accent'),
+            )
+                ->label(__('admin-main-settings.labels.persistent_connections'))
+                ->popover(__('admin-main-settings.popovers.persistent_connections')),
+            LayoutFactory::field(
+                Input::make('init_sql')
+                    ->type('text')
+                    ->value(request()->input('init_sql', ''))
+                    ->placeholder(__('admin-main-settings.placeholders.db_init_sql')),
+            )
+                ->label(__('admin-main-settings.labels.db_init_sql'))
+                ->popover(__('admin-main-settings.popovers.db_init_sql'))
+                ->setVisible($supportsMysqlOptions),
+            LayoutFactory::field(
+                ButtonGroup::make('compression')
+                    ->options([
+                        '0' => ['label' => __('def.off'), 'icon' => 'ph.bold.x-bold'],
+                        '1' => ['label' => __('def.on'), 'icon' => 'ph.bold.check-bold'],
+                    ])
+                    ->value(request()->input('compression', '0'))
+                    ->color('accent'),
+            )
+                ->label(__('admin-main-settings.labels.db_compression'))
+                ->popover(__('admin-main-settings.popovers.db_compression'))
+                ->setVisible($supportsMysqlOptions),
+            LayoutFactory::field(
+                ButtonGroup::make('reconnect')
+                    ->options([
+                        '0' => ['label' => __('def.off'), 'icon' => 'ph.bold.x-bold'],
+                        '1' => ['label' => __('def.on'), 'icon' => 'ph.bold.check-bold'],
+                    ])
+                    ->value(request()->input('reconnect', '1'))
+                    ->color('accent'),
+            )
+                ->label(__('admin-main-settings.labels.db_reconnect'))
+                ->popover(__('admin-main-settings.popovers.db_reconnect'))
+                ->setVisible($supportsReconnect),
+            LayoutFactory::field(
+                Input::make('connect_timeout')
+                    ->type('number')
+                    ->value(request()->input('connect_timeout', 5))
+                    ->placeholder(__('admin-main-settings.placeholders.db_connect_timeout')),
+            )
+                ->label(__('admin-main-settings.labels.db_connect_timeout'))
+                ->popover(__('admin-main-settings.popovers.db_connect_timeout'))
+                ->setVisible($supportsReconnect),
+            LayoutFactory::field(
+                Input::make('read_timeout')
+                    ->type('number')
+                    ->value(request()->input('read_timeout', 30))
+                    ->placeholder(__('admin-main-settings.placeholders.db_read_timeout')),
+            )
+                ->label(__('admin-main-settings.labels.db_read_timeout'))
+                ->popover(__('admin-main-settings.popovers.db_read_timeout'))
+                ->setVisible($supportsMysqlOptions),
+            LayoutFactory::field(
+                Input::make('write_timeout')
+                    ->type('number')
+                    ->value(request()->input('write_timeout', 30))
+                    ->placeholder(__('admin-main-settings.placeholders.db_write_timeout')),
+            )
+                ->label(__('admin-main-settings.labels.db_write_timeout'))
+                ->popover(__('admin-main-settings.popovers.db_write_timeout'))
+                ->setVisible($supportsMysqlOptions),
+            LayoutFactory::field(
+                Input::make('prefix')
+                    ->type('text')
+                    ->value(request()->input('prefix', ''))
+                    ->placeholder(__('admin-main-settings.placeholders.db_prefix')),
+            )
+                ->label(__('admin-main-settings.labels.prefix'))
+                ->popover(__('admin-main-settings.popovers.prefix'))
+                ->small(__('admin-main-settings.examples.prefix')),
+        ])
+            ->method('addDatabase')
+            ->title(__('admin-main-settings.modals.add_database'))
+            ->applyButton(__('admin-main-settings.buttons.add'))
+            ->right();
+    }
+
+    /**
      * Сохранение сервера.
      */
     public function saveServer()
     {
         $data = request()->input();
+
+        foreach (['mod', 'ranks', 'ranks_format'] as $selectField) {
+            if (isset($data[$selectField]) && is_array($data[$selectField])) {
+                $data[$selectField] = $data[$selectField][0] ?? null;
+            }
+        }
 
         if (request()->input('tab-server-edit') === Str::slug(__('admin-server.tabs.db_connections'))) {
             $this->flashMessage(__('admin-server.messages.save_not_for_db_connections'), 'error');
@@ -247,8 +467,8 @@ class ServerEditScreen extends Screen
             'rcon' => ['nullable', 'string', 'max-str-len:255'],
             'display_ip' => ['nullable', 'string', 'max-str-len:255'],
             'enabled' => ['required', 'boolean'],
-            'ranks' => ['required', 'string', 'max-str-len:255'],
-            'ranks_format' => ['required', 'string', 'max-str-len:255'],
+            'ranks' => ['nullable', 'string', 'max-str-len:255'],
+            'ranks_format' => ['nullable', 'string', 'max-str-len:255'],
             'ranks_premier' => ['nullable', 'boolean'],
             'settings__query_port' => ['nullable', 'max:65535'],
             'settings__rcon_port' => ['nullable', 'max:65535'],
@@ -258,7 +478,7 @@ class ServerEditScreen extends Screen
             return;
         }
 
-        if (str_contains((string)($data['ip'] ?? ''), ':')) {
+        if (str_contains((string) ( $data['ip'] ?? '' ), ':')) {
             $this->inputError('ip', __('admin-server.messages.invalid_ip'));
 
             return;
@@ -273,7 +493,28 @@ class ServerEditScreen extends Screen
             } else {
                 $this->flashMessage(__('admin-server.messages.server_updated'), 'success');
             }
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
+            $this->flashMessage($e->getMessage(), 'error');
+        }
+    }
+
+    /**
+     * Upload custom rank pack archive.
+     */
+    public function uploadRankPack()
+    {
+        $file = request()->files->get('ranks_archive');
+
+        if (!$file || !$file->isValid()) {
+            $this->flashMessage(__('admin-server.ranks_upload.no_file'), 'error');
+
+            return;
+        }
+
+        try {
+            $packName = $this->serversService->uploadRankPack($file);
+            $this->flashMessage(__('admin-server.ranks_upload.success', ['name' => $packName]), 'success');
+        } catch (Throwable $e) {
             $this->flashMessage($e->getMessage(), 'error');
         }
     }
@@ -290,6 +531,12 @@ class ServerEditScreen extends Screen
         }
 
         $data = request()->input();
+
+        foreach (['custom_mod', 'dbname'] as $selectField) {
+            if (isset($data[$selectField]) && is_array($data[$selectField])) {
+                $data[$selectField] = $data[$selectField][0] ?? null;
+            }
+        }
 
         $validation = $this->validate([
             'custom_mod' => ['required', 'string', 'max-str-len:255'],
@@ -324,7 +571,7 @@ class ServerEditScreen extends Screen
 
                         return;
                     }
-                } catch (Exception $e) {
+                } catch (Throwable $e) {
                     $this->flashMessage(__('admin-server.messages.invalid_json'), 'error');
 
                     return;
@@ -349,12 +596,180 @@ class ServerEditScreen extends Screen
             $connection->additional = json_encode($additional);
             $connection->server = $this->server;
             $connection->save();
+            DatabaseService::flushModesCache();
 
             $this->dbConnections = DatabaseConnection::query()->where('server_id', $this->serverId)->fetchAll();
             $this->flashMessage(__('admin-server.messages.connection_add_success'), 'success');
             $this->closeModal();
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $this->flashMessage($e->getMessage(), 'error');
+        }
+    }
+
+    /**
+     * Добавление подключения к БД (из интеграций).
+     */
+    public function addDatabase()
+    {
+        if (!user()->can('admin.boss')) {
+            $this->flashMessage(__('def.permission_denied'), 'error');
+
+            return;
+        }
+
+        $data = request()->input();
+
+        if (!$this->validate([
+            'driver' => ['required', 'string', 'in:mysql,postgres'],
+            'databaseName' => ['required', 'string', 'not-in:default'],
+            'host' => ['required', 'string'],
+            'port' => ['required', 'integer', 'min:1', 'max:65535'],
+            'user' => ['required', 'string'],
+            'database' => ['required', 'string'],
+            'password' => ['nullable', 'string'],
+            'persistent' => ['nullable'],
+            'init_sql' => ['nullable', 'string'],
+            'compression' => ['nullable'],
+            'reconnect' => ['nullable'],
+            'connect_timeout' => ['nullable', 'integer', 'min:0', 'max:300'],
+            'read_timeout' => ['nullable', 'integer', 'min:0', 'max:300'],
+            'write_timeout' => ['nullable', 'integer', 'min:0', 'max:300'],
+            'prefix' => ['nullable', 'string'],
+        ], $data)) {
+            return;
+        }
+
+        $connectionTest = app(MainSettingsPackageService::class)->testDatabaseConnection(
+            $data['driver'],
+            $data['host'],
+            (int) $data['port'],
+            $data['database'],
+            $data['user'],
+            $data['password'] ?? null,
+        );
+
+        if ($connectionTest !== true) {
+            $this->flashMessage(
+                __('admin-main-settings.messages.connection_test_failed') . ': ' . $connectionTest,
+                'error',
+            );
+
+            return;
+        }
+
+        $databaseName = $data['databaseName'];
+        $driver = $data['driver'];
+        $persistent = filter_var($data['persistent'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $initSql = trim((string) ( $data['init_sql'] ?? '' ));
+        $compression = filter_var($data['compression'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $reconnect = filter_var($data['reconnect'] ?? true, FILTER_VALIDATE_BOOLEAN);
+        $connectTimeout = isset($data['connect_timeout']) ? (int) $data['connect_timeout'] : null;
+        $readTimeout = isset($data['read_timeout']) ? (int) $data['read_timeout'] : null;
+        $writeTimeout = isset($data['write_timeout']) ? (int) $data['write_timeout'] : null;
+
+        $databases = config()->get('database.databases', []);
+        if (isset($databases[$databaseName])) {
+            $this->flashMessage(__('admin-main-settings.messages.database_exists'), 'error');
+
+            return;
+        }
+
+        config()->set("database.databases.{$databaseName}", [
+            'connection' => $databaseName,
+            'prefix' => $data['prefix'] ?? '',
+        ]);
+
+        if ($driver === 'mysql') {
+            $options = [];
+            $mysqlInitKey = defined('PDO::MYSQL_ATTR_INIT_COMMAND') ? constant('PDO::MYSQL_ATTR_INIT_COMMAND') : null;
+            if ($mysqlInitKey !== null) {
+                $options[$mysqlInitKey] = $initSql !== '' ? $initSql : 'SET NAMES utf8mb4';
+            }
+            if ($persistent) {
+                $options[PDO::ATTR_PERSISTENT] = true;
+            }
+            if ($compression) {
+                $mysqlCompressKey = defined('PDO::MYSQL_ATTR_COMPRESS') ? constant('PDO::MYSQL_ATTR_COMPRESS') : null;
+                if ($mysqlCompressKey !== null) {
+                    $options[$mysqlCompressKey] = true;
+                }
+            }
+            if ($connectTimeout !== null) {
+                $mysqlConnectKey = defined('PDO::MYSQL_ATTR_CONNECT_TIMEOUT')
+                    ? constant('PDO::MYSQL_ATTR_CONNECT_TIMEOUT')
+                    : null;
+                if ($mysqlConnectKey !== null) {
+                    $options[$mysqlConnectKey] = $connectTimeout;
+                }
+                $options[PDO::ATTR_TIMEOUT] = $connectTimeout;
+            }
+            if ($readTimeout !== null) {
+                $mysqlReadKey = defined('PDO::MYSQL_ATTR_READ_TIMEOUT')
+                    ? constant('PDO::MYSQL_ATTR_READ_TIMEOUT')
+                    : null;
+                if ($mysqlReadKey !== null) {
+                    $options[$mysqlReadKey] = $readTimeout;
+                }
+            }
+            if ($writeTimeout !== null) {
+                $mysqlWriteKey = defined('PDO::MYSQL_ATTR_WRITE_TIMEOUT')
+                    ? constant('PDO::MYSQL_ATTR_WRITE_TIMEOUT')
+                    : null;
+                if ($mysqlWriteKey !== null) {
+                    $options[$mysqlWriteKey] = $writeTimeout;
+                }
+            }
+            $connectionConfig = new \Cycle\Database\Config\MySQLDriverConfig(
+                connection: new \Cycle\Database\Config\MySQL\TcpConnectionConfig(
+                    database: $data['database'],
+                    host: $data['host'],
+                    port: $data['port'],
+                    user: $data['user'],
+                    password: $data['password'],
+                    options: $options,
+                ),
+                reconnect: $reconnect,
+                timezone: 'Asia/Yekaterinburg',
+                queryCache: true,
+                readonlySchema: true,
+            );
+        } elseif ($driver === 'postgres') {
+            $options = [];
+            if ($persistent) {
+                $options[PDO::ATTR_PERSISTENT] = true;
+            }
+            if ($connectTimeout !== null) {
+                $options[PDO::ATTR_TIMEOUT] = $connectTimeout;
+            }
+            $connectionConfig = new \Cycle\Database\Config\PostgresDriverConfig(
+                connection: new \Cycle\Database\Config\Postgres\TcpConnectionConfig(
+                    database: $data['database'],
+                    host: $data['host'],
+                    port: $data['port'],
+                    user: $data['user'],
+                    password: $data['password'],
+                    options: $options,
+                ),
+                reconnect: $reconnect,
+                schema: 'public',
+                queryCache: true,
+                readonlySchema: true,
+            );
+        } else {
+            $this->flashMessage(__('admin-main-settings.messages.unsupported_driver'), 'error');
+
+            return;
+        }
+
+        config()->set("database.connections.{$databaseName}", $connectionConfig);
+
+        try {
+            config()->save();
+            $this->invalidateConfig('database');
+            $this->flashMessage(__('admin-main-settings.messages.add_database_success'));
+            $this->closeModal();
+        } catch (Throwable $e) {
+            $this->flashMessage(__('admin-main-settings.messages.add_database_error') . $e->getMessage(), 'error');
         }
     }
 
@@ -371,6 +786,12 @@ class ServerEditScreen extends Screen
             $this->flashMessage(__('admin-server.messages.connection_not_found'), 'error');
 
             return;
+        }
+
+        foreach (['custom_mod', 'dbname'] as $selectField) {
+            if (isset($data[$selectField]) && is_array($data[$selectField])) {
+                $data[$selectField] = $data[$selectField][0] ?? null;
+            }
         }
 
         $validation = $this->validate([
@@ -406,7 +827,7 @@ class ServerEditScreen extends Screen
 
                         return;
                     }
-                } catch (Exception $e) {
+                } catch (Throwable $e) {
                     $this->flashMessage(__('admin-server.messages.invalid_json'), 'error');
 
                     return;
@@ -437,11 +858,12 @@ class ServerEditScreen extends Screen
             $connection->dbname = $data['dbname'];
             $connection->additional = json_encode($additional);
             $connection->save();
+            DatabaseService::flushModesCache();
 
             $this->dbConnections = DatabaseConnection::query()->where('server_id', $this->serverId)->fetchAll();
             $this->flashMessage(__('admin-server.messages.connection_update_success'), 'success');
             $this->closeModal();
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $this->flashMessage($e->getMessage(), 'error');
         }
     }
@@ -457,7 +879,7 @@ class ServerEditScreen extends Screen
             $this->serversService->deleteDbConnection($connectionId);
             $this->flashMessage(__('admin-server.messages.connection_delete_success'), 'success');
             $this->dbConnections = DatabaseConnection::query()->where('server_id', $this->serverId)->fetchAll();
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $this->flashMessage($e->getMessage(), 'error');
         }
     }
@@ -477,9 +899,117 @@ class ServerEditScreen extends Screen
             $this->server->delete();
             $this->flashMessage(__('admin-server.messages.delete_success'), 'success');
             $this->redirectTo('/admin/servers');
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $this->flashMessage($e->getMessage(), 'error');
         }
+    }
+
+    /**
+     * Проверка соединения с сервером через ServerQueryService.
+     */
+    public function testConnection()
+    {
+        if (!$this->server) {
+            $this->flashMessage(__('admin-server.messages.save_server_first'), 'error');
+
+            return;
+        }
+
+        try {
+            $queryService = app(ServerQueryService::class);
+            $result = $queryService->query($this->server);
+
+            if ($result->online) {
+                $vac = isset($result->additional['vac'])
+                    ? ( $result->additional['vac'] ? __('def.yes') : __('def.no') )
+                    : null;
+
+                $totalPlayers = count($result->playersData);
+                $playerNames = array_slice(array_column($result->playersData, 'name'), 0, 5);
+
+                $this->serverStatus = [
+                    'online' => true,
+                    'hostname' => $result->hostname ?? __('def.unknown'),
+                    'map' => $result->map ?? __('def.unknown'),
+                    'players' => $result->players . '/' . $result->maxPlayers,
+                    'game' => $result->additional['folder'] ?? $this->serversService->getGameName($this->server->mod),
+                    'vac' => $vac,
+                    'player_list' => $playerNames,
+                    'player_list_truncated' => $totalPlayers > 5,
+                    'players_total' => $totalPlayers > 5 ? $totalPlayers - 5 : 0,
+                ];
+
+                $this->flashMessage(__('admin-server.messages.connection_success'), 'success');
+            } else {
+                $this->serverStatus = [
+                    'online' => false,
+                    'error' => __('admin-server.messages.connection_no_response'),
+                ];
+
+                $this->flashMessage(__('admin-server.messages.connection_no_response'), 'warning');
+            }
+        } catch (Throwable $e) {
+            $this->serverStatus = [
+                'online' => false,
+                'error' => $e->getMessage(),
+            ];
+
+            $this->flashMessage(__('admin-server.messages.connection_failed') . ': ' . $e->getMessage(), 'error');
+        }
+    }
+
+    public function executeRcon(): void
+    {
+        $command = trim((string) request()->input('rcon_command', ''));
+
+        if ($command === '') {
+            $this->flashMessage(__('admin-server.rcon.empty_command'), 'warning');
+
+            return;
+        }
+
+        if (!$this->server || empty($this->server->rcon)) {
+            $this->flashMessage(__('admin-server.rcon.no_rcon'), 'error');
+
+            return;
+        }
+
+        try {
+            $rconService = app(RconService::class);
+            $output = $rconService->execute($this->server, $command);
+
+            $this->rconHistory[] = [
+                'cmd' => $command,
+                'out' => $output !== '' ? $output : __('admin-server.rcon.no_output'),
+                'ok' => true,
+            ];
+        } catch (Throwable $e) {
+            $this->rconHistory[] = [
+                'cmd' => $command,
+                'out' => $e->getMessage(),
+                'ok' => false,
+            ];
+
+            $this->flashMessage(__('admin-server.rcon.error') . ': ' . $e->getMessage(), 'error');
+        }
+
+        $this->saveRconHistory();
+    }
+
+    public function clearRcon(): void
+    {
+        $this->rconHistory = [];
+        $this->saveRconHistory();
+    }
+
+    private function saveRconHistory(): void
+    {
+        // Keep last 50 entries to avoid session bloat
+        if (count($this->rconHistory) > 50) {
+            $this->rconHistory = array_slice($this->rconHistory, -50);
+        }
+
+        session()->set("rcon_history_{$this->serverId}", $this->rconHistory);
     }
 
     protected function initServer(): void
@@ -500,14 +1030,64 @@ class ServerEditScreen extends Screen
     /**
      * Макет вкладки "Основные".
      */
+    private function buildModField(bool $canEditServer)
+    {
+        $field = LayoutFactory::field(
+            Select::make('mod')
+                ->options($this->serversService->getListGames())
+                ->value($this->server?->mod ?? null)
+                ->placeholder(__('admin-server.fields.mod.placeholder'))
+                ->disabled(!$canEditServer || $this->serverId),
+        )
+            ->label(__('admin-server.fields.mod.label'))
+            ->required();
+
+        if ($this->serverId) {
+            $field->small(__('admin-server.fields.mod.help'));
+        }
+
+        return $field;
+    }
+
     private function mainTabLayout()
     {
         $canEditServer = user()->can('admin.servers');
 
-        return $this->serverId ? LayoutFactory::split([
-            $this->getMainLayout($canEditServer),
-            $this->getActionsLayout($canEditServer),
-        ])->ratio('70/30') : $this->getMainLayout($canEditServer);
+        return $this->serverId
+            ? LayoutFactory::split([
+                $this->getMainLayout($canEditServer),
+                $this->getActionsLayout($canEditServer),
+            ])->ratio('60/40')
+            : $this->getMainLayout($canEditServer);
+    }
+
+    private function getCurrentRankPack(): string
+    {
+        return request()->input('ranks') ?? $this->server?->ranks ?? 'default';
+    }
+
+    private function getCurrentRankFormat(): string
+    {
+        $rankPack = $this->getCurrentRankPack();
+        $fromRequest = request()->input('ranks');
+
+        // If rank pack was just changed via Yoyo, auto-detect best format
+        if ($fromRequest !== null) {
+            return $this->serversService->detectBestFormat(path('public/assets/img/ranks/' . $rankPack));
+        }
+
+        return $this->server?->ranks_format ?? 'webp';
+    }
+
+    private function isPremierRanks(): bool
+    {
+        $fromRequest = request()->input('ranks_premier');
+
+        if ($fromRequest !== null) {
+            return filter_var($fromRequest, FILTER_VALIDATE_BOOLEAN);
+        }
+
+        return (bool) ( $this->server?->ranks_premier ?? false );
     }
 
     private function getMainLayout(bool $canEditServer)
@@ -519,7 +1099,7 @@ class ServerEditScreen extends Screen
                         ->type('text')
                         ->value($this->server?->name ?? '')
                         ->disabled(!$canEditServer)
-                        ->placeholder(__('admin-server.fields.name.placeholder'))
+                        ->placeholder(__('admin-server.fields.name.placeholder')),
                 )
                     ->label(__('admin-server.fields.name.label'))
                     ->required(),
@@ -529,9 +1109,10 @@ class ServerEditScreen extends Screen
                         ->type('text')
                         ->value($this->server?->ip ?? '')
                         ->disabled(!$canEditServer)
-                        ->placeholder(__('admin-server.fields.ip.placeholder'))
+                        ->placeholder(__('admin-server.fields.ip.placeholder')),
                 )
                     ->label(__('admin-server.fields.ip.label'))
+                    ->small(__('admin-server.fields.ip.help'))
                     ->required(),
             ]),
 
@@ -541,20 +1122,12 @@ class ServerEditScreen extends Screen
                         ->type('number')
                         ->value($this->server?->port ?? '')
                         ->disabled(!$canEditServer)
-                        ->placeholder(__('admin-server.fields.port.placeholder'))
+                        ->placeholder(__('admin-server.fields.port.placeholder')),
                 )
                     ->label(__('admin-server.fields.port.label'))
                     ->required(),
 
-                LayoutFactory::field(
-                    Select::make('mod')
-                        ->options($this->serversService->getListGames())
-                        ->value($this->server?->mod ?? null)
-                        ->placeholder(__('admin-server.fields.mod.placeholder'))
-                        ->disabled(!$canEditServer || $this->serverId)
-                )
-                    ->label(__('admin-server.fields.mod.label'))
-                    ->required(),
+                $this->buildModField($canEditServer),
             ]),
 
             LayoutFactory::split([
@@ -563,7 +1136,7 @@ class ServerEditScreen extends Screen
                         ->type('password')
                         ->value($this->server?->rcon ?? '')
                         ->disabled(!$canEditServer)
-                        ->placeholder(__('admin-server.fields.rcon.placeholder'))
+                        ->placeholder(__('admin-server.fields.rcon.placeholder')),
                 )
                     ->label(__('admin-server.fields.rcon.label'))
                     ->small(__('admin-server.fields.rcon.help')),
@@ -573,78 +1146,108 @@ class ServerEditScreen extends Screen
                         ->type('text')
                         ->value($this->server?->display_ip ?? '')
                         ->disabled(!$canEditServer)
-                        ->placeholder(__('admin-server.fields.display_ip.placeholder'))
+                        ->placeholder(__('admin-server.fields.display_ip.placeholder')),
                 )
                     ->label(__('admin-server.fields.display_ip.label'))
                     ->small(__('admin-server.fields.display_ip.help')),
             ]),
 
-            LayoutFactory::columns([
-                LayoutFactory::field(
-                    Select::make('ranks')
-                        ->options($this->serversService->getListRanks())
-                        ->value($this->server?->ranks ?? 'default')
-                        ->placeholder(__('admin-server.fields.ranks.placeholder'))
-                )
-                    ->label(__('admin-server.fields.ranks.label'))
-                    ->required(),
-
-                LayoutFactory::field(
-                    Select::make('ranks_format')
-                        ->options($this->ranksFormats)
-                        ->value($this->server?->ranks_format ?? 'webp')
-                        ->placeholder(__('admin-server.fields.ranks_format.placeholder'))
-                )
-                    ->label(__('admin-server.fields.ranks_format.label'))
-                    ->required(),
-
-                LayoutFactory::field(
-                    Toggle::make('ranks_premier')
-                        ->checked($this->server?->ranks_premier ?? false)
-                        ->placeholder(__('admin-server.fields.ranks_premier.placeholder'))
-                )
-                    ->label(__('admin-server.fields.ranks_premier.label')),
-
+            LayoutFactory::view('admin-server::partials.ranks-card-header', [
+                'isPremier' => $this->isPremierRanks(),
+                'premierValue' => $this->server?->ranks_premier ?? false ? '1' : '0',
             ]),
+
+            ...(
+                $this->isPremierRanks()
+                    ? [
+                        LayoutFactory::view('admin-server::partials.ranks-premier-preview'),
+                    ] : [
+                        LayoutFactory::split([
+                            LayoutFactory::field(
+                                Select::make('ranks')
+                                    ->options($this->serversService->getListRanks())
+                                    ->value($this->getCurrentRankPack())
+                                    ->yoyo()
+                                    ->placeholder(__('admin-server.fields.ranks.placeholder')),
+                            )
+                                ->label(__('admin-server.fields.ranks.label'))
+                                ->small(__('admin-server.fields.ranks.help'))
+                                ->required(),
+
+                            LayoutFactory::field(
+                                Select::make('ranks_format')
+                                    ->options($this->ranksFormats)
+                                    ->aligned()
+                                    ->value($this->getCurrentRankFormat())
+                                    ->placeholder(__('admin-server.fields.ranks_format.placeholder')),
+                            )
+                                ->label(__('admin-server.fields.ranks_format.label'))
+                                ->small(__('admin-server.fields.ranks_format.help'))
+                                ->required(),
+                        ]),
+
+                        LayoutFactory::view('admin-server::partials.rank-upload'),
+                    ]
+            ),
 
             LayoutFactory::split([
                 LayoutFactory::field(
                     Input::make('settings__query_port')
                         ->type('number')
-                        ->value(($this->server?->getSetting('query_port') ?? ''))
+                        ->value($this->server?->getSetting('query_port') ?? '')
                         ->disabled(!$canEditServer)
-                        ->placeholder('27015')
+                        ->placeholder('27015'),
                 )
-                    ->small(__('admin-server.fields.query_port.placeholder'))
+                    ->small(__('admin-server.fields.query_port.help'))
                     ->label(__('admin-server.fields.query_port.label')),
 
                 LayoutFactory::field(
                     Input::make('settings__rcon_port')
                         ->type('number')
-                        ->value(($this->server?->getSetting('rcon_port') ?? ''))
+                        ->value($this->server?->getSetting('rcon_port') ?? '')
                         ->disabled(!$canEditServer)
-                        ->placeholder('27015')
+                        ->placeholder('27015'),
                 )
-                    ->small(__('admin-server.fields.rcon_port.placeholder'))
+                    ->small(__('admin-server.fields.rcon_port.help'))
                     ->label(__('admin-server.fields.rcon_port.label')),
             ]),
 
             LayoutFactory::field(
-                Toggle::make('enabled')
-                    ->checked($this->server?->enabled ?? true)
+                ButtonGroup::make('enabled')
+                    ->options([
+                        '0' => ['label' => __('def.off'), 'icon' => 'ph.bold.x-bold'],
+                        '1' => ['label' => __('def.on'), 'icon' => 'ph.bold.check-bold'],
+                    ])
+                    ->value($this->server?->enabled ?? true ? '1' : '0')
                     ->disabled(!$canEditServer)
+                    ->color('accent'),
             )
                 ->label(__('admin-server.fields.enabled.label'))
                 ->popover(__('admin-server.fields.enabled.help')),
         ];
 
-        return LayoutFactory::block($fields)
-            ->title(__('admin-server.title.main_info'));
+        return LayoutFactory::block($fields)->title(__('admin-server.title.main_info'));
     }
 
     private function getActionsLayout(bool $canEditServer)
     {
-        return LayoutFactory::rows([
+        $layouts = [];
+
+        // Блок статуса сервера (если была проверка)
+        if ($this->serverStatus !== null) {
+            $layouts[] = LayoutFactory::view('admin-server::partials.server-status', [
+                'status' => $this->serverStatus,
+            ]);
+        }
+
+        // Кнопки действий
+        $layouts[] = LayoutFactory::rows([
+            Button::make(__('admin-server.buttons.test_connection'))
+                ->type(Color::OUTLINE_PRIMARY)
+                ->icon('ph.bold.wifi-high-bold')
+                ->method('testConnection')
+                ->fullWidth(),
+
             Button::make(__('admin-server.buttons.delete'))
                 ->type(Color::OUTLINE_DANGER)
                 ->icon('ph.bold.trash-bold')
@@ -652,7 +1255,9 @@ class ServerEditScreen extends Screen
                 ->method('deleteServer')
                 ->confirm(__('admin-server.confirms.delete_server'))
                 ->fullWidth(),
-        ])
+        ]);
+
+        return LayoutFactory::block($layouts)
             ->title(__('admin-server.title.actions'))
             ->description(__('admin-server.title.actions_description'))
             ->setVisible($this->serverId);
@@ -665,11 +1270,11 @@ class ServerEditScreen extends Screen
     {
         return LayoutFactory::table('dbConnections', [
             TD::make('mod', __('admin-server.db_connection.fields.mod.label'))
-                ->render(static fn (DatabaseConnection $connection) => $connection->mod)
+                ->render(static fn(DatabaseConnection $connection) => $connection->mod)
                 ->width('200px'),
 
             TD::make('dbname', __('admin-server.db_connection.fields.dbname.label'))
-                ->render(static fn (DatabaseConnection $connection) => $connection->dbname)
+                ->render(static fn(DatabaseConnection $connection) => $connection->dbname)
                 ->width('200px'),
 
             TD::make('additional', __('admin-server.db_connection.fields.additional.label'))
@@ -689,27 +1294,53 @@ class ServerEditScreen extends Screen
                         '%s (%d %s)',
                         $driverName,
                         $paramCount,
-                        __('admin-server.db_connection.fields.params')
+                        __('admin-server.db_connection.fields.params'),
                     );
                 })
                 ->width('200px'),
 
             TD::make('actions', __('admin-server.buttons.actions'))
-                ->render(fn (DatabaseConnection $connection) => $this->dbConnectionActionsDropdown($connection))
+                ->render(fn(DatabaseConnection $connection) => $this->dbConnectionActionsDropdown($connection))
                 ->width('100px'),
         ])
+            ->empty(
+                'ph.regular.plugs-connected',
+                __('admin-server.empty.db_connections.title'),
+                __('admin-server.empty.db_connections.sub'),
+            )
+            ->emptyButton(
+                Button::make(__('admin-server.db_connection.add.button'))
+                    ->type(Color::OUTLINE_PRIMARY)
+                    ->icon('ph.bold.plus-bold')
+                    ->modal('addDbConnectionModal'),
+            )
             ->searchable([
                 'mod',
                 'dbname',
             ])
-            ->commands([
-                Button::make(__('admin-server.db_connection.add.button'))
-                    ->type(Color::OUTLINE_PRIMARY)
-                    ->icon('ph.bold.plus-bold')
-                    ->modal('addDbConnectionModal')
-                    ->fullWidth(),
-            ])
+            ->commands($this->dbConnectionCommands())
             ->setVisible($this->serverId);
+    }
+
+    private function dbConnectionCommands(): array
+    {
+        $commands = [];
+
+        if (user()->can('admin.boss')) {
+            $commands[] = Button::make(__('admin-server.db_connection.create_db.button'))
+                ->type(Color::OUTLINE_SECONDARY)
+                ->icon('ph.bold.database-bold')
+                ->modal('addDatabaseModal')
+                ->fullWidth();
+        }
+
+        $commands[] = Button::make(__('admin-server.db_connection.add.button'))
+            ->type(Color::OUTLINE_PRIMARY)
+            ->icon('ph.bold.plus-bold')
+            ->modal('addDbConnectionModal')
+            ->fullWidth();
+
+        return $commands;
     }
 
     /**
@@ -793,6 +1424,13 @@ class ServerEditScreen extends Screen
         return $options;
     }
 
+    private function invalidateConfig(string $configName): void
+    {
+        if (function_exists('opcache_invalidate')) {
+            opcache_invalidate(path('config/' . $configName . '.php'), true);
+        }
+    }
+
     private function getDriverParams(string $driverName): array
     {
         $driver = $this->serversService->makeDriver($driverName);
@@ -809,5 +1447,13 @@ class ServerEditScreen extends Screen
         }
 
         return [];
+    }
+
+    private function rconTabLayout()
+    {
+        return LayoutFactory::view('admin-server::partials.rcon-console', [
+            'history' => $this->rconHistory,
+            'server' => $this->server,
+        ]);
     }
 }

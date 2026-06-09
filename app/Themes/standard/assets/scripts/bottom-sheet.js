@@ -1,5 +1,14 @@
-function initializeA11yDialog() {
-    const modals = document.querySelectorAll('.modal, .right_sidebar');
+function initializeA11yDialog(parentElement = document) {
+    const root = parentElement && parentElement.querySelectorAll ? parentElement : document;
+    const modals = [];
+
+    if (root.matches && root.matches('.modal, .right_sidebar')) {
+        modals.push(root);
+    }
+
+    root.querySelectorAll('.modal, .right_sidebar').forEach((modal) => {
+        modals.push(modal);
+    });
 
     modals.forEach((modalElement) => {
         if (modalElement.dialogInstance) {
@@ -17,6 +26,34 @@ function initializeA11yDialog() {
 
         dialog.on('hide', () => {
             modalElement.setAttribute('aria-hidden', 'true');
+
+            if (isMobileDevice()) {
+                const ctr = modalElement.querySelector('.modal__container, .right_sidebar__container');
+                const ovl = modalElement.querySelector('.modal__overlay, .right_sidebar__overlay');
+
+                if (ctr) ctr.style.transform = 'translateY(100%)';
+                if (ovl) ovl.style.opacity = '0';
+
+                let cleaned = false;
+                const cleanup = () => {
+                    if (cleaned) return;
+                    cleaned = true;
+                    if (ctr) ctr.removeEventListener('transitionend', onTransEnd);
+                    modalElement.classList.remove('is-open');
+                    if (ctr) ctr.style.transform = '';
+                    if (ovl) ovl.style.opacity = '';
+                    onModalHide(modalElement);
+                };
+
+                const onTransEnd = (e) => {
+                    if (e.target !== ctr || e.propertyName !== 'transform') return;
+                    cleanup();
+                };
+
+                if (ctr) ctr.addEventListener('transitionend', onTransEnd);
+                setTimeout(cleanup, 400);
+                return;
+            }
 
             const handleAnimationEnd = (event) => {
                 if (
@@ -78,14 +115,43 @@ window.addEventListener('DOMContentLoaded', () => {
     initializeA11yDialog();
 });
 
+const _pendingModalInitRoots = new Set();
+let _modalInitScheduled = false;
+
+function scheduleA11yDialogInit(root = document) {
+    _pendingModalInitRoots.add(root && root.querySelectorAll ? root : document);
+
+    if (_modalInitScheduled) {
+        return;
+    }
+
+    _modalInitScheduled = true;
+    requestAnimationFrame(() => {
+        const roots = Array.from(_pendingModalInitRoots);
+        _pendingModalInitRoots.clear();
+        _modalInitScheduled = false;
+
+        roots.forEach((initRoot) => initializeA11yDialog(initRoot));
+    });
+}
+
 document.body.addEventListener('htmx:afterSettle', (event) => {
-    initializeA11yDialog(event.detail.elt);
+    scheduleA11yDialogInit(event.detail?.target || event.detail?.elt || event.target || document);
 });
 
 function openModal(modalId) {
     const modalElement = document.getElementById(modalId);
 
     if (modalElement && modalElement.dialogInstance) {
+        if (window.flute && window.flute.dropdowns) {
+            window.flute.dropdowns.closeAllDropdowns();
+        } else {
+            $('[data-dropdown].active').each(function() {
+                $(this).removeClass('active').hide();
+                $('body').removeClass('no-scroll');
+            });
+        }
+
         const $modal = $('#' + modalId);
 
         if (isMobileDevice()) {
@@ -94,10 +160,20 @@ function openModal(modalId) {
 
             if ($modal[0].dialogInstance) {
                 $modal[0].dialogInstance.show();
+                document.body.dispatchEvent(
+                    new CustomEvent('modalOpened', {
+                        detail: { modalId, modalElement: $modal[0] },
+                    }),
+                );
             }
         } else {
             if ($modal[0].dialogInstance) {
                 $modal[0].dialogInstance.show();
+                document.body.dispatchEvent(
+                    new CustomEvent('modalOpened', {
+                        detail: { modalId, modalElement: $modal[0] },
+                    }),
+                );
             }
         }
     } else {
@@ -183,6 +259,14 @@ function onModalShow(modalElement) {
 
     lockBodyScroll();
 
+    const contentEl = modalElement.querySelector('.modal__content');
+    if (contentEl && !contentEl.dataset.lazySnapshot) {
+        const lazyTrigger = contentEl.querySelector('[hx-get][hx-trigger]');
+        if (lazyTrigger) {
+            contentEl.dataset.lazySnapshot = contentEl.innerHTML;
+        }
+    }
+
     const $autofocusElement = $modalElement.find('[autofocus]');
     if ($autofocusElement.length) {
         $autofocusElement[0].focus();
@@ -245,13 +329,22 @@ function onModalHide(modalElement) {
         }
     }
 
+    const contentEl = modalElement.querySelector('.modal__content');
+    if (contentEl && contentEl.dataset.lazySnapshot) {
+        contentEl.querySelectorAll('[data-tom-select]').forEach(function (sel) {
+            if (window.ThemeSelect) window.ThemeSelect.destroySelect(sel);
+        });
+        // Restore saved skeleton with hx-get trigger (same-origin, server-rendered)
+        contentEl.innerHTML = contentEl.dataset.lazySnapshot; // eslint-disable-line no-unsanitized/property
+        htmx.process(contentEl);
+    }
+
     if (isMobileDevice()) {
-        if ($modalElement.hasClass('bottom-sheet')) {
-            closeBottomSheet($modalElement);
-        } else {
-            $modalElement.removeClass('fullscreen');
-            removeDragEvents($modalElement);
-        }
+        // Clean up mobile state directly — the hide handler already
+        // animated the close via CSS transitions.
+        $modalElement.removeClass('bottom-sheet fullscreen dragging');
+        removeDragEvents($modalElement);
+        $modalElement.find('.modal__container').css('height', '');
 
         const observer = $modalElement.data('observer');
         if (observer) {
@@ -302,10 +395,14 @@ function calculateModalHeight($modal) {
             $content[0].scrollHeight,
         );
 
+        const $footer = $modal.find('.modal__footer');
+        const footerHeight = $footer.length ? $footer.outerHeight(true) : 0;
+
         const contentHeightPx =
             contentHeight +
             $header.outerHeight(true) +
-            $dragHandle.outerHeight(true);
+            $dragHandle.outerHeight(true) +
+            footerHeight;
 
         const windowHeightPx = $(window).height();
         let contentHeightVh = (contentHeightPx / windowHeightPx) * 100;

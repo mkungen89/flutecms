@@ -7,13 +7,11 @@ use Symfony\Component\HttpFoundation\Session\Flash\FlashBagInterface;
 
 class FlashService implements FlashBagInterface
 {
-    public const
-        SUCCESS_TYPE = "success",
-        ERROR_TYPE = "error",
-        WARNING_TYPE = "warning",
-        INFO_TYPE = "info";
+    public const SUCCESS_TYPE = 'success', ERROR_TYPE = 'error', WARNING_TYPE = 'warning', INFO_TYPE = 'info';
 
-    private FlashBagInterface $flashBag;
+    private SessionService $session;
+
+    private ?FlashBagInterface $flashBag = null;
 
     private ToastService $toastService;
 
@@ -24,8 +22,7 @@ class FlashService implements FlashBagInterface
      */
     public function __construct(SessionService $session, ToastService $toastService)
     {
-        $this->flashBag = $session->getFlashBag();
-
+        $this->session = $session;
         $this->toastService = $toastService;
     }
 
@@ -42,7 +39,7 @@ class FlashService implements FlashBagInterface
      */
     public function add(string $type, $message)
     {
-        $this->flashBag->add($type, $message);
+        $this->getFlashBagForWrite()->add($type, $message);
 
         return $this;
     }
@@ -54,7 +51,7 @@ class FlashService implements FlashBagInterface
      */
     public function success($message)
     {
-        $this->flashBag->add(self::SUCCESS_TYPE, $message);
+        $this->getFlashBagForWrite()->add(self::SUCCESS_TYPE, $message);
 
         return $this;
     }
@@ -66,7 +63,7 @@ class FlashService implements FlashBagInterface
      */
     public function error($message)
     {
-        $this->flashBag->add(self::ERROR_TYPE, $message);
+        $this->getFlashBagForWrite()->add(self::ERROR_TYPE, $message);
 
         return $this;
     }
@@ -78,7 +75,7 @@ class FlashService implements FlashBagInterface
      */
     public function warning($message)
     {
-        $this->flashBag->add(self::WARNING_TYPE, $message);
+        $this->getFlashBagForWrite()->add(self::WARNING_TYPE, $message);
 
         return $this;
     }
@@ -90,7 +87,7 @@ class FlashService implements FlashBagInterface
      */
     public function info($message)
     {
-        $this->flashBag->add(self::INFO_TYPE, $message);
+        $this->getFlashBagForWrite()->add(self::INFO_TYPE, $message);
 
         return $this;
     }
@@ -103,7 +100,7 @@ class FlashService implements FlashBagInterface
      */
     public function set(string $type, $messages)
     {
-        $this->flashBag->set($type, $messages);
+        $this->getFlashBagForWrite()->set($type, $messages);
 
         return $this;
     }
@@ -118,7 +115,7 @@ class FlashService implements FlashBagInterface
      */
     public function peek(string $type, array $default = []): array
     {
-        return $this->flashBag->peek($type, $default);
+        return $this->getFlashBagForRead()?->peek($type, $default) ?? $default;
     }
 
     /**
@@ -128,7 +125,7 @@ class FlashService implements FlashBagInterface
      */
     public function peekAll(): array
     {
-        return $this->flashBag->peekAll();
+        return $this->getFlashBagForRead()?->peekAll() ?? [];
     }
 
     /**
@@ -141,7 +138,7 @@ class FlashService implements FlashBagInterface
      */
     public function get(string $type, array $default = []): array
     {
-        return $this->flashBag->get($type, $default);
+        return $this->getFlashBagForRead()?->get($type, $default) ?? $default;
     }
 
     /**
@@ -151,7 +148,7 @@ class FlashService implements FlashBagInterface
      */
     public function all(): array
     {
-        return $this->flashBag->all();
+        return $this->getFlashBagForRead()?->all() ?? [];
     }
 
     /**
@@ -161,7 +158,7 @@ class FlashService implements FlashBagInterface
      */
     public function setAll(array $messages)
     {
-        $this->flashBag->setAll($messages);
+        $this->getFlashBagForWrite()->setAll($messages);
     }
 
     /**
@@ -173,7 +170,7 @@ class FlashService implements FlashBagInterface
      */
     public function has(string $type): bool
     {
-        return $this->flashBag->has($type);
+        return $this->getFlashBagForRead()?->has($type) ?? false;
     }
 
     /**
@@ -183,7 +180,7 @@ class FlashService implements FlashBagInterface
      */
     public function keys(): array
     {
-        return $this->flashBag->keys();
+        return $this->getFlashBagForRead()?->keys() ?? [];
     }
 
     /**
@@ -193,7 +190,7 @@ class FlashService implements FlashBagInterface
      */
     public function getName(): string
     {
-        return $this->flashBag->getName();
+        return $this->getFlashBagForRead()?->getName() ?? 'flashes';
     }
 
     /**
@@ -203,7 +200,7 @@ class FlashService implements FlashBagInterface
      */
     public function initialize(array &$array)
     {
-        $this->flashBag->initialize($array);
+        $this->getFlashBagForWrite()->initialize($array);
     }
 
     /**
@@ -213,7 +210,7 @@ class FlashService implements FlashBagInterface
      */
     public function getStorageKey(): string
     {
-        return $this->flashBag->getStorageKey();
+        return $this->getFlashBagForRead()?->getStorageKey() ?? '_sf2_flashes';
     }
 
     /**
@@ -221,6 +218,33 @@ class FlashService implements FlashBagInterface
      */
     public function clear(): mixed
     {
-        return $this->flashBag->clear();
+        return $this->getFlashBagForRead()?->clear() ?? [];
+    }
+
+    private function getFlashBagForRead(): ?FlashBagInterface
+    {
+        if (!$this->shouldReadSession()) {
+            return null;
+        }
+
+        return $this->flashBag ??= $this->session->getFlashBag();
+    }
+
+    private function getFlashBagForWrite(): FlashBagInterface
+    {
+        return $this->flashBag ??= $this->session->getFlashBag();
+    }
+
+    private function shouldReadSession(): bool
+    {
+        if ($this->session->isStarted() || session_status() === PHP_SESSION_ACTIVE) {
+            return true;
+        }
+
+        try {
+            return request()->hasSessionCookie();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

@@ -116,17 +116,26 @@ abstract class AbstractAdminPackage implements AdminPackageInterface
      * @param string $viewDirectory The directory where the package's views are located relative to the base path.
      * @param string $namespace The namespace to assign to the views.
      *
-     * @throws InvalidArgumentException If the view directory does not exist.
      */
     public function loadViews(string $viewDirectory, string $namespace): void
     {
         $fullPath = $this->getBasePath() . DIRECTORY_SEPARATOR . $viewDirectory;
 
         if (!is_dir($fullPath)) {
-            throw new InvalidArgumentException("View directory does not exist: {$fullPath}");
+            if (function_exists('logs')) {
+                logs()->warning("Admin package view directory does not exist: {$fullPath}");
+            }
+
+            return;
         }
 
-        template()->addNamespace($namespace, $fullPath);
+        try {
+            template()->addNamespace($namespace, $fullPath);
+        } catch (\Throwable $e) {
+            if (function_exists('logs')) {
+                logs()->warning("Failed to register admin view namespace {$namespace}: " . $e->getMessage());
+            }
+        }
     }
 
     /**

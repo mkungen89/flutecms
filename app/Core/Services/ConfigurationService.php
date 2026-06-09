@@ -4,6 +4,7 @@ namespace Flute\Core\Services;
 
 use Noodlehaus\Config;
 use RuntimeException;
+use Symfony\Component\Finder\Finder;
 use Throwable;
 
 class ConfigurationService
@@ -14,7 +15,7 @@ class ConfigurationService
 
     public function __construct(string $configsPath = '/config')
     {
-        $configsPath = (file_exists(BASE_PATH . 'config-dev')) ? BASE_PATH . 'config-dev' : BASE_PATH . 'config';
+        $configsPath = file_exists(BASE_PATH . 'config-dev') ? BASE_PATH . 'config-dev' : BASE_PATH . 'config';
 
         $this->configsPath = rtrim($configsPath, DIRECTORY_SEPARATOR);
 
@@ -73,9 +74,15 @@ class ConfigurationService
 
         if (function_exists('opcache_invalidate')) {
             foreach ($writtenFiles as $file) {
-                opcache_invalidate($file, /* force */ true);
+                opcache_invalidate($file, true);
             }
         }
+
+        if (function_exists('opcache_reset')) {
+            @opcache_reset();
+        }
+
+        $this->invalidateCompiledCache();
 
         $this->loadConfigurations();
     }
@@ -90,9 +97,19 @@ class ConfigurationService
         return $this->configsPath;
     }
 
+    /**
+     * Config cache is disabled, kept for API compatibility.
+     */
+    public function invalidateCompiledCache(): void
+    {
+    }
+
     public function setConfigsPath(string $configsPath): void
     {
         $this->configsPath = rtrim($configsPath, DIRECTORY_SEPARATOR);
+
+        $this->invalidateCompiledCache();
+
         $this->loadConfigurations();
     }
 
@@ -112,7 +129,12 @@ class ConfigurationService
 
     protected function getConfigFiles(): array
     {
-        $finder = finder();
+        return $this->scanConfigFiles();
+    }
+
+    protected function scanConfigFiles(): array
+    {
+        $finder = new Finder();
         $finder->files()->in($this->configsPath)->name('*.php');
 
         $configFiles = [];

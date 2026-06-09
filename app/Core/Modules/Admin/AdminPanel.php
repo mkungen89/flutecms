@@ -2,10 +2,10 @@
 
 namespace Flute\Admin;
 
-use Exception;
 use Flute\Admin\Contracts\AdminPackageInterface;
 use Flute\Core\Router\Router;
 use Flute\Core\Traits\MacroableTrait;
+use Throwable;
 
 /**
  * Class AdminPanel
@@ -73,7 +73,10 @@ class AdminPanel
 
             $this->recompileTranslations();
 
-            template()->getTemplateAssets()->getCompiler()->setImportPaths(path('app/Core/Modules/Admin/Resources/assets/sass'));
+            template()
+                ->getTemplateAssets()
+                ->getCompiler()
+                ->setImportPaths(path('app/Core/Modules/Admin/Resources/assets/sass'));
 
             $this->loadComponents();
         }
@@ -90,10 +93,14 @@ class AdminPanel
                 router()->any($url, static function () use ($screenString, $url) {
                     $url = request()->getPathInfo();
 
-                    if (request()->htmx()->isHtmxRequest() && !request()->htmx()->isBoosted() && request()->input('yoyo-id')) {
+                    if (
+                        request()->htmx()->isHtmxRequest()
+                        && !request()->htmx()->isBoosted()
+                        && request()->input('yoyo-id')
+                    ) {
                         try {
                             return response()->make(template()->getYoyo()->update());
-                        } catch (Exception $e) {
+                        } catch (Throwable $e) {
                             if (is_debug()) {
                                 throw $e;
                             }
@@ -108,7 +115,7 @@ class AdminPanel
                         'screen' => $screenString,
                         'slug' => $url,
                     ]);
-                })->middleware('can:admin');
+                })->middleware(['can:admin', 'csrf']);
             });
         }
     }
@@ -118,7 +125,7 @@ class AdminPanel
         $cacheKey = 'admin_components_cache';
         $this->componentsCache = !is_debug() ? cache()->get($cacheKey) : null;
 
-        if ($this->componentsCache !== null) {
+        if ($this->componentsCache !== null && isset($this->componentsCache['popover'])) {
             foreach ($this->componentsCache as $alias => $componentView) {
                 template()->getBlade()->compiler()->component($componentView, $alias);
             }
@@ -136,7 +143,7 @@ class AdminPanel
                 $relativePath = str_replace([$componentsDir . DIRECTORY_SEPARATOR, '.blade.php'], '', $componentFile);
                 $alias = str_replace(DIRECTORY_SEPARATOR, '.', $relativePath);
 
-                $componentView = "Core.Modules.Admin.Resources.views.components." . $alias;
+                $componentView = 'Core.Modules.Admin.Resources.views.components.' . $alias;
                 $this->componentsCache[$alias] = $componentView;
 
                 template()->getBlade()->compiler()->component($componentView, $alias);
@@ -156,6 +163,16 @@ class AdminPanel
     public function getAllMenuItems(): array
     {
         return $this->packageFactory->getAllMenuItems();
+    }
+
+    public function getModuleMenuItems(): array
+    {
+        return $this->packageFactory->getModuleMenuItems();
+    }
+
+    public function getModuleUrlPrefixes(): array
+    {
+        return $this->packageFactory->getModuleUrlPrefixes();
     }
 
     private function recompileTranslations()

@@ -2,7 +2,7 @@
 
 namespace Flute\Core\Profiling;
 
-use Exception;
+use Throwable;
 use Xhgui\Profiler\Profiler;
 use Xhgui\Profiler\ProfilingFlags;
 
@@ -60,7 +60,7 @@ class GlobalProfiler
             self::$profiler->start();
 
             self::$enabled = true;
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             logs()->warning('Global profiler failed to start: ' . $e->getMessage());
         }
     }
@@ -80,7 +80,7 @@ class GlobalProfiler
 
             // Save profile data if configured
             self::saveProfileData();
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             logs()->warning('Global profiler failed to stop: ' . $e->getMessage());
         }
     }
@@ -114,7 +114,7 @@ class GlobalProfiler
         $profile = self::$profileData['profile'];
 
         foreach ($profile as $function => $data) {
-            $wallTime = ($data['wt'] ?? 0) / 1_000_000; // Convert to seconds
+            $wallTime = ( $data['wt'] ?? 0 ) / 1_000_000; // Convert to seconds
 
             if ($wallTime < 0.001) { // Skip functions under 1ms
                 continue;
@@ -129,7 +129,7 @@ class GlobalProfiler
 
             $timings[$category][$function] = [
                 'wall_time' => $wallTime,
-                'cpu_time' => ($data['cpu'] ?? 0) / 1_000_000,
+                'cpu_time' => ( $data['cpu'] ?? 0 ) / 1_000_000,
                 'memory' => $data['mu'] ?? 0,
                 'calls' => $data['ct'] ?? 1,
             ];
@@ -137,7 +137,7 @@ class GlobalProfiler
 
         // Sort each category by wall time
         foreach ($timings as &$categoryFunctions) {
-            uasort($categoryFunctions, static fn ($a, $b) => $b['wall_time'] <=> $a['wall_time']);
+            uasort($categoryFunctions, static fn($a, $b) => $b['wall_time'] <=> $a['wall_time']);
         }
 
         return $timings;
@@ -154,7 +154,7 @@ class GlobalProfiler
 
         $functions = [];
         foreach (self::$profileData['profile'] as $function => $data) {
-            $wallTime = ($data['wt'] ?? 0) / 1_000_000;
+            $wallTime = ( $data['wt'] ?? 0 ) / 1_000_000;
 
             if ($wallTime < 0.001) {
                 continue;
@@ -163,14 +163,14 @@ class GlobalProfiler
             $functions[] = [
                 'function' => $function,
                 'wall_time' => $wallTime,
-                'cpu_time' => ($data['cpu'] ?? 0) / 1_000_000,
+                'cpu_time' => ( $data['cpu'] ?? 0 ) / 1_000_000,
                 'memory' => $data['mu'] ?? 0,
                 'calls' => $data['ct'] ?? 1,
                 'category' => self::categorizeFunction($function),
             ];
         }
 
-        usort($functions, static fn ($a, $b) => $b['wall_time'] <=> $a['wall_time']);
+        usort($functions, static fn($a, $b) => $b['wall_time'] <=> $a['wall_time']);
 
         return array_slice($functions, 0, $limit);
     }
@@ -238,7 +238,7 @@ class GlobalProfiler
             ];
 
             file_put_contents($path, json_encode($data, JSON_PRETTY_PRINT));
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             logs()->warning('Failed to save profile data: ' . $e->getMessage());
         }
     }

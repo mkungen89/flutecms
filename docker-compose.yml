@@ -26,6 +26,13 @@ services:
       SSL_MODE: mixed
     ports:
       - "80:80"
+    volumes:
+      - ./config:/var/www/html/config
+      - ./public/assets:/var/www/html/public/assets
+      - ./public/uploads:/var/www/html/public/uploads
+      - ./storage:/var/www/html/storage
+      - ./app/Modules:/var/www/html/app/Modules
+      - ./app/Themes:/var/www/html/app/Themes
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s

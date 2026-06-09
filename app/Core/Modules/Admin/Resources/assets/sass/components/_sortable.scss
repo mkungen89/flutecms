@@ -1,16 +1,21 @@
-.sortable-container {
+﻿.sortable-container {
     position: relative;
     overflow: visible !important;
 }
 
 .sortable-list-item {
     position: relative;
-    z-index: 1;
 
     &.sortable-chosen {
+        z-index: 1;
+
         .reorder-handle {
             background-color: var(--transp-1);
         }
+    }
+
+    &.sortable-drag {
+        z-index: 99;
     }
 
     &.sortable-ghost {
@@ -29,7 +34,7 @@
         opacity: 0.9;
         z-index: 10;
     }
-    
+
     &.insert-before::before { top: -1px; }
     &.insert-after::after { bottom: -1px; }
 

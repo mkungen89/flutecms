@@ -3,6 +3,7 @@
 namespace Flute\Core\SystemHealth;
 
 use Flute\Core\SystemHealth\Migrations\CheckPermissionsMigration;
+use Flute\Core\SystemHealth\Migrations\EnsureUtf8mb4Migration;
 
 /**
  * This class checking system values and migrates them if it needed.
@@ -11,7 +12,14 @@ class SystemHealthCheck
 {
     protected const SYSTEM_CACHE_KEY = 'flute.system_health';
 
+    /**
+     * Bump this version whenever system migrations change (e.g. new permissions added).
+     * This invalidates the cache and forces re-run on next request.
+     */
+    protected const SYSTEM_VERSION = 4;
+
     protected array $systemServices = [
+        EnsureUtf8mb4Migration::class,
         CheckPermissionsMigration::class,
     ];
 
@@ -35,7 +43,7 @@ class SystemHealthCheck
      */
     protected function isAllowed(): bool
     {
-        return !cache()->has(self::SYSTEM_CACHE_KEY);
+        return cache()->get(self::SYSTEM_CACHE_KEY) !== self::SYSTEM_VERSION;
     }
 
     /**
@@ -43,6 +51,6 @@ class SystemHealthCheck
      */
     protected function updateSystemCacheKey(): void
     {
-        cache()->set(self::SYSTEM_CACHE_KEY, 1, 3600);
+        cache()->set(self::SYSTEM_CACHE_KEY, self::SYSTEM_VERSION, 3600);
     }
 }

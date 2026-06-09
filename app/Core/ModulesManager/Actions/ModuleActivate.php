@@ -14,6 +14,8 @@ use RuntimeException;
 
 class ModuleActivate implements ModuleActionInterface
 {
+    use Concerns\FlushesTranslationCache;
+
     protected ModuleDependencies $dependencies;
 
     protected ModuleManager $moduleManager;
@@ -30,16 +32,17 @@ class ModuleActivate implements ModuleActionInterface
         }
 
         if ($moduleGet->status === 'notinstalled') {
-            throw new RuntimeException("Module is not installed in the system");
+            throw new RuntimeException('Module is not installed in the system');
         }
 
         if ($moduleGet->status === 'active') {
-            throw new RuntimeException("Module already activated");
+            throw new RuntimeException('Module already activated');
         }
 
         $this->checkModuleDependencies($moduleGet);
 
         $this->activate($moduleGet);
+        $this->flushCompiledTranslations();
 
         app(DatabaseConnection::class)->forceRefreshSchemaDeferred([$module->key]);
 
@@ -52,9 +55,15 @@ class ModuleActivate implements ModuleActionInterface
             /** @var ThemeManager $themeManager */
             $themeManager = app(ThemeManager::class);
 
-            $this->dependencies->checkDependencies($module->dependencies, $this->moduleManager->getActive(), $themeManager->getThemeInfo());
+            $this->dependencies->checkDependencies(
+                $module->dependencies,
+                $this->moduleManager->getActive(),
+                $themeManager->getThemeInfo(),
+            );
         } catch (ModuleDependencyException $e) {
-            logs('modules')->emergency("Flute module \"" . $module->key . "\" dependency check failed - " . $e->getMessage());
+            logs('modules')->emergency(
+                'Flute module "' . $module->key . '" dependency check failed - ' . $e->getMessage(),
+            );
 
             throw new ModuleDependencyException($e->getMessage());
         }
@@ -62,7 +71,7 @@ class ModuleActivate implements ModuleActionInterface
 
     protected function activate(ModuleInformation $moduleInformation): void
     {
-        $module = Module::findOne(["key" => $moduleInformation->key]);
+        $module = Module::findOne(['key' => $moduleInformation->key]);
 
         $module->status = ModuleManager::ACTIVE;
 

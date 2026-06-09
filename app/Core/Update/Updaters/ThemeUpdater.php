@@ -2,9 +2,11 @@
 
 namespace Flute\Core\Update\Updaters;
 
-use Exception;
 use Flute\Core\Database\Entities\Theme;
-use ZipArchive;
+use Flute\Core\Support\FileUploader;
+use Flute\Core\Theme\ThemeManager;
+use RuntimeException;
+use Throwable;
 
 class ThemeUpdater extends AbstractUpdater
 {
@@ -17,6 +19,10 @@ class ThemeUpdater extends AbstractUpdater
      * Данные темы
      */
     protected array $themeData;
+
+    protected ?string $backupDir = null;
+
+    protected bool $preserveBackup = false;
 
     /**
      * ThemeUpdater constructor.
@@ -56,67 +62,52 @@ class ThemeUpdater extends AbstractUpdater
     {
         // Проверяем, есть ли файл с обновлением
         if (empty($data['package_file']) || !file_exists($data['package_file'])) {
-            logs()->error('Theme update package file not found: ' . ($data['package_file'] ?? 'null'));
+            logs()->error('Theme update package file not found: ' . ( $data['package_file'] ?? 'null' ));
 
             return false;
         }
 
         $packageFile = $data['package_file'];
         $extractDir = storage_path('app/temp/updates/theme-' . $this->theme->key . '-' . time());
+        $themeDir = $this->getThemeDirectory();
+        $success = false;
 
         // Создаем временную директорию
         if (!is_dir($extractDir)) {
             mkdir($extractDir, 0o755, true);
         }
 
-        // Распаковываем архив
-        $zip = new ZipArchive();
-        if ($zip->open($packageFile) !== true) {
-            logs()->error('Failed to open theme update package: ' . $packageFile);
-
-            return false;
-        }
-
-        $zip->extractTo($extractDir);
-        $zip->close();
-
-        // Определяем корневую директорию в архиве, может содержать один корневой каталог
-        $rootDir = $extractDir;
-        $items = scandir($extractDir);
-        if (count($items) === 3) { // '.', '..' и одна директория
-            foreach ($items as $item) {
-                if ($item !== '.' && $item !== '..' && is_dir($extractDir . '/' . $item)) {
-                    $rootDir = $extractDir . '/' . $item;
-
-                    break;
-                }
-            }
-        }
-
-        // Получаем путь к директории темы
-        $themeDir = $this->getThemeDirectory();
-
-        // Копируем файлы
         try {
-            // Создаем бэкап перед обновлением
+            app(FileUploader::class)->safeExtractZip($packageFile, $extractDir);
+
+            $rootDir = $this->resolveThemeRoot($extractDir);
+            $themeJson = $this->validateThemePackage($rootDir);
+
             $this->createBackup();
 
-            // Копируем файлы
             $this->copyDirectory($rootDir, $themeDir);
+            $this->updateThemeInformation($themeJson);
 
-            // Очищаем кэш
             $this->clearCache();
 
-            // Удаляем временные файлы
-            $this->removeDirectory($extractDir);
+            $success = true;
 
             return true;
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             logs()->error('Error during theme update: ' . $e->getMessage());
-            // Удаляем временные файлы
-            $this->removeDirectory($extractDir);
+            $this->rollbackFromBackup($themeDir);
+
+            \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'update.theme']);
 
             return false;
+        } finally {
+            if (is_dir($extractDir)) {
+                $this->removeDirectory($extractDir);
+            }
+
+            if ($success) {
+                $this->cleanupTemporaryBackup();
+            }
         }
     }
 
@@ -135,20 +126,29 @@ class ThemeUpdater extends AbstractUpdater
      */
     protected function createBackup(): bool
     {
-        if (!config('app.create_backup')) {
+        $themeDir = $this->getThemeDirectory();
+        if (!is_dir($themeDir)) {
             return false;
         }
 
-        $backupDir = storage_path('backup/themes/' . $this->theme->key . '-' . date('Y-m-d-His'));
+        $this->preserveBackup = (bool) config('app.create_backup');
+        $backupRoot = $this->preserveBackup
+            ? storage_path('backup/themes')
+            : storage_path('app/temp/updates/rollback/themes');
 
-        if (!is_dir($backupDir)) {
-            mkdir($backupDir, 0o755, true);
+        if (!is_dir($backupRoot) && !@mkdir($backupRoot, 0o755, true) && !is_dir($backupRoot)) {
+            throw new RuntimeException('Unable to create theme backup directory.');
         }
 
-        $themeDir = $this->getThemeDirectory();
-        $this->copyDirectory($themeDir, $backupDir);
+        $this->backupDir = $backupRoot . '/' . $this->theme->key . '-' . date('Y-m-d-His') . '-' . getmypid();
 
-        logs()->info('Theme backup created: ' . $backupDir);
+        if (!is_dir($this->backupDir)) {
+            mkdir($this->backupDir, 0o755, true);
+        }
+
+        $this->copyDirectory($themeDir, $this->backupDir);
+
+        logs()->info('Theme update rollback backup created: ' . $this->backupDir);
 
         return true;
     }
@@ -175,7 +175,7 @@ class ThemeUpdater extends AbstractUpdater
             return false;
         }
 
-        while (($file = readdir($directory)) !== false) {
+        while (( $file = readdir($directory) ) !== false) {
             if ($file === '.' || $file === '..') {
                 continue;
             }
@@ -186,11 +186,7 @@ class ThemeUpdater extends AbstractUpdater
             if (is_dir($sourcePath)) {
                 $this->copyDirectory($sourcePath, $destinationPath);
             } else {
-                copy($sourcePath, $destinationPath);
-                $filePerms = fileperms($sourcePath) & 0o777;
-                chmod($destinationPath, $filePerms);
-                $this->safeChown($destinationPath, fileowner($sourcePath));
-                $this->safeChgrp($destinationPath, filegroup($sourcePath));
+                $this->atomicCopyFile($sourcePath, $destinationPath);
             }
         }
 
@@ -242,9 +238,103 @@ class ThemeUpdater extends AbstractUpdater
         // Очищаем кэш приложения
         cache()->forget('themes_list');
         cache()->forget('active_theme');
+        cache()->deleteImmediately('flute.themes.get');
+        cache()->deleteImmediately('flute.themes.json_data');
+        cache()->deleteImmediately('flute.themes.db_rows');
+        cache()->deleteImmediately('flute.themes.all');
+        cache()->deleteImmediately('flute.global.layout');
+
+        try {
+            app(ThemeManager::class)->reInitThemes();
+        } catch (Throwable $e) {
+            logs()->warning('Failed to reinitialize themes after update: ' . $e->getMessage());
+        }
 
         if (function_exists('cache_warmup_mark')) {
             cache_warmup_mark();
+        }
+
+        $this->resetOpcache();
+    }
+
+    protected function resolveThemeRoot(string $extractDir): string
+    {
+        $rootDir = $extractDir;
+        $items = scandir($extractDir);
+        if (is_array($items) && count($items) === 3) {
+            foreach ($items as $item) {
+                if ($item !== '.' && $item !== '..' && is_dir($extractDir . '/' . $item)) {
+                    $rootDir = $extractDir . '/' . $item;
+
+                    break;
+                }
+            }
+        }
+
+        return $rootDir;
+    }
+
+    protected function validateThemePackage(string $rootDir): array
+    {
+        $themeJsonPath = $rootDir . '/theme.json';
+        if (!is_file($themeJsonPath)) {
+            throw new RuntimeException('Invalid theme archive: theme.json not found.');
+        }
+
+        $themeJson = json_decode((string) file_get_contents($themeJsonPath), true);
+        if (!is_array($themeJson) || empty($themeJson)) {
+            throw new RuntimeException('Invalid theme archive: theme.json is invalid.');
+        }
+
+        return $themeJson;
+    }
+
+    protected function updateThemeInformation(array $themeJson): void
+    {
+        $theme = Theme::findOne(['key' => $this->theme->key]);
+        if (!$theme) {
+            throw new RuntimeException('Theme was not found after update.');
+        }
+
+        $theme->name = $themeJson['name'] ?? $theme->name;
+        $theme->version = $themeJson['version'] ?? $theme->version;
+        $theme->author = $themeJson['author'] ?? $theme->author;
+        $theme->description = htmlspecialchars($themeJson['description'] ?? $theme->description);
+
+        transaction($theme)->run();
+    }
+
+    protected function rollbackFromBackup(string $themeDir): void
+    {
+        if (!$this->backupDir || !is_dir($this->backupDir)) {
+            return;
+        }
+
+        try {
+            if (is_dir($themeDir)) {
+                $this->removeDirectory($themeDir);
+            }
+
+            $this->copyDirectory($this->backupDir, $themeDir);
+            logs()->warning('Theme update rolled back from backup: ' . $this->backupDir, [
+                'theme' => $this->theme->key,
+            ]);
+        } catch (Throwable $rollbackError) {
+            logs()->critical('Theme update rollback failed: ' . $rollbackError->getMessage(), [
+                'theme' => $this->theme->key,
+                'backup' => $this->backupDir,
+            ]);
+        } finally {
+            if (!$this->preserveBackup && is_dir((string) $this->backupDir)) {
+                $this->removeDirectory((string) $this->backupDir);
+            }
+        }
+    }
+
+    protected function cleanupTemporaryBackup(): void
+    {
+        if (!$this->preserveBackup && $this->backupDir && is_dir($this->backupDir)) {
+            $this->removeDirectory($this->backupDir);
         }
     }
 

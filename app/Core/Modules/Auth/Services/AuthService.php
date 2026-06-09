@@ -67,7 +67,8 @@ class AuthService
 
         $authResult = $this->auth->authenticate($credentials, $fromSocial);
 
-        // Save user to session
+        session()->migrate(true);
+
         session()->set('user_id', $authResult->id);
 
         if ($remember) {
@@ -90,7 +91,8 @@ class AuthService
 
         $authResult = $this->auth->authenticateByUserId($userId, $fromSocial);
 
-        // Save user to session
+        session()->migrate(true);
+
         session()->set('user_id', $authResult->id);
 
         if ($remember) {
@@ -177,7 +179,7 @@ class AuthService
             ->fetchOne(['token' => hash('sha256', $token)]);
 
         if (!$rememberToken) {
-            throw new Exception("No token found with value {$token}");
+            throw new Exception('No remember token found for supplied cookie');
         }
 
         return $rememberToken;

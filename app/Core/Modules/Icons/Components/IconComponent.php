@@ -2,6 +2,7 @@
 
 namespace Flute\Core\Modules\Icons\Components;
 
+use Flute\Core\Modules\Icons\Icon;
 use Flute\Core\Modules\Icons\Services\IconFinder;
 use Illuminate\View\Component;
 use Illuminate\View\View;
@@ -78,10 +79,11 @@ class IconComponent extends Component
      */
     public function render(): callable
     {
-        return fn (array $data = []) => render('flute-icons::icon', [
-            'html' => $this->finder->loadFile($this->path),
-            'data' => collect($this->extractPublicProperties())->merge($data['attributes'] ?? [])->filter(static fn ($value) => is_string($value)),
-        ])->render();
+        return fn(array $data = []) => (string) ( new Icon($this->finder->loadFile($this->path)) )->setAttributes(
+            collect($this->extractPublicProperties())
+                ->merge($data['attributes'] ?? [])
+                ->filter(static fn($value) => is_string($value)),
+        );
     }
 
     /**

@@ -2,11 +2,11 @@
 
 namespace Flute\Core\Console\Command;
 
-use Exception;
 use Flute\Core\Services\LoggerService;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Throwable;
 
 class LogsCleanupCommand extends Command
 {
@@ -35,7 +35,7 @@ class LogsCleanupCommand extends Command
             $output->writeln('<info>Log files have been cleaned up successfully.</info>');
 
             return Command::SUCCESS;
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $output->writeln('<error>Error cleaning up log files: ' . $e->getMessage() . '</error>');
 
             return Command::FAILURE;

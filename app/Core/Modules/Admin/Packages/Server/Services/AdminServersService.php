@@ -7,6 +7,7 @@ use Flute\Admin\Packages\Server\Contracts\ModDriverInterface;
 use Flute\Admin\Packages\Server\Factories\ModDriverFactory;
 use Flute\Core\Database\Entities\DatabaseConnection;
 use Flute\Core\Database\Entities\Server;
+use Flute\Core\Services\DatabaseService;
 
 class AdminServersService
 {
@@ -34,13 +35,193 @@ class AdminServersService
     public function getListRanks(): array
     {
         $ranks = [];
-        foreach (glob(path('public/assets/img/ranks/*')) as $file) {
-            if (is_dir($file)) {
-                $ranks[basename($file)] = basename($file);
+        foreach (glob(path('public/assets/img/ranks/*')) as $dir) {
+            if (!is_dir($dir)) {
+                continue;
             }
+
+            $name = basename($dir);
+            $previews = $this->getRankPreviews($dir, 5);
+
+            $previewHtml = '<div class="rank-pack-option"><span class="rank-pack-option__name">' . e($name) . '</span>';
+            if (!empty($previews)) {
+                $previewHtml .= '<span class="rank-pack-option__previews">';
+                foreach ($previews as $src) {
+                    $previewHtml .= '<img src="' . url($src) . '" alt="" loading="lazy" />';
+                }
+                $previewHtml .= '</span>';
+            }
+            $previewHtml .= '</div>';
+
+            $ranks[$name] = [
+                'text' => $name,
+                'optionHtml' => $previewHtml,
+                'itemHtml' => $previewHtml,
+            ];
         }
 
         return $ranks;
+    }
+
+    /**
+     * Detect the best available format in a rank pack directory.
+     * Priority: webp > png > jpg > gif > jpeg
+     */
+    public function detectBestFormat(string $dir): string
+    {
+        $priority = ['webp', 'png', 'jpg', 'gif', 'jpeg'];
+
+        foreach ($priority as $ext) {
+            if (glob($dir . '/*.' . $ext)) {
+                return $ext;
+            }
+        }
+
+        return 'webp';
+    }
+
+    /**
+     * Get preview image paths for a rank pack directory
+     */
+    private function getRankPreviews(string $dir, int $max = 5): array
+    {
+        $previews = [];
+        $files = glob($dir . '/*.{webp,png,jpg,gif,jpeg}', GLOB_BRACE);
+
+        if (!$files) {
+            return [];
+        }
+
+        // Sort numerically by filename
+        usort($files, static fn($a, $b) => (int) basename($a) - (int) basename($b));
+
+        $count = 0;
+        foreach ($files as $file) {
+            if ($count >= $max) {
+                break;
+            }
+            $previews[] = 'assets/img/ranks/' . basename($dir) . '/' . basename($file);
+            $count++;
+        }
+
+        return $previews;
+    }
+
+    /**
+     * Upload and extract a custom rank pack from ZIP archive
+     */
+    public function uploadRankPack(\Symfony\Component\HttpFoundation\File\UploadedFile $file): string
+    {
+        $uploader = app(\Flute\Core\Support\FileUploader::class);
+
+        $zipRelPath = $uploader->uploadZip($file, 20);
+        $zipFullPath = path('public/' . $zipRelPath);
+
+        $zip = new \ZipArchive();
+        if ($zip->open($zipFullPath) !== true) {
+            @unlink($zipFullPath);
+            throw new Exception(__('admin-server.ranks_upload.invalid_archive'));
+        }
+
+        $imageExtensions = ['webp', 'png', 'jpg', 'gif', 'jpeg'];
+        $imageFiles = [];
+        $packName = null;
+        $inSubdir = false;
+
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $entry = $zip->getNameIndex($i);
+
+            // Skip directories, macOS resource forks, hidden files
+            if (
+                str_ends_with($entry, '/')
+                || str_starts_with($entry, '__MACOSX')
+                || str_starts_with(basename($entry), '.')
+            ) {
+                continue;
+            }
+
+            $ext = strtolower(pathinfo($entry, PATHINFO_EXTENSION));
+            if (!in_array($ext, $imageExtensions, true)) {
+                continue;
+            }
+
+            $parts = explode('/', $entry);
+            if (count($parts) === 2) {
+                $inSubdir = true;
+                $packName ??= $parts[0];
+            }
+
+            $imageFiles[] = $entry;
+        }
+
+        $zip->close();
+
+        if (empty($imageFiles)) {
+            @unlink($zipFullPath);
+            throw new Exception(__('admin-server.ranks_upload.no_images'));
+        }
+
+        if (!$inSubdir) {
+            $packName = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+            $packName = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $packName);
+        }
+
+        if (empty($packName)) {
+            @unlink($zipFullPath);
+            throw new Exception(__('admin-server.ranks_upload.no_images'));
+        }
+
+        // Extract to temp, then copy only image files
+        $tempDir = path('storage/app/temp_ranks_' . bin2hex(random_bytes(8)));
+        mkdir($tempDir, 0o755, true);
+        $uploader->safeExtractZip($zipFullPath, $tempDir, [
+            'max_entries' => 2000,
+            'max_total_size' => 50 * 1024 * 1024,
+            'reject_dangerous_extensions' => true,
+        ]);
+
+        $destDir = path('public/assets/img/ranks/' . $packName);
+        if (!is_dir($destDir)) {
+            mkdir($destDir, 0o755, true);
+        }
+
+        foreach ($imageFiles as $entry) {
+            $src = $tempDir . '/' . $entry;
+            if (is_file($src)) {
+                copy($src, $destDir . '/' . basename($entry));
+            }
+        }
+
+        $this->removeDirectory($tempDir);
+        @unlink($zipFullPath);
+
+        return $packName;
+    }
+
+    /**
+     * Remove directory recursively
+     */
+    private function removeDirectory(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $items = scandir($dir);
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') {
+                continue;
+            }
+
+            $path = $dir . '/' . $item;
+            if (is_dir($path)) {
+                $this->removeDirectory($path);
+            } else {
+                unlink($path);
+            }
+        }
+
+        rmdir($dir);
     }
 
     /**
@@ -74,6 +255,7 @@ class AdminServersService
             'gta5' => 'GTA 5',
             'samp' => 'SAMP',
             'all_hl_games_mods' => 'HL1 / HL2 Game',
+            'xash3d' => 'Xash3D FWGS',
         ];
     }
 
@@ -90,9 +272,13 @@ class AdminServersService
         $server->ip = $data['ip'];
         $server->port = (int) $data['port'];
         $server->mod = $data['mod'];
-        $server->rcon = $data['rcon'] ?? null;
+        if (!empty($data['rcon'])) {
+            $server->rcon = $data['rcon'];
+        } elseif (!$server->rcon) {
+            $server->rcon = null;
+        }
         $server->display_ip = $data['display_ip'] ?? null;
-        $server->enabled = $data['enabled'] === 'true';
+        $server->enabled = filter_var($data['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $server->ranks = $data['ranks'] ?? 'default';
         $server->ranks_format = $data['ranks_format'] ?? 'webp';
         $server->ranks_premier = filter_var($data['ranks_premier'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -109,7 +295,7 @@ class AdminServersService
             $server->setSettings($settings);
         }
 
-        $server->save();
+        $server->save(false);
 
         return $server;
     }
@@ -126,6 +312,7 @@ class AdminServersService
         }
 
         $connection->delete();
+        DatabaseService::flushModesCache();
     }
 
     /**

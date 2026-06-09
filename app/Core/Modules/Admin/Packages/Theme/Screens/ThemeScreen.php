@@ -2,7 +2,6 @@
 
 namespace Flute\Admin\Packages\Theme\Screens;
 
-use Exception;
 use Flute\Admin\Platform\Actions\Button;
 use Flute\Admin\Platform\Actions\DropDown;
 use Flute\Admin\Platform\Actions\DropDownItem;
@@ -16,6 +15,7 @@ use Flute\Admin\Platform\Support\Color;
 use Flute\Core\Database\Entities\Theme;
 use Flute\Core\Theme\ThemeActions;
 use Flute\Core\Theme\ThemeManager;
+use Throwable;
 
 class ThemeScreen extends Screen
 {
@@ -38,9 +38,7 @@ class ThemeScreen extends Screen
         $this->themeManager = app(ThemeManager::class);
         $this->themeActions = app(ThemeActions::class);
 
-        breadcrumb()
-            ->add(__('def.admin_panel'), url('/admin'))
-            ->add(__('admin-theme.title.themes'));
+        breadcrumb()->add(__('def.admin_panel'), url('/admin'))->add(__('admin-theme.title.themes'));
 
         $this->loadThemes();
     }
@@ -51,11 +49,11 @@ class ThemeScreen extends Screen
             LayoutFactory::table('themes', [
                 TD::selection('key'),
                 TD::make('name', __('admin-theme.table.name'))
-                    ->render(static fn (Theme $theme) => view('admin-theme::cells.name', compact('theme')))
+                    ->render(static fn(Theme $theme) => view('admin-theme::cells.name', compact('theme')))
                     ->minWidth('200px'),
 
                 TD::make('version', __('admin-theme.table.version'))
-                    ->render(static fn (Theme $theme) => view('admin-theme::cells.version', compact('theme')))
+                    ->render(static fn(Theme $theme) => view('admin-theme::cells.version', compact('theme')))
                     ->minWidth('150px'),
 
                 TD::make('status', __('admin-theme.table.status'))
@@ -66,7 +64,11 @@ class ThemeScreen extends Screen
                             case ThemeManager::DISABLED:
                                 return '<span class="badge warning">' . __('admin-theme.status.inactive') . '</span>';
                             case ThemeManager::NOTINSTALLED:
-                                return '<span class="badge error">' . __('admin-theme.status.not_installed') . '</span>';
+                                return (
+                                    '<span class="badge error">'
+                                    . __('admin-theme.status.not_installed')
+                                    . '</span>'
+                                );
                             default:
                                 return '<span class="badge dark">' . __('admin-theme.status.unknown') . '</span>';
                         }
@@ -121,9 +123,7 @@ class ThemeScreen extends Screen
                             ->size('small')
                             ->fullWidth();
 
-                        return DropDown::make()
-                            ->icon('ph.regular.dots-three-outline-vertical')
-                            ->list($actions);
+                        return DropDown::make()->icon('ph.regular.dots-three-outline-vertical')->list($actions);
                     }),
             ])
                 ->searchable(['key', 'name'])
@@ -160,41 +160,35 @@ class ThemeScreen extends Screen
                 Input::make('name')
                     ->type('text')
                     ->value($theme->name)
-                    ->readOnly()
-            )
-                ->label(__('admin-theme.fields.name.label')),
+                    ->readOnly(),
+            )->label(__('admin-theme.fields.name.label')),
 
             LayoutFactory::field(
                 Input::make('version')
                     ->type('text')
                     ->value($theme->version)
-                    ->readOnly()
-            )
-                ->label(__('admin-theme.fields.version.label')),
+                    ->readOnly(),
+            )->label(__('admin-theme.fields.version.label')),
 
-            LayoutFactory::field(
-                TextArea::make('description')
-                    ->value($theme->description)
-                    ->readOnly(true)
-            )
-                ->label(__('admin-theme.fields.description.label')),
+            LayoutFactory::field(TextArea::make('description')->value($theme->description)->readOnly(true))->label(__(
+                'admin-theme.fields.description.label',
+            )),
 
             LayoutFactory::field(
                 Input::make('author')
                     ->type('text')
                     ->value($theme->author)
-                    ->readOnly()
-            )
-                ->label(__('admin-theme.fields.author.label')),
+                    ->readOnly(),
+            )->label(__('admin-theme.fields.author.label')),
 
-            $themeData && isset($themeData['url']) ? LayoutFactory::field(
-                Input::make('url')
-                    ->type('url')
-                    ->value($themeData['url'])
-                    ->readOnly()
-            )
-                ->label(__('admin-theme.fields.url.label'))
-            : null,
+            $themeData && isset($themeData['url'])
+                ? LayoutFactory::field(
+                    Input::make('url')
+                        ->type('url')
+                        ->value($themeData['url'])
+                        ->readOnly(),
+                )->label(__('admin-theme.fields.url.label'))
+                : null,
         ])
             ->title(__('admin-theme.modals.details.title', ['name' => $theme->name]))
             ->withoutApplyButton()
@@ -211,8 +205,9 @@ class ThemeScreen extends Screen
     {
         try {
             $this->themeActions->installTheme($this->key);
+            $this->clearThemeCache();
             $this->flashMessage(__('admin-theme.messages.install_success', ['name' => $this->key]), 'success');
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $this->flashMessage(__('admin-theme.messages.install_error', ['message' => $e->getMessage()]), 'error');
         }
 
@@ -223,8 +218,9 @@ class ThemeScreen extends Screen
     {
         try {
             $this->themeActions->activateTheme($this->key);
+            $this->clearThemeCache();
             $this->flashMessage(__('admin-theme.messages.enable_success', ['name' => $this->key]), 'success');
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $this->flashMessage(__('admin-theme.messages.enable_error', ['message' => $e->getMessage()]), 'error');
         }
 
@@ -235,8 +231,9 @@ class ThemeScreen extends Screen
     {
         try {
             $this->themeActions->disableTheme($this->key);
+            $this->clearThemeCache();
             $this->flashMessage(__('admin-theme.messages.disable_success', ['name' => $this->key]), 'success');
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $this->flashMessage(__('admin-theme.messages.disable_error', ['message' => $e->getMessage()]), 'error');
         }
 
@@ -247,8 +244,9 @@ class ThemeScreen extends Screen
     {
         try {
             $this->themeActions->uninstallTheme($this->key);
+            $this->clearThemeCache();
             $this->flashMessage(__('admin-theme.messages.delete_success', ['name' => $this->key]), 'success');
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $this->flashMessage(__('admin-theme.messages.delete_error', ['message' => $e->getMessage()]), 'error');
         }
 
@@ -266,10 +264,11 @@ class ThemeScreen extends Screen
                 if ($key !== 'standard') {
                     $this->themeActions->uninstallTheme($key);
                 }
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 // ignore
             }
         }
+        $this->clearThemeCache();
         $this->loadThemes(true);
         $this->flashMessage(__('admin-theme.messages.delete_success', ['name' => '']), 'success');
     }
@@ -281,5 +280,22 @@ class ThemeScreen extends Screen
         }
 
         $this->themes = $this->themeManager->getAllThemes();
+    }
+
+    /**
+     * Clear all theme-related caches to ensure admin sees fresh data.
+     */
+    private function clearThemeCache(): void
+    {
+        try {
+            cache()->deleteImmediately('themes_list');
+            cache()->deleteImmediately('active_theme');
+            cache()->deleteImmediately('flute.themes.get');
+            cache()->deleteImmediately('flute.themes.json_data');
+            cache()->deleteImmediately('flute.themes.db_rows');
+            cache()->deleteImmediately('flute.global.layout');
+        } catch (Throwable $e) {
+            // Do not break admin flow if cache clearing fails
+        }
     }
 }

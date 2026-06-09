@@ -2,12 +2,13 @@
 
 namespace Flute\Core\Update\Updaters;
 
-use Exception;
 use Flute\Core\Composer\ComposerManager;
 use Flute\Core\ModulesManager\ModuleActions;
 use Flute\Core\ModulesManager\ModuleInformation;
 use Flute\Core\ModulesManager\ModuleManager;
-use ZipArchive;
+use Flute\Core\Support\FileUploader;
+use RuntimeException;
+use Throwable;
 
 class ModuleUpdater extends AbstractUpdater
 {
@@ -25,6 +26,8 @@ class ModuleUpdater extends AbstractUpdater
     ];
 
     protected ?string $backupDir = null;
+
+    protected bool $preserveBackup = false;
 
     /**
      * ModuleUpdater constructor.
@@ -80,13 +83,15 @@ class ModuleUpdater extends AbstractUpdater
     public function update(array $data): bool
     {
         if (empty($data['package_file']) || !file_exists($data['package_file'])) {
-            logs()->error('Module update package file not found: ' . ($data['package_file'] ?? 'null'));
+            logs()->error('Module update package file not found: ' . ( $data['package_file'] ?? 'null' ));
 
             return false;
         }
 
         $packageFile = $data['package_file'];
         $extractDir = storage_path('app/temp/updates/module-' . $this->module->key . '-' . time());
+        $moduleDir = $this->getModuleDirectory();
+        $success = false;
 
         if (!is_dir($extractDir)) {
             mkdir($extractDir, 0o755, true);
@@ -97,16 +102,15 @@ class ModuleUpdater extends AbstractUpdater
 
             $modulePath = $this->extractModuleArchive($packageFile, $extractDir);
             if (!$modulePath) {
-                return false;
+                throw new RuntimeException('Invalid module update package.');
             }
 
             if (!$this->validateModule($modulePath)) {
                 logs()->error('Module validation failed: incompatible with current CMS version');
 
-                return false;
+                throw new RuntimeException('Module validation failed.');
             }
 
-            $moduleDir = $this->getModuleDirectory();
             $this->copyModuleFiles($modulePath, $moduleDir);
 
             // Update composer dependencies
@@ -115,35 +119,38 @@ class ModuleUpdater extends AbstractUpdater
 
             try {
                 $composerManager->install();
-            } catch (Exception $e) {
-                // Rollback
-                $this->removeDirectory($moduleDir);
-                if ($this->backupDir && is_dir($this->backupDir)) {
-                    $this->copyDirectory($this->backupDir, $moduleDir);
-                }
-
+            } catch (Throwable $e) {
                 throw $e;
             }
 
-            $this->updateModuleInformation();
+            if (!$this->updateModuleInformation()) {
+                throw new RuntimeException('Module information update failed.');
+            }
 
             $this->clearCache();
-            cache()->clear();
             /** @var ModuleManager $moduleManager */
             $moduleManager = app(ModuleManager::class);
             $moduleManager->clearCache();
             $moduleManager->refreshModules();
 
-            $this->removeDirectory($extractDir);
+            $success = true;
 
             return true;
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             logs()->error('Error during module update: ' . $e->getMessage());
+            $this->rollbackFromBackup($moduleDir);
+
+            \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'update.module']);
+
+            return false;
+        } finally {
             if (is_dir($extractDir)) {
                 $this->removeDirectory($extractDir);
             }
 
-            return false;
+            if ($success) {
+                $this->cleanupTemporaryBackup();
+            }
         }
     }
 
@@ -154,15 +161,15 @@ class ModuleUpdater extends AbstractUpdater
      */
     protected function extractModuleArchive(string $packageFile, string $extractDir)
     {
-        $zip = new ZipArchive();
-        if ($zip->open($packageFile) !== true) {
-            logs()->error('Failed to open module update package: ' . $packageFile);
+        try {
+            app(FileUploader::class)->safeExtractZip($packageFile, $extractDir);
+        } catch (Throwable $e) {
+            logs()->error('Failed to extract module update package: ' . $e->getMessage());
+
+            \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'update.module.extract']);
 
             return false;
         }
-
-        $zip->extractTo($extractDir);
-        $zip->close();
 
         $rootDir = $extractDir;
         $items = scandir($extractDir);
@@ -258,8 +265,10 @@ class ModuleUpdater extends AbstractUpdater
             logs()->error('Failed to update module information: module not found after updating files');
 
             return false;
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             logs()->error('Failed to update module information: ' . $e->getMessage());
+
+            \Flute\Core\Services\CrashReportService::capture($e, ['source' => 'update.module.info']);
 
             return false;
         }
@@ -280,20 +289,29 @@ class ModuleUpdater extends AbstractUpdater
      */
     protected function createBackup(): bool
     {
-        if (!config('app.create_backup')) {
+        $moduleDir = $this->getModuleDirectory();
+        if (!is_dir($moduleDir)) {
             return false;
         }
 
-        $this->backupDir = storage_path('backup/modules/' . $this->module->key . '-' . date('Y-m-d-His'));
+        $this->preserveBackup = (bool) config('app.create_backup');
+        $backupRoot = $this->preserveBackup
+            ? storage_path('backup/modules')
+            : storage_path('app/temp/updates/rollback/modules');
+
+        if (!is_dir($backupRoot) && !@mkdir($backupRoot, 0o755, true) && !is_dir($backupRoot)) {
+            throw new RuntimeException('Unable to create module backup directory.');
+        }
+
+        $this->backupDir = $backupRoot . '/' . $this->module->key . '-' . date('Y-m-d-His') . '-' . getmypid();
 
         if (!is_dir($this->backupDir)) {
             mkdir($this->backupDir, 0o755, true);
         }
 
-        $moduleDir = $this->getModuleDirectory();
         $this->copyDirectory($moduleDir, $this->backupDir);
 
-        logs()->info('Module backup created: ' . $this->backupDir);
+        logs()->info('Module update rollback backup created: ' . $this->backupDir);
 
         return true;
     }
@@ -301,15 +319,19 @@ class ModuleUpdater extends AbstractUpdater
     /**
      * Copy module files, excluding specified directories
      */
-    protected function copyModuleFiles(string $source, string $destination): bool
+    protected function copyModuleFiles(string $source, string $destination, ?string $baseSource = null): bool
     {
         if (!is_dir($source)) {
             return false;
         }
 
+        $baseSource ??= rtrim(str_replace('\\', '/', $source), '/');
         $directory = opendir($source);
+        if ($directory === false) {
+            return false;
+        }
 
-        while (($file = readdir($directory)) !== false) {
+        while (( $file = readdir($directory) ) !== false) {
             if ($file === '.' || $file === '..') {
                 continue;
             }
@@ -319,8 +341,9 @@ class ModuleUpdater extends AbstractUpdater
 
             $isExcluded = false;
             foreach ($this->excludedPaths as $excludedPath) {
-                $relativePath = str_replace($source . '/', '', $sourcePath);
-                if ($relativePath === $excludedPath || strpos($relativePath, $excludedPath . '/') === 0) {
+                $normalizedSourcePath = str_replace('\\', '/', $sourcePath);
+                $relativePath = ltrim(substr($normalizedSourcePath, strlen($baseSource)), '/');
+                if ($relativePath === $excludedPath || str_starts_with($relativePath, $excludedPath . '/')) {
                     $isExcluded = true;
                     logs()->info('Skipping excluded path: ' . $relativePath);
 
@@ -340,13 +363,9 @@ class ModuleUpdater extends AbstractUpdater
                     $this->safeChown($destinationPath, fileowner($sourcePath));
                     $this->safeChgrp($destinationPath, filegroup($sourcePath));
                 }
-                $this->copyModuleFiles($sourcePath, $destinationPath);
+                $this->copyModuleFiles($sourcePath, $destinationPath, $baseSource);
             } else {
-                copy($sourcePath, $destinationPath);
-                $filePerms = fileperms($sourcePath) & 0o777;
-                chmod($destinationPath, $filePerms);
-                $this->safeChown($destinationPath, fileowner($sourcePath));
-                $this->safeChgrp($destinationPath, filegroup($sourcePath));
+                $this->atomicCopyFile($sourcePath, $destinationPath);
             }
         }
 
@@ -377,7 +396,7 @@ class ModuleUpdater extends AbstractUpdater
             return false;
         }
 
-        while (($file = readdir($directory)) !== false) {
+        while (( $file = readdir($directory) ) !== false) {
             if ($file === '.' || $file === '..') {
                 continue;
             }
@@ -388,11 +407,7 @@ class ModuleUpdater extends AbstractUpdater
             if (is_dir($sourcePath)) {
                 $this->copyDirectory($sourcePath, $destinationPath);
             } else {
-                copy($sourcePath, $destinationPath);
-                $filePerms = fileperms($sourcePath) & 0o777;
-                chmod($destinationPath, $filePerms);
-                $this->safeChown($destinationPath, fileowner($sourcePath));
-                $this->safeChgrp($destinationPath, filegroup($sourcePath));
+                $this->atomicCopyFile($sourcePath, $destinationPath);
             }
         }
 
@@ -438,6 +453,42 @@ class ModuleUpdater extends AbstractUpdater
 
         if (function_exists('cache_warmup_mark')) {
             cache_warmup_mark();
+        }
+
+        $this->resetOpcache();
+    }
+
+    protected function rollbackFromBackup(string $moduleDir): void
+    {
+        if (!$this->backupDir || !is_dir($this->backupDir)) {
+            return;
+        }
+
+        try {
+            if (is_dir($moduleDir)) {
+                $this->removeDirectory($moduleDir);
+            }
+
+            $this->copyDirectory($this->backupDir, $moduleDir);
+            logs()->warning('Module update rolled back from backup: ' . $this->backupDir, [
+                'module' => $this->module->key,
+            ]);
+        } catch (Throwable $rollbackError) {
+            logs()->critical('Module update rollback failed: ' . $rollbackError->getMessage(), [
+                'module' => $this->module->key,
+                'backup' => $this->backupDir,
+            ]);
+        } finally {
+            if (!$this->preserveBackup && is_dir((string) $this->backupDir)) {
+                $this->removeDirectory((string) $this->backupDir);
+            }
+        }
+    }
+
+    protected function cleanupTemporaryBackup(): void
+    {
+        if (!$this->preserveBackup && $this->backupDir && is_dir($this->backupDir)) {
+            $this->removeDirectory($this->backupDir);
         }
     }
 

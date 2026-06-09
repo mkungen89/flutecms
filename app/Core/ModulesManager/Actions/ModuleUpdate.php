@@ -15,6 +15,8 @@ use RuntimeException;
 
 class ModuleUpdate implements ModuleActionInterface
 {
+    use Concerns\FlushesTranslationCache;
+
     protected ModuleManager $moduleManager;
 
     protected ModuleDependencies $moduleDependencies;
@@ -58,6 +60,8 @@ class ModuleUpdate implements ModuleActionInterface
 
         app(DatabaseConnection::class)->forceRefreshSchemaDeferred([$module->key]);
 
+        $this->flushCompiledTranslations();
+
         return true;
     }
 
@@ -67,9 +71,15 @@ class ModuleUpdate implements ModuleActionInterface
             /** @var ThemeManager $themeManager */
             $themeManager = app(ThemeManager::class);
 
-            $this->moduleDependencies->checkDependencies($module->dependencies, $this->moduleManager->getActive(), $themeManager->getThemeInfo());
+            $this->moduleDependencies->checkDependencies(
+                $module->dependencies,
+                $this->moduleManager->getActive(),
+                $themeManager->getThemeInfo(),
+            );
         } catch (ModuleDependencyException $e) {
-            logs('modules')->emergency("Flute module \"" . $module->key . "\" dependency check failed - " . $e->getMessage());
+            logs('modules')->emergency(
+                'Flute module "' . $module->key . '" dependency check failed - ' . $e->getMessage(),
+            );
 
             throw new ModuleDependencyException($e->getMessage());
         }
@@ -105,7 +115,7 @@ class ModuleUpdate implements ModuleActionInterface
 
     protected function updateDb(ModuleInformation $moduleInformation, $newVersion): void
     {
-        $module = Module::findOne(["key" => $moduleInformation->key]);
+        $module = Module::findOne(['key' => $moduleInformation->key]);
 
         $module->installedVersion = $newVersion;
 

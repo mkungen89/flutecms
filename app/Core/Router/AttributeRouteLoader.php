@@ -9,6 +9,7 @@ use ReflectionClass;
 use ReflectionException;
 use ReflectionMethod;
 use SplFileInfo;
+use Symfony\Component\Finder\Exception\DirectoryNotFoundException;
 use Symfony\Component\Finder\Finder;
 
 class AttributeRouteLoader
@@ -56,15 +57,36 @@ class AttributeRouteLoader
     public function loadFromDirectories(array $directories, string $namespace): int
     {
         $routeCount = 0;
-        $cacheKey = 'route_loader_' . md5(implode('|', $directories) . '_' . $namespace);
-        if (!is_debug()) {
+        $existingDirectories = $this->filterExistingDirectories($directories);
+        if ($existingDirectories === []) {
+            return 0;
+        }
+
+        $cacheKey = 'route_loader_' . md5(implode('|', $existingDirectories) . '_' . $namespace);
+        $ttl = is_debug() ? 30 : 86400;
+
+        try {
             $classNames = cache()->callback(
                 $cacheKey,
-                fn () => $this->scanDirectoriesForControllers($directories, $namespace),
-                86400
+                fn() => $this->scanDirectoriesForControllers($existingDirectories, $namespace),
+                $ttl,
             );
-        } else {
-            $classNames = $this->scanDirectoriesForControllers($directories, $namespace);
+        } catch (DirectoryNotFoundException $e) {
+            if (function_exists('logs')) {
+                logs('router')->warning('Attribute routes scan skipped (directory missing): ' . $e->getMessage());
+            }
+
+            return 0;
+        } catch (\Throwable $e) {
+            if (function_exists('logs')) {
+                logs('router')->error('Attribute routes scan failed: ' . $e->getMessage(), ['exception' => $e]);
+            }
+
+            if (function_exists('is_debug') && is_debug()) {
+                throw $e;
+            }
+
+            return 0;
         }
 
         foreach ($classNames as $className) {
@@ -101,10 +123,7 @@ class AttributeRouteLoader
                 if ($method->isStatic()) {
                     continue;
                 }
-                $routeAttributes = $method->getAttributes(
-                    RouteAttribute::class,
-                    ReflectionAttribute::IS_INSTANCEOF
-                );
+                $routeAttributes = $method->getAttributes(RouteAttribute::class, ReflectionAttribute::IS_INSTANCEOF);
                 if (empty($routeAttributes)) {
                     continue;
                 }
@@ -122,11 +141,7 @@ class AttributeRouteLoader
                     $annotationRoute = $finalRoute;
 
                     $action = [$className, $method->getName()];
-                    $routeInstance = $this->router->addRoute(
-                        $finalRoute->getMethods(),
-                        $finalRoute->getUri(),
-                        $action
-                    );
+                    $routeInstance = $this->router->addRoute($finalRoute->getMethods(), $finalRoute->getUri(), $action);
 
                     $annotationRoute->setAfterModifyCallback(static function ($annotationRoute) use ($routeInstance) {
                         if ($annotationRoute->getName()) {
@@ -146,22 +161,20 @@ class AttributeRouteLoader
                         }
                     });
 
+                    $allMiddleware = array_merge($combinedMiddleware, $finalRoute->getMiddleware());
+
                     if ($finalRoute->getName()) {
                         $routeInstance->name($finalRoute->getName());
                     }
 
-                    // middleware
-                    $allMiddleware = array_merge($combinedMiddleware, $finalRoute->getMiddleware());
                     if (!empty($allMiddleware)) {
                         $routeInstance->middleware($allMiddleware);
                     }
 
-                    // where
                     foreach ($finalRoute->getWhere() as $param => $pattern) {
                         $routeInstance->where($param, $pattern);
                     }
 
-                    // defaults
                     foreach ($finalRoute->getDefaults() as $param => $value) {
                         $routeInstance->defaults($param, $value);
                     }
@@ -171,7 +184,6 @@ class AttributeRouteLoader
             }
 
             return $routeCount;
-
         } catch (ReflectionException $e) {
             return 0;
         }
@@ -182,6 +194,11 @@ class AttributeRouteLoader
      */
     private function scanDirectoriesForControllers(array $directories, string $namespace): array
     {
+        $directories = $this->filterExistingDirectories($directories);
+        if ($directories === []) {
+            return [];
+        }
+
         $cacheKey = 'route_loader_dirs_' . md5(implode('|', $directories));
 
         if (isset($this->loadedClassNamesCache[$cacheKey])) {
@@ -192,16 +209,46 @@ class AttributeRouteLoader
         $finder = new Finder();
         $finder->files()->name('*.php')->in($directories);
 
-        foreach ($finder as $file) {
-            $className = $this->getClassNameFromFile($file, $directories, $namespace);
-            if ($className && class_exists($className)) {
-                $classNames[] = $className;
+        try {
+            foreach ($finder as $file) {
+                $className = $this->getClassNameFromFile($file, $directories, $namespace);
+                if ($className && class_exists($className)) {
+                    $classNames[] = $className;
+                }
             }
+        } catch (DirectoryNotFoundException $e) {
+            if (function_exists('logs')) {
+                logs('router')->warning('Controller directory scan skipped: ' . $e->getMessage());
+            }
+
+            $this->loadedClassNamesCache[$cacheKey] = [];
+
+            return [];
         }
 
         $this->loadedClassNamesCache[$cacheKey] = $classNames;
 
         return $classNames;
+    }
+
+    /**
+     * @param array<int|string,string> $directories
+     * @return list<string>
+     */
+    private function filterExistingDirectories(array $directories): array
+    {
+        $out = [];
+        foreach ($directories as $dir) {
+            if (!is_string($dir) || $dir === '') {
+                continue;
+            }
+
+            if (is_dir($dir)) {
+                $out[] = $dir;
+            }
+        }
+
+        return $out;
     }
 
     private function getInheritedClassMiddleware(ReflectionClass $class): array
@@ -219,10 +266,7 @@ class AttributeRouteLoader
             $middleware = $this->getInheritedClassMiddleware($parent);
         }
 
-        $middlewareAttributes = $class->getAttributes(
-            MiddlewareAttribute::class,
-            ReflectionAttribute::IS_INSTANCEOF
-        );
+        $middlewareAttributes = $class->getAttributes(MiddlewareAttribute::class, ReflectionAttribute::IS_INSTANCEOF);
 
         foreach ($middlewareAttributes as $attribute) {
             $middlewareInstance = $attribute->newInstance();
@@ -246,10 +290,7 @@ class AttributeRouteLoader
         }
 
         $middleware = [];
-        $middlewareAttributes = $method->getAttributes(
-            MiddlewareAttribute::class,
-            ReflectionAttribute::IS_INSTANCEOF
-        );
+        $middlewareAttributes = $method->getAttributes(MiddlewareAttribute::class, ReflectionAttribute::IS_INSTANCEOF);
 
         foreach ($middlewareAttributes as $attribute) {
             $middlewareInstance = $attribute->newInstance();
@@ -318,10 +359,7 @@ class AttributeRouteLoader
             $parentRoute = $this->buildClassRouteChain($parent);
         }
 
-        $routeAttributes = $class->getAttributes(
-            RouteAttribute::class,
-            ReflectionAttribute::IS_INSTANCEOF
-        );
+        $routeAttributes = $class->getAttributes(RouteAttribute::class, ReflectionAttribute::IS_INSTANCEOF);
 
         $classRoute = null;
         if (!empty($routeAttributes)) {
